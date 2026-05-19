@@ -1,0 +1,33 @@
+[project]
+name = "fishbot"
+version = "0.1.0"
+description = "Personal fishing exploration bot — jurisdiction-aware, Ontario first"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.103.1",
+    "httpx>=0.28.1",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
+    "rich>=15.0.0",
+    "sqlite-utils>=3.39",
+    "typer>=0.25.1",
+]
+
+[project.scripts]
+fishbot = "src.cli.main:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.15.13",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
