@@ -1,4 +1,4 @@
-.PHONY: run test lint format ingest
+.PHONY: run test lint format ingest recent
 
 run:
 	uv run python -m src.cli.main run
@@ -14,3 +14,6 @@ format:
 
 ingest:
 	uv run python -m src.cli.main ingest
+
+recent:
+	uv run python -m src.cli.main recent
