@@ -32,6 +32,20 @@ Python 3.11+, uv, SQLite via sqlite-utils, Anthropic SDK (claude-sonnet-4-6 defa
 - Indigenous/First Nations waters: flag as separate jurisdiction, do not predict within them
 - Spot discovery output stays personal — no export features that broadcast spot lists
 
+## Core principle: presence vs. pressure
+
+Crowdsourced catch and observation data measures angler activity as much as fish presence. The bot must not confuse the two:
+
+- High report density does not imply high habitat quality. It often implies high pressure.
+- Low report density does not imply absence. It often implies low access or low observer effort.
+- Habitat features and systematic survey data (MNRF Broadscale Monitoring, Conservation Authority surveys, government datasets) are stronger signals than catch reports for predicting where fish actually live.
+- "Untapped potential" inverts report density: high habitat × low reports × good access = top score.
+- When citing community data, the bot should distinguish between "fish are here" (presence) and "people are here" (pressure).
+
+Refinement: Some famous spots — Caledonia for walleye/gar, Dunnville for channel cats, the Thames for redhorse — are popular because of structural productivity (chokepoints, spawning runs, rare habitat) that pressure cannot fully erase. The bot tracks reputation, pressure estimate, and structural productivity as separate signals. A spot can be high on all three; the bot acknowledges this honestly. The user's question determines whether reputation/pressure are weighted as positive (they want a sure bet) or negative (they want solitude). Never collapse these into a single score.
+
+This is the project's central thesis. It reshapes every prediction the bot makes.
+
 ## Conventions
 
 - `uv add` for all dependencies (never bare pip)
