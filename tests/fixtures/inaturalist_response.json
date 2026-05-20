@@ -1,0 +1,43 @@
+{
+  "total_results": 2,
+  "page": 1,
+  "per_page": 200,
+  "results": [
+    {
+      "id": 123456789,
+      "taxon": {
+        "id": 12345,
+        "name": "Cottus cognatus",
+        "preferred_common_name": "Slimy Sculpin"
+      },
+      "location": "43.8500,-79.0300",
+      "observed_on": "2026-04-15",
+      "quality_grade": "research",
+      "photos": [
+        {
+          "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/123/square.jpg"
+        }
+      ],
+      "user": {
+        "login": "ontariofish"
+      },
+      "place_guess": "Rouge River, Ontario"
+    },
+    {
+      "id": 987654321,
+      "taxon": {
+        "id": 67890,
+        "name": "Etheostoma caeruleum",
+        "preferred_common_name": "Rainbow Darter"
+      },
+      "location": "42.3200,-83.1800",
+      "observed_on": "2026-04-10",
+      "quality_grade": "needs_id",
+      "photos": [],
+      "user": {
+        "login": "michiganmicrofisher"
+      },
+      "place_guess": "River Raisin, Michigan"
+    }
+  ]
+}

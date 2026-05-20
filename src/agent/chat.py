@@ -1,5 +1,8 @@
 """Interactive chat loop using the Anthropic SDK + rich for terminal I/O."""
 
+import json
+from typing import Any
+
 from anthropic import Anthropic, APIError
 from rich.console import Console
 
@@ -33,6 +36,7 @@ def run_chat() -> None:
     console.print()
 
     messages: list[dict] = []
+    tools = _tools(profile)
 
     while True:
         try:
@@ -52,9 +56,7 @@ def run_chat() -> None:
         messages.append({"role": "user", "content": user_input})
 
         try:
-            response_text = _stream_response(
-                client, model, system_prompt, messages, console
-            )
+            _agentic_loop(client, model, system_prompt, messages, tools, console)
         except APIError as e:
             console.print(f"[red]API error: {e}[/red]")
             messages.pop()
@@ -65,26 +67,117 @@ def run_chat() -> None:
             messages.pop()
             continue
 
-        messages.append({"role": "assistant", "content": response_text})
 
-
-def _stream_response(
+def _agentic_loop(
     client: Anthropic,
     model: str,
     system_prompt: str,
     messages: list[dict],
+    tools: list[dict],
     console: Console,
-) -> str:
-    chunks: list[str] = []
-    with client.messages.stream(
-        model=model,
-        max_tokens=2048,
-        system=system_prompt,
-        messages=messages,
-    ) as stream:
-        for text in stream.text_stream:
-            chunks.append(text)
-            console.print(text, end="", markup=False, highlight=False, soft_wrap=True)
-    console.print()
-    console.print()
-    return "".join(chunks)
+) -> None:
+    """Stream a response, handle tool calls, loop until end_turn."""
+    while True:
+        content_blocks: list[Any] = []
+
+        with client.messages.stream(
+            model=model,
+            max_tokens=2048,
+            system=system_prompt,
+            messages=messages,
+            tools=tools,
+        ) as stream:
+            for text in stream.text_stream:
+                console.print(text, end="", markup=False, highlight=False, soft_wrap=True)
+            final_msg = stream.get_final_message()
+            content_blocks = final_msg.content
+
+        tool_use_blocks = [b for b in content_blocks if b.type == "tool_use"]
+
+        if not tool_use_blocks:
+            console.print()
+            console.print()
+            text = "".join(
+                b.text for b in content_blocks if b.type == "text"
+            )
+            messages.append({"role": "assistant", "content": text})
+            return
+
+        # Tool call detected — execute and continue the loop
+        console.print()
+        assistant_content = [b.model_dump() for b in content_blocks]
+        messages.append({"role": "assistant", "content": assistant_content})
+
+        tool_results: list[dict] = []
+        for block in tool_use_blocks:
+            result = _execute_tool(block.name, block.input)
+            tool_results.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": result,
+                }
+            )
+
+        messages.append({"role": "user", "content": tool_results})
+
+
+def _execute_tool(name: str, inputs: dict) -> str:
+    if name == "get_recent_observations":
+        from src.services.observations import query_for_agent
+
+        return query_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 50),
+            days_back=inputs.get("days_back", 90),
+            species_filter=inputs.get("species_filter"),
+        )
+    return json.dumps({"error": f"Unknown tool: {name}"})
+
+
+def _tools(profile: Any) -> list[dict]:
+    home = profile.home_location
+    lat_desc = f"Latitude (your home is {home.lat})" if home else "Latitude"
+    lng_desc = f"Longitude (your home is {home.lng})" if home else "Longitude"
+
+    return [
+        {
+            "name": "get_recent_observations",
+            "description": (
+                "Query locally-cached iNaturalist fish observation data. "
+                "Use when the user asks what fish have been seen near a location, "
+                "about recent sightings, species presence, or what's been observed nearby. "
+                "Data is cached locally and may be up to 24 hours old."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": "Search radius in kilometres. Default 50.",
+                    },
+                    "days_back": {
+                        "type": "integer",
+                        "description": "How many days of history to include. Default 90.",
+                    },
+                    "species_filter": {
+                        "type": "string",
+                        "description": (
+                            "Optional species name to filter by "
+                            "(scientific or common name, partial match)."
+                        ),
+                    },
+                },
+                "required": ["lat", "lng"],
+            },
+        }
+    ]

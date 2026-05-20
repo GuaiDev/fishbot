@@ -194,9 +194,27 @@ def profile() -> None:
 
 
 @app.command()
-def ingest() -> None:
-    """Run data ingestion adapters."""
-    typer.echo("ingest — not yet implemented. Sub-phase 1c and beyond will build this.")
+def ingest(
+    radius_km: float = typer.Option(50.0, "--radius", help="Search radius in km"),
+    days_back: int = typer.Option(90, "--days", help="How many days of history to pull"),
+) -> None:
+    """Pull fish observations from iNaturalist near your home location."""
+    from src.services.observations import fetch_and_store
+
+    profile = load_profile()
+    if not profile.home_location:
+        console.print(
+            "[red]Home location not set. Run `fishbot profile` and enter your coordinates.[/red]"
+        )
+        raise typer.Exit(1)
+
+    loc = profile.home_location
+    console.print(
+        f"[dim]Fetching iNaturalist observations within {radius_km}km of {loc.name}, "
+        f"last {days_back} days…[/dim]"
+    )
+    count = fetch_and_store(loc.lat, loc.lng, radius_km=radius_km, days_back=days_back)
+    console.print(f"[green]Stored {count} observations.[/green]")
 
 
 def _print_profile(p: UserProfile) -> None:
