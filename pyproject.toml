@@ -16,6 +16,16 @@ dependencies = [
 [project.scripts]
 fishbot = "src.cli.main:app"
 
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",

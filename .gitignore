@@ -4,6 +4,9 @@
 # Database
 data/fishing.db
 
+# Personal profile (contains location + gear)
+data/user_profile.json
+
 # Ignored data directories (large/generated/cached content)
 data/cache/
 data/raw/
