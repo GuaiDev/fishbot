@@ -70,3 +70,33 @@ This is the project's central thesis. It reshapes every prediction the bot makes
 - Product spec: `docs/planning/` (read before suggesting any feature)
 - System prompt: `prompts/system.md` (edit without code changes)
 - This file: read every session start
+
+## Phase 1 data source roadmap
+
+Completed:
+- 1a: Project skeleton
+- 1b: MVP chat bot, profile, trip log, jurisdiction registry
+- 1c: iNaturalist ingestion + agent tool
+
+Queued (in suggested order):
+- 1d: Open-Meteo weather + barometric pressure trends
+- 1e: Tactical recommender (no new data source)
+- 1f: GBIF species occurrence (redundancy for iNaturalist)
+- 1g: Water Survey of Canada stream gauges
+- 1h: OpenStreetMap water features + access
+- 1i: MNRF stocking history
+- 1j: Native range maps + Species at Risk overlays
+- 1k: Reddit community RAG with technique extraction
+- 1l: MNRF Broadscale Monitoring + Conservation Authority surveys (the unbiased ground truth layer — biggest single contributor to the presence-vs-pressure principle)
+- 1m: Ontario Hydro Network + stream connectivity graph (foundation for predictive features)
+- 1n: MNRF regulations parser
+
+Deferred to Phase 2:
+- Satellite imagery ingestion (Sentinel-2, NAIP, SWOOP)
+- Satellite-derived bathymetry
+- Microsoft Building Footprints + accessibility scoring
+- Spot discovery pipeline
+- Habitat-based species distribution models (first real ML layer)
+- Multi-jurisdiction expansion (BC, Quebec, US states beyond stubs)
+
+Sub-phases 1f through 1j are small (1-2 sessions each). 1k is medium. 1l and 1m are the big ones — budget a week of evenings each.
