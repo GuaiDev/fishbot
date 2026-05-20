@@ -141,6 +141,21 @@ def _execute_tool(name: str, inputs: dict) -> str:
             days_back=inputs.get("days_back", 90),
             species_filter=inputs.get("species_filter"),
         )
+    if name == "get_conditions":
+        from src.services.weather import get_conditions_for_agent
+
+        return get_conditions_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            when=inputs.get("when", "now"),
+        )
+    if name == "get_pressure_trend":
+        from src.services.weather import get_pressure_trend_for_agent
+
+        return get_pressure_trend_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -187,5 +202,58 @@ def _tools(profile: Any) -> list[dict]:
                 },
                 "required": ["lat", "lng"],
             },
-        }
+        },
+        {
+            "name": "get_conditions",
+            "description": (
+                "Get current or forecast weather conditions for a location. "
+                "Use when the user asks about the weather, whether conditions are good "
+                "for fishing, what it will be like this weekend, or needs "
+                "temperature/wind/rain info for planning. "
+                "Returns temperature, wind, precipitation, pressure, and a pressure trend note. "
+                "Data is cached: 1 hour for current, 6 hours for forecasts."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "when": {
+                        "type": "string",
+                        "enum": ["now", "tomorrow", "in_3_days", "this_weekend"],
+                        "description": "Which time window to return. Default 'now'.",
+                    },
+                },
+                "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "get_pressure_trend",
+            "description": (
+                "Get the barometric pressure trend for a location over the past 24-48 hours. "
+                "Use when the user asks about pressure, barometric conditions, fish feeding "
+                "activity, or whether 'now' is a tactically good time to fish. "
+                "Returns trend (rising/steady/falling), numeric deltas, and a fishing note."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                },
+                "required": ["lat", "lng"],
+            },
+        },
     ]
