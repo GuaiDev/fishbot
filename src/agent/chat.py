@@ -105,7 +105,7 @@ def _agentic_loop(
 
         # Tool call detected — execute and continue the loop
         console.print()
-        assistant_content = [b.model_dump() for b in content_blocks]
+        assistant_content = [_normalize_block(b) for b in content_blocks]
         messages.append({"role": "assistant", "content": assistant_content})
 
         tool_results: list[dict] = []
@@ -120,6 +120,14 @@ def _agentic_loop(
             )
 
         messages.append({"role": "user", "content": tool_results})
+
+
+def _normalize_block(b: Any) -> dict:
+    if b.type == "text":
+        return {"type": "text", "text": b.text}
+    if b.type == "tool_use":
+        return {"type": "tool_use", "id": b.id, "name": b.name, "input": b.input}
+    return {"type": b.type}
 
 
 def _execute_tool(name: str, inputs: dict) -> str:
