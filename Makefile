@@ -1,7 +1,7 @@
 .PHONY: run test lint format ingest
 
 run:
-	uv run python -m src.cli.main
+	uv run python -m src.cli.main run
 
 test:
 	uv run pytest tests/

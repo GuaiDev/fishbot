@@ -1,4 +1,5 @@
 """Entry point for the fishbot CLI."""
+
 import typer
 
 app = typer.Typer(name="fishbot", help="Personal fishing exploration bot.")
