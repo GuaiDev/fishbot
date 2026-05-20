@@ -41,6 +41,7 @@ Python 3.11+, uv, SQLite via sqlite-utils, Anthropic SDK (claude-sonnet-4-6 defa
 - All new pydantic models get tests
 - All new external API integrations get cached + have a recorded fixture for tests
 - Assistant content blocks sent back to the API must be serialized to only API-accepted fields — never use `.model_dump()` directly on SDK content blocks because it includes internal fields the API rejects
+- Never insert test data into the production database during development — use temporary test databases (`tmp_path` in pytest) instead
 
 ## How to run
 
