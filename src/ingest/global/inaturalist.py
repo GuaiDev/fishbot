@@ -65,9 +65,7 @@ def fetch_observations(
 
 def _cached_get(params: dict) -> dict:
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(
-        json.dumps(params, sort_keys=True).encode()
-    ).hexdigest()[:16]
+    key = hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:16]
     cache_file = _CACHE_DIR / f"{key}.json"
 
     if cache_file.exists():

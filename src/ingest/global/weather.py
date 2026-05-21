@@ -19,9 +19,9 @@ from src.models.weather import (
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 _ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 _CACHE_DIR = Path("data/cache/open-meteo")
-_TTL_CURRENT = 3_600     # 1 hour
-_TTL_FORECAST = 21_600   # 6 hours
-_TTL_HISTORY = 86_400    # 24 hours
+_TTL_CURRENT = 3_600  # 1 hour
+_TTL_FORECAST = 21_600  # 6 hours
+_TTL_HISTORY = 86_400  # 24 hours
 _USER_AGENT = "fishbot/1.0 (personal fishing assistant)"
 
 

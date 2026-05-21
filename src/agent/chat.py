@@ -97,9 +97,7 @@ def _agentic_loop(
         if not tool_use_blocks:
             console.print()
             console.print()
-            text = "".join(
-                b.text for b in content_blocks if b.type == "text"
-            )
+            text = "".join(b.text for b in content_blocks if b.type == "text")
             messages.append({"role": "assistant", "content": text})
             return
 
@@ -155,6 +153,18 @@ def _execute_tool(name: str, inputs: dict) -> str:
         return get_pressure_trend_for_agent(
             lat=inputs["lat"],
             lng=inputs["lng"],
+        )
+    if name == "get_tactical_recommendation":
+        from src.services.tactical import get_tactical_recommendation_for_agent
+
+        return get_tactical_recommendation_for_agent(
+            species=inputs.get("species"),
+            lat=inputs.get("lat"),
+            lng=inputs.get("lng"),
+            water_clarity=inputs.get("water_clarity"),
+            water_temp_c=inputs.get("water_temp_c"),
+            time_of_day=inputs.get("time_of_day"),
+            notes=inputs.get("notes"),
         )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
@@ -254,6 +264,71 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "get_tactical_recommendation",
+            "description": (
+                "Generate lure, bait, and technique recommendations based on current conditions. "
+                "Automatically fetches weather and pressure trend if lat/lng are provided — "
+                "do NOT call get_conditions or get_pressure_trend separately before calling this. "
+                "Call this whenever the user asks: what should I throw, what's working, "
+                "recommend a lure or rig or setup, or any gear/technique question. "
+                "If the user does not specify a species, omit 'species' and the tool will "
+                "read their profile — it will ask for clarification if the profile has "
+                "multiple targets. Always quote the 'reasoning' field verbatim in your response."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "species": {
+                        "type": "string",
+                        "description": (
+                            "Target species, e.g. 'smallmouth bass', 'brook trout', "
+                            "'johnny darter'. Omit to read from user profile."
+                        ),
+                    },
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc + " — enables auto-fetch of current conditions.",
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc + " — enables auto-fetch of current conditions.",
+                    },
+                    "water_clarity": {
+                        "type": "string",
+                        "enum": ["clear", "stained", "murky"],
+                        "description": "Observed water clarity at the fishing location.",
+                    },
+                    "water_temp_c": {
+                        "type": "number",
+                        "description": (
+                            "Observed water temperature in Celsius "
+                            "(overrides auto-fetched value)."
+                        ),
+                    },
+                    "time_of_day": {
+                        "type": "string",
+                        "enum": [
+                            "dawn",
+                            "morning",
+                            "midday",
+                            "afternoon",
+                            "evening",
+                            "dusk",
+                            "night",
+                        ],
+                        "description": "Current or planned time of day for fishing.",
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": (
+                            "Any extra context: recent rain, specific location type, etc."
+                        ),
+                    },
+                },
+                "required": [],
             },
         },
     ]

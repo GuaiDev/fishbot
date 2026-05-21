@@ -37,27 +37,17 @@ def log() -> None:
         "Jurisdiction (ISO 3166-2, e.g. CA-ON)",
         default=profile.home_jurisdiction,
     )
-    lat_raw = typer.prompt(
-        "Latitude (blank to skip)", default="", show_default=False
-    )
-    lng_raw = typer.prompt(
-        "Longitude (blank to skip)", default="", show_default=False
-    )
+    lat_raw = typer.prompt("Latitude (blank to skip)", default="", show_default=False)
+    lng_raw = typer.prompt("Longitude (blank to skip)", default="", show_default=False)
 
     catches: list[Catch] = []
     if typer.confirm("Any catches?", default=False):
         while True:
-            species = typer.prompt(
-                "  Species (blank to stop)", default="", show_default=False
-            )
+            species = typer.prompt("  Species (blank to stop)", default="", show_default=False)
             if not species:
                 break
-            length_raw = typer.prompt(
-                "  Length cm (blank to skip)", default="", show_default=False
-            )
-            weight_raw = typer.prompt(
-                "  Weight kg (blank to skip)", default="", show_default=False
-            )
+            length_raw = typer.prompt("  Length cm (blank to skip)", default="", show_default=False)
+            weight_raw = typer.prompt("  Weight kg (blank to skip)", default="", show_default=False)
             released = typer.confirm("  Released?", default=True)
             catches.append(
                 Catch(
@@ -68,12 +58,8 @@ def log() -> None:
                 )
             )
 
-    gear_used_raw = typer.prompt(
-        "Gear used (comma-separated)", default="", show_default=False
-    )
-    conditions_notes = typer.prompt(
-        "Conditions (free text)", default="", show_default=False
-    )
+    gear_used_raw = typer.prompt("Gear used (comma-separated)", default="", show_default=False)
+    conditions_notes = typer.prompt("Conditions (free text)", default="", show_default=False)
     what_worked = typer.prompt("What worked", default="", show_default=False)
     what_didnt = typer.prompt("What didn't", default="", show_default=False)
     notes = typer.prompt("General notes", default="", show_default=False)
@@ -94,9 +80,7 @@ def log() -> None:
 
     db = get_db()
     trip_id = insert_trip(db, trip)
-    console.print(
-        f"[green]Saved trip #{trip_id}[/green] — {location_name} on {trip_date_str}"
-    )
+    console.print(f"[green]Saved trip #{trip_id}[/green] — {location_name} on {trip_date_str}")
 
 
 @app.command()
@@ -107,9 +91,7 @@ def recent(
     db = get_db()
     trips = recent_trips(db, limit=limit)
     if not trips:
-        console.print(
-            "[dim]No trips logged yet. Run `fishbot log` to record one.[/dim]"
-        )
+        console.print("[dim]No trips logged yet. Run `fishbot log` to record one.[/dim]")
         return
 
     table = Table(title=f"Recent trips ({len(trips)})")
@@ -119,11 +101,7 @@ def recent(
     table.add_column("Caught")
     table.add_column("Notes", overflow="fold")
     for t in trips:
-        species = (
-            ", ".join(c.species for c in t.species_caught)
-            if t.species_caught
-            else "skunked"
-        )
+        species = ", ".join(c.species for c in t.species_caught) if t.species_caught else "skunked"
         notes_bits = [t.what_worked, t.what_didnt, t.notes]
         notes_combined = " | ".join(s for s in notes_bits if s)
         table.add_row(
@@ -145,9 +123,7 @@ def profile() -> None:
     if not typer.confirm("Edit profile?", default=False):
         return
 
-    home_jurisdiction = typer.prompt(
-        "Home jurisdiction (ISO 3166-2)", default=p.home_jurisdiction
-    )
+    home_jurisdiction = typer.prompt("Home jurisdiction (ISO 3166-2)", default=p.home_jurisdiction)
     home_name = typer.prompt(
         "Home location name",
         default=p.home_location.name if p.home_location else "",
@@ -180,9 +156,7 @@ def profile() -> None:
         home_jurisdiction=home_jurisdiction,
         frequented_jurisdictions=p.frequented_jurisdictions,
         home_location=home_location,
-        target_species=[
-            s.strip() for s in target_species_raw.split(",") if s.strip()
-        ],
+        target_species=[s.strip() for s in target_species_raw.split(",") if s.strip()],
         gear=p.gear,
         budget=p.budget,
         skill_level=skill_level,

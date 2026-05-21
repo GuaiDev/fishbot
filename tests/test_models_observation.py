@@ -72,9 +72,7 @@ def test_missing_jurisdiction_raises():
 
 
 def test_round_trip_model_dump():
-    obs = Observation(
-        **_valid_obs(common_name="Slimy Sculpin", taxon_id=12345)
-    )
+    obs = Observation(**_valid_obs(common_name="Slimy Sculpin", taxon_id=12345))
     dumped = obs.model_dump(mode="json")
     restored = Observation.model_validate(dumped)
     assert restored.observation_id == obs.observation_id

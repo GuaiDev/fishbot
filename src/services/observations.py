@@ -36,14 +36,16 @@ def query_for_agent(
     observations = query_observations(db, lat, lng, radius_km, days_back, species_filter)
 
     if not observations:
-        return json.dumps({
-            "count": 0,
-            "observations": [],
-            "note": (
-                "No observations found in the local database for this area and time range. "
-                "Try running `make ingest` first."
-            ),
-        })
+        return json.dumps(
+            {
+                "count": 0,
+                "observations": [],
+                "note": (
+                    "No observations found in the local database for this area and time range. "
+                    "Try running `make ingest` first."
+                ),
+            }
+        )
 
     records = [
         {

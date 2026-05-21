@@ -38,29 +38,22 @@ def update_trip(db: Database, trip_id: int, **fields: Any) -> None:
     db["trips"].update(trip_id, encoded)
 
 
-def recent_trips(
-    db: Database, limit: int = 5, status: str = "completed"
-) -> list[Trip]:
-    rows = db["trips"].rows_where(
-        "status = ?", [status], order_by="date desc", limit=limit
-    )
+def recent_trips(db: Database, limit: int = 5, status: str = "completed") -> list[Trip]:
+    rows = db["trips"].rows_where("status = ?", [status], order_by="date desc", limit=limit)
     return [_row_to_trip(r) for r in rows]
 
 
 def _to_jsonable(value: Any) -> Any:
     if isinstance(value, list):
         return [
-            item.model_dump(mode="json") if hasattr(item, "model_dump") else item
-            for item in value
+            item.model_dump(mode="json") if hasattr(item, "model_dump") else item for item in value
         ]
     return value
 
 
 def _trip_to_row(trip: Trip) -> dict[str, Any]:
     row = trip.model_dump(mode="json")
-    row["species_caught"] = json.dumps(
-        [c.model_dump(mode="json") for c in trip.species_caught]
-    )
+    row["species_caught"] = json.dumps([c.model_dump(mode="json") for c in trip.species_caught])
     row["conditions"] = json.dumps(trip.conditions)
     row["gear_used"] = json.dumps(trip.gear_used)
     return row

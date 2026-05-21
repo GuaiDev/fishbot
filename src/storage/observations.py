@@ -26,9 +26,7 @@ def query_observations(
     deg = radius_km / _KM_PER_DEGREE
     since = (date.today() - timedelta(days=days_back)).isoformat()
 
-    where = (
-        "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND observed_on >= ?"
-    )
+    where = "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND observed_on >= ?"
     params: list[Any] = [lat - deg, lat + deg, lng - deg, lng + deg, since]
 
     if species_filter:

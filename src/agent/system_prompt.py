@@ -51,15 +51,11 @@ def _format_profile(profile: UserProfile) -> str:
         f"- Skill level: {profile.skill_level}",
     ]
     if profile.frequented_jurisdictions:
-        lines.append(
-            f"- Also fishes: {', '.join(profile.frequented_jurisdictions)}"
-        )
+        lines.append(f"- Also fishes: {', '.join(profile.frequented_jurisdictions)}")
     if profile.preferences:
         lines.append(f"- Preferences: {profile.preferences}")
     if profile.gear:
-        gear_summary = "; ".join(
-            ", ".join(f"{k}: {v}" for k, v in g.items()) for g in profile.gear
-        )
+        gear_summary = "; ".join(", ".join(f"{k}: {v}" for k, v in g.items()) for g in profile.gear)
         lines.append(f"- Gear: {gear_summary}")
     return "\n".join(lines)
 
@@ -71,8 +67,7 @@ def _format_recent_trips(trips: list[Trip]) -> str:
     for t in trips:
         if t.species_caught:
             species_summary = ", ".join(
-                c.species + (f" ({c.length_cm}cm)" if c.length_cm else "")
-                for c in t.species_caught
+                c.species + (f" ({c.length_cm}cm)" if c.length_cm else "") for c in t.species_caught
             )
         else:
             species_summary = "skunked"

@@ -86,9 +86,8 @@ def test_cache_hit_skips_http(tmp_path: Path):
         "page": 1,
     }
     import hashlib
-    key = hashlib.sha256(
-        json.dumps(params, sort_keys=True).encode()
-    ).hexdigest()[:16]
+
+    key = hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:16]
     cache_file = cache / f"{key}.json"
     cache_file.write_text(json.dumps(fixture))
 
@@ -114,9 +113,8 @@ def test_cache_miss_writes_file(tmp_path: Path):
         _cached_get(params)
 
     import hashlib
-    key = hashlib.sha256(
-        json.dumps(params, sort_keys=True).encode()
-    ).hexdigest()[:16]
+
+    key = hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:16]
     cache_file = cache / f"{key}.json"
     assert cache_file.exists()
     assert json.loads(cache_file.read_text())["total_results"] == 2
@@ -129,15 +127,15 @@ def test_stale_cache_triggers_refetch(tmp_path: Path):
     params = {"taxon_id": 47178, "lat": 2.0, "lng": 2.0, "page": 1}
 
     import hashlib
-    key = hashlib.sha256(
-        json.dumps(params, sort_keys=True).encode()
-    ).hexdigest()[:16]
+
+    key = hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:16]
     cache_file = cache / f"{key}.json"
     cache_file.write_text(json.dumps(fixture))
 
     # Back-date the file to 25 hours ago
     old_time = time.time() - (25 * 3600)
     import os
+
     os.utime(cache_file, (old_time, old_time))
 
     with (

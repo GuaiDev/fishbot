@@ -58,3 +58,20 @@ def ensure_schema(db: Database) -> None:
             },
             pk="observation_id",
         )
+
+    if "recommendations" not in db.table_names():
+        db["recommendations"].create(
+            {
+                "id": int,
+                "timestamp": str,
+                "species": str,
+                "lat": float,
+                "lng": float,
+                "jurisdiction": str,
+                "conditions_json": str,
+                "recommendation_json": str,
+                "was_used": int,
+                "trip_id": int,
+            },
+            pk="id",
+        )

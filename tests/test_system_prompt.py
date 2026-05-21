@@ -44,8 +44,6 @@ def test_assemble_includes_profile_and_trip_data():
 
 
 def test_assemble_with_unknown_jurisdiction_carries_disclaimer():
-    out = assemble(
-        TEMPLATE, UserProfile.default(), [], UnknownJurisdiction(code="US-FL")
-    )
+    out = assemble(TEMPLATE, UserProfile.default(), [], UnknownJurisdiction(code="US-FL"))
     assert "don't recognize" in out.lower()
     assert "US-FL" in out

@@ -54,7 +54,7 @@ def test_recent_trips_orders_by_date_desc(tmp_path):
 def test_recent_trips_respects_limit(tmp_path):
     db = get_db(path=tmp_path / "test.db")
     for i in range(5):
-        insert_trip(db, _trip(f"2026-05-{i+1:02d}", f"Trip {i}"))
+        insert_trip(db, _trip(f"2026-05-{i + 1:02d}", f"Trip {i}"))
     assert len(recent_trips(db, limit=3)) == 3
 
 
