@@ -75,3 +75,26 @@ def ensure_schema(db: Database) -> None:
             },
             pk="id",
         )
+
+    if "behavioral_insights" not in db.table_names():
+        db["behavioral_insights"].create(
+            {
+                "id": int,
+                "species": str,
+                "condition_type": str,
+                "condition_context": str,
+                "conclusion": str,
+                "confidence": str,
+                "source_type": str,
+                "source_detail": str,
+                "evidence_count": int,
+                "version": int,
+                "is_current": int,
+                "contradicted_by": int,
+                "user_verified": int,
+                "jurisdiction": str,
+                "last_validated": str,
+                "created_at": str,
+            },
+            pk="id",
+        )

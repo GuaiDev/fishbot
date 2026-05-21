@@ -166,6 +166,27 @@ def _execute_tool(name: str, inputs: dict) -> str:
             time_of_day=inputs.get("time_of_day"),
             notes=inputs.get("notes"),
         )
+    if name == "get_behavioral_insights":
+        from src.services.insights import get_behavioral_insights_for_agent
+
+        return get_behavioral_insights_for_agent(
+            species=inputs["species"],
+            condition_type=inputs.get("condition_type"),
+        )
+    if name == "record_behavioral_insight":
+        from src.services.insights import record_behavioral_insight_for_agent
+
+        return record_behavioral_insight_for_agent(
+            species=inputs["species"],
+            condition_type=inputs["condition_type"],
+            condition_context=inputs["condition_context"],
+            conclusion=inputs["conclusion"],
+            confidence=inputs["confidence"],
+            source_type=inputs["source_type"],
+            source_detail=inputs["source_detail"],
+            evidence_count=inputs["evidence_count"],
+            jurisdiction=inputs.get("jurisdiction"),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -264,6 +285,125 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "get_behavioral_insights",
+            "description": (
+                "Retrieve accumulated behavioral conclusions for a species "
+                "from the persistent knowledge store. "
+                "Returns stored insights about behavior, habitat preference, "
+                "timing, and gear effectiveness. "
+                "Call this before get_tactical_recommendation for any species "
+                "— surface relevant insights in your response to ground "
+                "recommendations in accumulated knowledge. "
+                "Also call when the user asks what you know about a species, "
+                "how a species behaves, or requests a behavioral or habitat summary."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "species": {
+                        "type": "string",
+                        "description": (
+                            "Species to look up (common or scientific name, partial match)."
+                        ),
+                    },
+                    "condition_type": {
+                        "type": "string",
+                        "enum": ["behavioral", "habitat", "temporal", "gear"],
+                        "description": "Optional filter by conclusion category.",
+                    },
+                },
+                "required": ["species"],
+            },
+        },
+        {
+            "name": "record_behavioral_insight",
+            "description": (
+                "Store a synthesized behavioral conclusion in the persistent knowledge store. "
+                "Use after observing a clear pattern across multiple data points, "
+                "after the user confirms something, or when a trip log or data source "
+                "supports a concrete conclusion. "
+                "Confidence must be 'low', 'medium', or 'high' — never 'unverified'. "
+                "Do not record speculation or single-observation guesses. "
+                "source_type options: agent_synthesis, tactical_rules, inat_pattern, "
+                "mnrf_survey, reddit_pattern, trip_log, user_correction."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "species": {
+                        "type": "string",
+                        "description": "Species this conclusion applies to.",
+                    },
+                    "condition_type": {
+                        "type": "string",
+                        "enum": ["behavioral", "habitat", "temporal", "gear"],
+                        "description": "Category of the conclusion.",
+                    },
+                    "condition_context": {
+                        "type": "string",
+                        "description": (
+                            "Short label for the specific condition, e.g. 'post-cold-front', "
+                            "'riffle-cobble', 'dusk-late-may', 'stained-water-chartreuse'."
+                        ),
+                    },
+                    "conclusion": {
+                        "type": "string",
+                        "description": "The full natural-language conclusion statement.",
+                    },
+                    "confidence": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high"],
+                        "description": (
+                            "Confidence level. Must not be 'unverified' "
+                            "— only call this tool with concrete evidence."
+                        ),
+                    },
+                    "source_type": {
+                        "type": "string",
+                        "enum": [
+                            "agent_synthesis",
+                            "tactical_rules",
+                            "inat_pattern",
+                            "mnrf_survey",
+                            "reddit_pattern",
+                            "trip_log",
+                            "user_correction",
+                        ],
+                        "description": "Where this conclusion came from.",
+                    },
+                    "source_detail": {
+                        "type": "string",
+                        "description": (
+                            "Free-text description of the specific evidence, "
+                            "e.g. '47 iNaturalist observations May-June 2024-2026' "
+                            "or 'personal trip log: 8 outings Credit River spring 2026'."
+                        ),
+                    },
+                    "evidence_count": {
+                        "type": "integer",
+                        "description": "Number of data points supporting this conclusion.",
+                    },
+                    "jurisdiction": {
+                        "type": "string",
+                        "description": (
+                            "ISO 3166-2 code if this conclusion is jurisdiction-specific "
+                            "(e.g. 'CA-ON'). Omit if it applies globally."
+                        ),
+                    },
+                },
+                "required": [
+                    "species",
+                    "condition_type",
+                    "condition_context",
+                    "conclusion",
+                    "confidence",
+                    "source_type",
+                    "source_detail",
+                    "evidence_count",
+                ],
             },
         },
         {
