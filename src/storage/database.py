@@ -76,6 +76,26 @@ def ensure_schema(db: Database) -> None:
             pk="id",
         )
 
+    if "gbif_observations" not in db.table_names():
+        db["gbif_observations"].create(
+            {
+                "gbif_key": int,
+                "species": str,
+                "common_name": str,
+                "taxon_key": int,
+                "lat": float,
+                "lng": float,
+                "observed_on": str,
+                "country_code": str,
+                "dataset_name": str,
+                "basis_of_record": str,
+                "coordinate_uncertainty_m": float,
+                "jurisdiction": str,
+                "ingested_at": str,
+            },
+            pk="gbif_key",
+        )
+
     if "behavioral_insights" not in db.table_names():
         db["behavioral_insights"].create(
             {

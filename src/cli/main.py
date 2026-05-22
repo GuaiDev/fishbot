@@ -170,10 +170,11 @@ def profile() -> None:
 @app.command()
 def ingest(
     radius_km: float = typer.Option(50.0, "--radius", help="Search radius in km"),
-    days_back: int = typer.Option(90, "--days", help="How many days of history to pull"),
+    days_back: int = typer.Option(90, "--days", help="How many days of iNaturalist history to pull"),  # noqa: E501
 ) -> None:
-    """Pull fish observations from iNaturalist near your home location."""
-    from src.services.observations import fetch_and_store
+    """Pull fish observations from iNaturalist and GBIF near your home location."""
+    from src.services.gbif import fetch_and_store as gbif_fetch_and_store
+    from src.services.observations import fetch_and_store as inat_fetch_and_store
 
     profile = load_profile()
     if not profile.home_location:
@@ -183,12 +184,22 @@ def ingest(
         raise typer.Exit(1)
 
     loc = profile.home_location
+
     console.print(
         f"[dim]Fetching iNaturalist observations within {radius_km}km of {loc.name}, "
         f"last {days_back} days…[/dim]"
     )
-    count = fetch_and_store(loc.lat, loc.lng, radius_km=radius_km, days_back=days_back)
-    console.print(f"[green]Stored {count} observations.[/green]")
+    inat_count = inat_fetch_and_store(loc.lat, loc.lng, radius_km=radius_km, days_back=days_back)
+
+    console.print(
+        f"[dim]Fetching GBIF records within {radius_km}km of {loc.name} "
+        f"(all historical)…[/dim]"
+    )
+    gbif_count = gbif_fetch_and_store(loc.lat, loc.lng, radius_km=radius_km)
+
+    console.print(
+        f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records[/green]"
+    )
 
 
 def _print_profile(p: UserProfile) -> None:

@@ -187,6 +187,16 @@ def _execute_tool(name: str, inputs: dict) -> str:
             evidence_count=inputs["evidence_count"],
             jurisdiction=inputs.get("jurisdiction"),
         )
+    if name == "get_gbif_observations":
+        from src.services.gbif import query_for_agent as gbif_query_for_agent
+
+        return gbif_query_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 50),
+            days_back=inputs.get("days_back"),
+            species_filter=inputs.get("species_filter"),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -404,6 +414,54 @@ def _tools(profile: Any) -> list[dict]:
                     "source_detail",
                     "evidence_count",
                 ],
+            },
+        },
+        {
+            "name": "get_gbif_observations",
+            "description": (
+                "Query locally-cached GBIF (Global Biodiversity Information Facility) occurrence "
+                "data. GBIF aggregates museum specimens, academic surveys, government datasets, "
+                "and citizen science globally — it goes further back in time than iNaturalist "
+                "and covers rare species with sparse community observation coverage. "
+                "Use when the user asks about historical species presence, rare or micro-target "
+                "species, museum records, or wants a comprehensive picture combining citizen "
+                "science with institutional data. "
+                "Returns a unified view cross-referencing both GBIF and local iNaturalist records "
+                "with source attribution per species. "
+                "Omit days_back to retrieve all historical records including museum specimens."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": "Search radius in kilometres. Default 50.",
+                    },
+                    "days_back": {
+                        "type": "integer",
+                        "description": (
+                            "Limit to records from the last N days. "
+                            "Omit entirely to retrieve all historical records "
+                            "(recommended for museum specimens and rare species)."
+                        ),
+                    },
+                    "species_filter": {
+                        "type": "string",
+                        "description": (
+                            "Optional species name to filter by "
+                            "(scientific or common name, partial match)."
+                        ),
+                    },
+                },
+                "required": ["lat", "lng"],
             },
         },
         {

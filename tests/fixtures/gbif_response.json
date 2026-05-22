@@ -1,0 +1,47 @@
+{
+  "offset": 0,
+  "limit": 300,
+  "endOfRecords": true,
+  "count": 3,
+  "results": [
+    {
+      "key": 4058211872,
+      "taxonKey": 2360285,
+      "species": "Moxostoma duquesnii",
+      "vernacularName": "Black Redhorse",
+      "decimalLatitude": 43.85,
+      "decimalLongitude": -79.03,
+      "eventDate": "2023-06-15",
+      "countryCode": "CA",
+      "datasetName": "iNaturalist research-grade observations",
+      "basisOfRecord": "HUMAN_OBSERVATION",
+      "coordinateUncertaintyInMeters": 10.0
+    },
+    {
+      "key": 1289045312,
+      "taxonKey": 2361789,
+      "species": "Percina caprodes",
+      "vernacularName": "Logperch",
+      "decimalLatitude": 43.65,
+      "decimalLongitude": -79.38,
+      "eventDate": null,
+      "countryCode": "CA",
+      "datasetName": "Royal Ontario Museum Fish Collection",
+      "basisOfRecord": "PRESERVED_SPECIMEN",
+      "coordinateUncertaintyInMeters": 5000.0
+    },
+    {
+      "key": 3876541290,
+      "taxonKey": 2360190,
+      "species": "Etheostoma caeruleum",
+      "vernacularName": "Rainbow Darter",
+      "decimalLatitude": 43.72,
+      "decimalLongitude": -79.56,
+      "eventDate": "2024-05-22T00:00:00",
+      "countryCode": "CA",
+      "datasetName": "Government of Ontario Aquatic Survey 2024",
+      "basisOfRecord": "MACHINE_OBSERVATION",
+      "coordinateUncertaintyInMeters": null
+    }
+  ]
+}
