@@ -197,6 +197,22 @@ def _execute_tool(name: str, inputs: dict) -> str:
             days_back=inputs.get("days_back"),
             species_filter=inputs.get("species_filter"),
         )
+    if name == "get_oldest_gbif_record":
+        from src.storage.gbif_observations import oldest_gbif_record
+
+        record = oldest_gbif_record(get_db())
+        if record is None:
+            return json.dumps({"result": "No dated records in the database."})
+        return json.dumps(
+            {
+                "species": record.species,
+                "common_name": record.common_name,
+                "observed_on": record.observed_on.isoformat() if record.observed_on else None,
+                "basis_of_record": record.basis_of_record,
+                "dataset_name": record.dataset_name,
+                "jurisdiction": record.jurisdiction,
+            }
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -462,6 +478,19 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "get_oldest_gbif_record",
+            "description": (
+                "Return the single oldest dated fish record in the local GBIF database. "
+                "Use when the user asks about the oldest record, earliest observation, "
+                "or how far back the database goes."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "required": [],
             },
         },
         {

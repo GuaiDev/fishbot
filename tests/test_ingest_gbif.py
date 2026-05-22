@@ -37,7 +37,8 @@ def test_fetch_returns_observations(tmp_path: Path):
     ):
         observations = fetch_gbif_observations(lat=43.65, lng=-79.38, radius_km=50)
 
-    assert len(observations) == 3
+    # Mock returns the same 3-record fixture for every orderKey query; total = 3 × num_orders
+    assert len(observations) == 3 * len(_gbif._FISH_ORDER_KEYS)
     species = {o.species for o in observations}
     assert "Moxostoma duquesnii" in species
     assert "Percina caprodes" in species

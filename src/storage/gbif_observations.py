@@ -43,6 +43,17 @@ def query_gbif_observations(
     return [_row_to_obs(r) for r in rows]
 
 
+def oldest_gbif_record(db: Database) -> GBIFObservation | None:
+    rows = list(
+        db["gbif_observations"].rows_where(
+            "observed_on IS NOT NULL",
+            order_by="observed_on asc",
+            limit=1,
+        )
+    )
+    return _row_to_obs(rows[0]) if rows else None
+
+
 def _obs_to_row(obs: GBIFObservation) -> dict[str, Any]:
     return {
         "gbif_key": obs.gbif_key,
