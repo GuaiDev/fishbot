@@ -213,6 +213,14 @@ def _execute_tool(name: str, inputs: dict) -> str:
                 "jurisdiction": record.jurisdiction,
             }
         )
+    if name == "get_stream_conditions":
+        from src.services.stream_gauge import get_stream_conditions_for_agent
+
+        return get_stream_conditions_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 50),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -491,6 +499,39 @@ def _tools(profile: Any) -> list[dict]:
                 "type": "object",
                 "properties": {},
                 "required": [],
+            },
+        },
+        {
+            "name": "get_stream_conditions",
+            "description": (
+                "Returns current water level, flow rate (discharge), and trend for nearby "
+                "Water Survey of Canada gauges. Includes a plain-English condition note "
+                "('elevated and rising', 'normal and stable', etc.) and a tactical fishing note "
+                "explaining what current conditions mean for where fish will be holding. "
+                "Data refreshes hourly. Coverage: Canadian rivers only (WSC network). "
+                "Call this whenever the user asks about river or stream conditions, water levels, "
+                "flow, clarity, or whether a river is 'blown out'. "
+                "For any river or stream fishing question, call this alongside or before "
+                "get_tactical_recommendation — water level shapes every tactical decision for "
+                "moving-water fishing."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": "Search radius in kilometres. Default 50.",
+                    },
+                },
+                "required": ["lat", "lng"],
             },
         },
         {

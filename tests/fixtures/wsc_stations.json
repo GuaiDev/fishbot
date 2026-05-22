@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "numberMatched": 3,
+  "numberReturned": 3,
+  "features": [
+    {
+      "type": "Feature",
+      "id": "hydrometric-stations.02HB001",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-79.7167, 43.5833]
+      },
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "PROV_TERR_STATE_LOC": "ON",
+        "STATUS_EN": "Active",
+        "STATUS_FR": "En service",
+        "REAL_TIME": 1
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "hydrometric-stations.02HC024",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-79.5333, 43.7167]
+      },
+      "properties": {
+        "STATION_NUMBER": "02HC024",
+        "STATION_NAME": "HUMBER RIVER AT WESTON",
+        "PROV_TERR_STATE_LOC": "ON",
+        "STATUS_EN": "Active",
+        "STATUS_FR": "En service",
+        "REAL_TIME": 1
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "hydrometric-stations.02HC003",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-79.2833, 43.85]
+      },
+      "properties": {
+        "STATION_NUMBER": "02HC003",
+        "STATION_NAME": "ROUGE RIVER NEAR MARKHAM",
+        "PROV_TERR_STATE_LOC": "ON",
+        "STATUS_EN": "Active",
+        "STATUS_FR": "En service",
+        "REAL_TIME": 1
+      }
+    }
+  ]
+}

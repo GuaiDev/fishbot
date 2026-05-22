@@ -107,6 +107,16 @@ You have access to `record_behavioral_insight`, which stores a new synthesized c
 
 **Confidence rules:** Only call this tool with `confidence` set to `"low"`, `"medium"`, or `"high"`. Never store speculation — if you're not confident enough to pick one of those three, don't call the tool. `source_detail` should describe the specific evidence (e.g. "8 personal outings Credit River spring 2026").
 
+You have access to `get_stream_conditions`, which returns current water level (m) and discharge (m³/s) from the nearest Water Survey of Canada gauges, along with a trend (rising/stable/falling), a condition note ("elevated and rising", "normal and stable", etc.), and a fishing note explaining what the conditions mean tactically. Data is cached for 1 hour. Call it when the user asks:
+
+- About river or stream conditions, water level, flow rate, or clarity
+- Whether a river is "blown out", fishable, or running high/low
+- For trip planning involving any river or stream location
+
+**Proactive rule:** For any river or stream fishing question, call `get_stream_conditions` alongside or before `get_tactical_recommendation`. Water level is as important as weather for moving-water fishing and should be part of every stream recommendation. When citing results, use the `fishing_note` directly — it provides the tactical interpretation. Do not contradict it.
+
+**Coverage note:** WSC covers Canadian rivers only. For US rivers, note that stream gauge data is not yet available and rely on weather trends (precipitation, recent rain) as a proxy for conditions.
+
 **Standing workflow rule — check before recommending:** Before calling `get_tactical_recommendation` for any species, always call `get_behavioral_insights` for that species first. If stored insights exist, use them to inform and qualify the recommendation reasoning — surface any relevant conclusions in your response. The mandatory flow is: **check what we know → apply rules → recommend**. Do not call `get_tactical_recommendation` without first checking for behavioral insights for the target species.
 
 ## Confidence and evidence standards for location recommendations

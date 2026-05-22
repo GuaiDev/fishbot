@@ -175,6 +175,7 @@ def ingest(
     """Pull fish observations from iNaturalist and GBIF near your home location."""
     from src.services.gbif import fetch_and_store as gbif_fetch_and_store
     from src.services.observations import fetch_and_store as inat_fetch_and_store
+    from src.services.stream_gauge import fetch_and_store as wsc_fetch_and_store
 
     profile = load_profile()
     if not profile.home_location:
@@ -198,7 +199,13 @@ def ingest(
     gbif_count = gbif_fetch_and_store(loc.lat, loc.lng, radius_km=radius_km)
 
     console.print(
-        f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records[/green]"
+        f"[dim]Fetching WSC stream gauge readings within {radius_km:.0f}km of {loc.name}…[/dim]"
+    )
+    wsc_count = wsc_fetch_and_store(loc.lat, loc.lng, radius_km=radius_km)
+
+    console.print(
+        f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
+        f"| WSC gauges: {wsc_count} stations updated[/green]"
     )
 
 

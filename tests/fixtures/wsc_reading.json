@@ -1,0 +1,176 @@
+{
+  "type": "FeatureCollection",
+  "numberMatched": 13,
+  "numberReturned": 13,
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T14:00:00Z",
+        "LEVEL": 0.523,
+        "DISCHARGE": 18.3,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T13:45:00Z",
+        "LEVEL": 0.521,
+        "DISCHARGE": 18.2,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T13:30:00Z",
+        "LEVEL": 0.515,
+        "DISCHARGE": 18.0,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T13:15:00Z",
+        "LEVEL": 0.505,
+        "DISCHARGE": 17.5,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T13:00:00Z",
+        "LEVEL": 0.494,
+        "DISCHARGE": 16.9,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T12:45:00Z",
+        "LEVEL": 0.479,
+        "DISCHARGE": null,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T12:30:00Z",
+        "LEVEL": 0.465,
+        "DISCHARGE": null,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T12:15:00Z",
+        "LEVEL": 0.447,
+        "DISCHARGE": 15.9,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T12:00:00Z",
+        "LEVEL": 0.423,
+        "DISCHARGE": 15.2,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T11:45:00Z",
+        "LEVEL": 0.405,
+        "DISCHARGE": 14.5,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T11:30:00Z",
+        "LEVEL": 0.385,
+        "DISCHARGE": 13.8,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T11:15:00Z",
+        "LEVEL": 0.360,
+        "DISCHARGE": 13.0,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [-79.7167, 43.5833]},
+      "properties": {
+        "STATION_NUMBER": "02HB001",
+        "STATION_NAME": "CREDIT RIVER AT STREETSVILLE",
+        "DATETIME": "2026-05-22T11:00:00Z",
+        "LEVEL": 0.340,
+        "DISCHARGE": 12.5,
+        "LEVEL_SYMBOL_EN": null,
+        "DISCHARGE_SYMBOL_EN": null
+      }
+    }
+  ]
+}

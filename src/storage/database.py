@@ -1,5 +1,6 @@
 """SQLite database setup for trips and future tables."""
 
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlite_utils import Database
@@ -118,3 +119,34 @@ def ensure_schema(db: Database) -> None:
             },
             pk="id",
         )
+
+    if "stream_gauge_readings" not in db.table_names():
+        db["stream_gauge_readings"].create(
+            {
+                "id": int,
+                "station_id": str,
+                "station_name": str,
+                "river_name": str,
+                "lat": float,
+                "lng": float,
+                "jurisdiction": str,
+                "water_level_m": float,
+                "discharge_cms": float,
+                "level_trend": str,
+                "discharge_trend": str,
+                "level_grade": str,
+                "reading_datetime": str,
+                "fetched_at": str,
+            },
+            pk="id",
+        )
+        db["stream_gauge_readings"].create_index(
+            ["station_id", "reading_datetime"], unique=True, if_not_exists=True
+        )
+
+
+def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    db.execute(
+        "DELETE FROM stream_gauge_readings WHERE reading_datetime < ?", [cutoff]
+    )
