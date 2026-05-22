@@ -17,9 +17,8 @@ def fetch_and_store(
     lat: float,
     lng: float,
     radius_km: float = 50,
-    days_back: int | None = None,
 ) -> int:
-    observations = fetch_gbif_observations(lat, lng, radius_km, days_back)
+    observations = fetch_gbif_observations(lat, lng, radius_km)
     if not observations:
         return 0
     db = get_db()

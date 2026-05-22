@@ -1,9 +1,15 @@
 """GBIF occurrence fetcher.
 
-Queries fish occurrences (taxonKey=186, Actinopterygii) for a geographic bounding box.
+Queries fish occurrences across freshwater-relevant fish orders for a geographic bounding box.
+The GBIF backbone does not link fish orders through Actinopterygii at the occurrence level —
+fish orders have classKey=null and sit directly under Chordata, so taxonKey/classKey=204
+returns 0 occurrences. We enumerate fish-relevant orderKeys directly and merge results.
+
 Targets institutional record types only — museum specimens, surveys, literature, living specimens.
 HUMAN_OBSERVATION is excluded because those records are almost entirely iNaturalist mirrors,
 which we already ingest separately via the iNaturalist adapter.
+No date filter is applied: institutional records frequently lack an event year, and GBIF silently
+excludes undated records from year-range queries, wiping out the majority of museum specimens.
 All HTTP responses are cached to data/cache/gbif/ with a 24-hour TTL.
 Requests are rate-limited to 1/sec between pages.
 """
@@ -11,7 +17,7 @@ Requests are rate-limited to 1/sec between pages.
 import hashlib
 import json
 import time
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -21,12 +27,31 @@ from src.jurisdictions.geo import jurisdiction_for_coords
 from src.models.gbif_observation import GBIFObservation
 
 _API_URL = "https://api.gbif.org/v1/occurrence/search"
-_TAXON_KEY = 186  # Actinopterygii — all bony fish
 _CACHE_DIR = Path("data/cache/gbif")
 _CACHE_TTL_SECONDS = 86400  # 24 hours
 _LIMIT = 300  # GBIF max per request
 _KM_PER_DEGREE = 111.0
 _USER_AGENT = "fishbot/1.0 (personal fishing exploration bot; https://github.com/)"
+
+# Fish order keys in the GBIF backbone. classKey=204 (Actinopterygii) exists but returns
+# 0 occurrences because the backbone places all fish orders as direct children of Chordata
+# with no classKey set. Querying by orderKey is the only reliable way to get fish records.
+_FISH_ORDER_KEYS = [
+    587,   # Perciformes — perch, darters, bass, sunfish, walleye
+    1313,  # Salmoniformes — trout, salmon, whitefish
+    1153,  # Cypriniformes — minnows, chubs, dace, shiners, carp
+    548,   # Esociformes — pike, pickerel, mudminnow
+    708,   # Siluriformes — catfish, madtoms
+    549,   # Gadiformes — burbot
+    1103,  # Acipenseriformes — sturgeon
+    771,   # Petromyzontiformes — lampreys
+    1167,  # Lepisosteiformes — gars
+    494,   # Amiiformes — bowfin
+    538,   # Clupeiformes — shad, herring, alewife
+    1068,  # Osmeriformes — smelt
+    550,   # Gasterosteiformes — sticklebacks
+]
+
 # Exclude HUMAN_OBSERVATION — those records are ~99% iNaturalist mirrors already ingested separately
 _BASIS_OF_RECORD = [
     "FOSSIL_SPECIMEN",
@@ -42,11 +67,9 @@ def fetch_gbif_observations(
     lat: float,
     lng: float,
     radius_km: float = 50,
-    days_back: int | None = None,
 ) -> list[GBIFObservation]:
     deg = radius_km / _KM_PER_DEGREE
-    base_params: dict[str, Any] = {
-        "taxonKey": _TAXON_KEY,
+    geo_params: dict[str, Any] = {
         "decimalLatitude": f"{lat - deg},{lat + deg}",
         "decimalLongitude": f"{lng - deg},{lng + deg}",
         "hasCoordinate": "true",
@@ -55,24 +78,23 @@ def fetch_gbif_observations(
         "basisOfRecord": _BASIS_OF_RECORD,
     }
 
-    if days_back is not None:
-        since_year = (date.today() - timedelta(days=days_back)).year
-        base_params["year"] = f"{since_year},{date.today().year}"
-
     all_results: list[dict] = []
-    offset = 0
 
-    while True:
-        params = {**base_params, "offset": offset}
-        raw = _cached_get(params)
-        results = raw.get("results", [])
-        all_results.extend(results)
+    for order_key in _FISH_ORDER_KEYS:
+        base_params = {**geo_params, "orderKey": order_key}
+        offset = 0
 
-        if raw.get("endOfRecords", True) or not results:
-            break
+        while True:
+            params = {**base_params, "offset": offset}
+            raw = _cached_get(params)
+            results = raw.get("results", [])
+            all_results.extend(results)
 
-        offset += len(results)
-        time.sleep(1)
+            if raw.get("endOfRecords", True) or not results:
+                break
+
+            offset += len(results)
+            time.sleep(1)
 
     return [_parse_observation(r) for r in all_results if _has_coords(r)]
 
