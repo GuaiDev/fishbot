@@ -91,6 +91,29 @@ def test_jurisdiction_tagged(tmp_path: Path):
         assert obs.jurisdiction == "CA-ON"
 
 
+def test_basis_of_record_excludes_human_observation(tmp_path: Path):
+    """basisOfRecord sent as a list (repeated params); HUMAN_OBSERVATION absent."""
+    cache = tmp_path / "cache" / "gbif"
+    fixture = _fixture_data()
+
+    with (
+        patch("src.ingest.global.gbif._CACHE_DIR", cache),
+        patch("httpx.get", return_value=_mock_response(fixture)) as mock_http,
+    ):
+        fetch_gbif_observations(lat=43.65, lng=-79.38, radius_km=50)
+
+    _, kwargs = mock_http.call_args
+    sent_params = kwargs["params"]
+    if isinstance(sent_params, dict):
+        basis = sent_params["basisOfRecord"]
+    else:
+        basis = [v for k, v in sent_params if k == "basisOfRecord"]
+    assert isinstance(basis, list)
+    assert "HUMAN_OBSERVATION" not in basis
+    assert "PRESERVED_SPECIMEN" in basis
+    assert "MATERIAL_SAMPLE" in basis
+
+
 def test_cache_hit_skips_http(tmp_path: Path):
     cache = tmp_path / "cache" / "gbif"
     cache.mkdir(parents=True)

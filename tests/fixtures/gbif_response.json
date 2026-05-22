@@ -13,8 +13,8 @@
       "decimalLongitude": -79.03,
       "eventDate": "2023-06-15",
       "countryCode": "CA",
-      "datasetName": "iNaturalist research-grade observations",
-      "basisOfRecord": "HUMAN_OBSERVATION",
+      "datasetName": "Department of Fisheries and Oceans Canada — Species at Risk Survey",
+      "basisOfRecord": "MATERIAL_SAMPLE",
       "coordinateUncertaintyInMeters": 10.0
     },
     {

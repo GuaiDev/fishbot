@@ -1,7 +1,9 @@
 """GBIF occurrence fetcher.
 
-Queries fish observations (taxonKey=186, Actinopterygii) for a geographic bounding box.
-Aggregates museum records, academic surveys, and citizen science data globally.
+Queries fish occurrences (taxonKey=186, Actinopterygii) for a geographic bounding box.
+Targets institutional record types only — museum specimens, surveys, literature, living specimens.
+HUMAN_OBSERVATION is excluded because those records are almost entirely iNaturalist mirrors,
+which we already ingest separately via the iNaturalist adapter.
 All HTTP responses are cached to data/cache/gbif/ with a 24-hour TTL.
 Requests are rate-limited to 1/sec between pages.
 """
@@ -25,6 +27,15 @@ _CACHE_TTL_SECONDS = 86400  # 24 hours
 _LIMIT = 300  # GBIF max per request
 _KM_PER_DEGREE = 111.0
 _USER_AGENT = "fishbot/1.0 (personal fishing exploration bot; https://github.com/)"
+# Exclude HUMAN_OBSERVATION — those records are ~99% iNaturalist mirrors already ingested separately
+_BASIS_OF_RECORD = [
+    "FOSSIL_SPECIMEN",
+    "LITERATURE",
+    "LIVING_SPECIMEN",
+    "MACHINE_OBSERVATION",
+    "MATERIAL_SAMPLE",
+    "PRESERVED_SPECIMEN",
+]
 
 
 def fetch_gbif_observations(
@@ -41,6 +52,7 @@ def fetch_gbif_observations(
         "hasCoordinate": "true",
         "hasGeospatialIssue": "false",
         "limit": _LIMIT,
+        "basisOfRecord": _BASIS_OF_RECORD,
     }
 
     if days_back is not None:
