@@ -1,0 +1,51 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.1 b4db5e6",
+  "osm3s": {
+    "timestamp_osm_base": "2026-05-22T10:00:00Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+    {
+      "type": "node",
+      "id": 1234567890,
+      "lat": 43.7220,
+      "lon": -79.4800,
+      "tags": {
+        "natural": "water",
+        "water": "lake",
+        "name": "Heart Lake"
+      }
+    },
+    {
+      "type": "way",
+      "id": 2345678901,
+      "tags": {
+        "waterway": "river",
+        "name": "Humber River"
+      },
+      "geometry": [
+        {"lat": 43.7500, "lon": -79.5800},
+        {"lat": 43.7480, "lon": -79.5750},
+        {"lat": 43.7460, "lon": -79.5700},
+        {"lat": 43.7440, "lon": -79.5650},
+        {"lat": 43.7420, "lon": -79.5600}
+      ]
+    },
+    {
+      "type": "way",
+      "id": 3456789012,
+      "tags": {
+        "natural": "water",
+        "water": "pond"
+      },
+      "geometry": [
+        {"lat": 43.7000, "lon": -79.4200},
+        {"lat": 43.7010, "lon": -79.4200},
+        {"lat": 43.7010, "lon": -79.4190},
+        {"lat": 43.7000, "lon": -79.4190},
+        {"lat": 43.7000, "lon": -79.4200}
+      ]
+    }
+  ]
+}

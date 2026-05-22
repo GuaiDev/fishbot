@@ -120,6 +120,37 @@ def ensure_schema(db: Database) -> None:
             pk="id",
         )
 
+    if "water_features" not in db.table_names():
+        db["water_features"].create(
+            {
+                "osm_id": str,
+                "feature_type": str,
+                "name": str,
+                "lat": float,
+                "lng": float,
+                "jurisdiction": str,
+                "area_m2": float,
+                "tags": str,
+                "fetched_at": str,
+            },
+            pk="osm_id",
+        )
+
+    if "access_points" not in db.table_names():
+        db["access_points"].create(
+            {
+                "osm_id": str,
+                "access_type": str,
+                "name": str,
+                "lat": float,
+                "lng": float,
+                "jurisdiction": str,
+                "tags": str,
+                "fetched_at": str,
+            },
+            pk="osm_id",
+        )
+
     if "stream_gauge_readings" not in db.table_names():
         db["stream_gauge_readings"].create(
             {

@@ -46,6 +46,8 @@ Refinement: Some famous spots — Caledonia for walleye/gar, Dunnville for chann
 
 This is the project's central thesis. It reshapes every prediction the bot makes.
 
+OSM data tells us what water exists and where. It does not tell us whether fish are there or in what quantity. Never use water body size, name presence, or access quality as proxies for fish abundance or quality. These are convenience factors only. Habitat suitability and species predictions require Phase 2 data layers. When asked for "best spots", always be explicit about what data is and isn't available yet and what is being built to fill the gap.
+
 ## Conventions
 
 - `uv add` for all dependencies (never bare pip)

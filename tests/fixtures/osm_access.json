@@ -1,0 +1,46 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.1 b4db5e6",
+  "osm3s": {
+    "timestamp_osm_base": "2026-05-22T10:00:00Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+    {
+      "type": "node",
+      "id": 4567890123,
+      "lat": 43.6900,
+      "lon": -79.4900,
+      "tags": {
+        "amenity": "boat_ramp",
+        "name": "Etobicoke Creek Boat Launch",
+        "access": "public"
+      }
+    },
+    {
+      "type": "node",
+      "id": 5678901234,
+      "lat": 43.7100,
+      "lon": -79.4700,
+      "tags": {
+        "leisure": "fishing",
+        "name": "Humber River Fishing Access"
+      }
+    },
+    {
+      "type": "way",
+      "id": 6789012345,
+      "tags": {
+        "leisure": "park",
+        "name": "Etienne Brule Park"
+      },
+      "geometry": [
+        {"lat": 43.6950, "lon": -79.4750},
+        {"lat": 43.6970, "lon": -79.4750},
+        {"lat": 43.6970, "lon": -79.4720},
+        {"lat": 43.6950, "lon": -79.4720},
+        {"lat": 43.6950, "lon": -79.4750}
+      ]
+    }
+  ]
+}

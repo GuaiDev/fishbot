@@ -221,6 +221,25 @@ def _execute_tool(name: str, inputs: dict) -> str:
             lng=inputs["lng"],
             radius_km=inputs.get("radius_km", 50),
         )
+    if name == "get_nearby_water":
+        from src.services.osm import get_nearby_water_for_agent
+
+        return get_nearby_water_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 25),
+            feature_type=inputs.get("feature_type"),
+            not_in_trip_log=inputs.get("not_in_trip_log", False),
+        )
+    if name == "get_access_points":
+        from src.services.osm import get_access_points_for_agent
+
+        return get_access_points_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 25),
+            access_type=inputs.get("access_type"),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -529,6 +548,92 @@ def _tools(profile: Any) -> list[dict]:
                     "radius_km": {
                         "type": "number",
                         "description": "Search radius in kilometres. Default 50.",
+                    },
+                },
+                "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "get_nearby_water",
+            "description": (
+                "Query OSM geographic data for water bodies near a location. "
+                "Use when the user asks what bodies of water are near a location, "
+                "what is fishable in a region, or mentions a general area and wants to know "
+                "what streams, lakes, rivers, or ponds exist there. "
+                "Returns all named and unnamed water bodies — unnamed features are described "
+                "with type and estimated size. An unnamed water body is not unimportant; "
+                "it means OSM has mapped it but not tagged a name. "
+                "Data is cached 30 days; OSM geographic data is stable."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": "Search radius in kilometres. Default 25.",
+                    },
+                    "feature_type": {
+                        "type": "string",
+                        "enum": [
+                            "lake", "river", "stream", "pond", "reservoir",
+                            "wetland", "canal", "ditch", "drain", "bay",
+                        ],
+                        "description": "Optional: restrict to a specific water body type.",
+                    },
+                    "not_in_trip_log": {
+                        "type": "boolean",
+                        "description": (
+                            "If true, exclude water bodies whose name matches a location "
+                            "already in your trip log. Use when the user asks for new water "
+                            "or spots they haven't fished before."
+                        ),
+                    },
+                },
+                "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "get_access_points",
+            "description": (
+                "Query OSM data for access points near a location. "
+                "Use when the user asks where they can access water, find parking, "
+                "launch a boat, reach a trail, or fish a specific area. "
+                "Covers boat launches, parking areas, roadside layby pulloffs, "
+                "trail heads, tagged fishing spots, parks, and conservation areas. "
+                "Roadside laybys are how most stream anglers access water — "
+                "they are as important as formal boat ramps. "
+                "Data is cached 30 days."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": "Search radius in kilometres. Default 25.",
+                    },
+                    "access_type": {
+                        "type": "string",
+                        "enum": [
+                            "boat_launch", "parking", "trail_head", "fishing_spot",
+                            "public_land", "conservation_area", "park",
+                        ],
+                        "description": "Optional: restrict to a specific access type.",
                     },
                 },
                 "required": ["lat", "lng"],
