@@ -193,9 +193,9 @@ def ingest(
 
     console.print(
         f"[dim]Fetching GBIF records within {radius_km}km of {loc.name} "
-        f"(all historical)…[/dim]"
+        f"(last 10 years)…[/dim]"
     )
-    gbif_count = gbif_fetch_and_store(loc.lat, loc.lng, radius_km=radius_km)
+    gbif_count = gbif_fetch_and_store(loc.lat, loc.lng, radius_km=radius_km, days_back=3650)
 
     console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records[/green]"
