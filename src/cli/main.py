@@ -214,11 +214,16 @@ def ingest(
     from src.services.stocking import ingest_stocking_data
     stocking_count = ingest_stocking_data()
 
+    console.print("[dim]Loading Ontario species range database…[/dim]")
+    from src.services.species_ranges import load_and_store as species_load_and_store
+    species_count = species_load_and_store()
+
     console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
         f"| WSC gauges: {wsc_count} stations updated "
         f"| OSM: {osm_water_count} water features, {osm_access_count} access points "
-        f"| MNRF stocking: {stocking_count} records[/green]"
+        f"| MNRF stocking: {stocking_count} records "
+        f"| Species: {species_count} ranges loaded[/green]"
     )
 
 

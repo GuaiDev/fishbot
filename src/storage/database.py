@@ -200,6 +200,28 @@ def ensure_schema(db: Database) -> None:
         )
 
 
+    if "species_ranges" not in db.table_names():
+        db["species_ranges"].create(
+            {
+                "species": str,
+                "scientific_name": str,
+                "native_to_ontario": int,
+                "native_to_great_lakes": int,
+                "introduced": int,
+                "extirpated_from_ontario": int,
+                "general_range": str,
+                "habitat_notes": str,
+                "jurisdictions_present": str,  # JSON array
+                "sara_status": str,
+                "ontario_status": str,
+                "cosewic_status": str,
+                "fishing_notes": str,
+                "last_updated": str,
+            },
+            pk="species",
+        )
+
+
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
     db.execute(

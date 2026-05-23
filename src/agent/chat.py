@@ -251,6 +251,18 @@ def _execute_tool(name: str, inputs: dict) -> str:
             radius_km=inputs.get("radius_km", 50),
             year_from=inputs.get("year_from"),
         )
+    if name == "get_species_range":
+        from src.services.species_ranges import get_species_range_for_agent
+
+        return get_species_range_for_agent(
+            species=inputs["species"],
+            lat=inputs.get("lat"),
+            lng=inputs.get("lng"),
+        )
+    if name == "get_sar_species":
+        from src.services.species_ranges import get_sar_species_for_agent
+
+        return get_sar_species_for_agent(inputs.get("jurisdiction", "CA-ON"))
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -751,6 +763,60 @@ def _tools(profile: Any) -> list[dict]:
                         "type": "string",
                         "description": (
                             "Any extra context: recent rain, specific location type, etc."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+        {
+            "name": "get_species_range",
+            "description": (
+                "Check whether a species is native, introduced, at risk, or extirpated in Ontario. "
+                "Returns range info, conservation status (federal SARA + provincial Ontario), "
+                "habitat notes, and fishing guidance. "
+                "Call when the user asks about a species' presence in Ontario, conservation "
+                "status, whether they should target it, whether it's protected, or whether it's "
+                "even found here. If lat/lng provided, also checks whether the location is within "
+                "the species' documented range. If a species is Threatened or Endangered, "
+                "sar_alert will be true — surface this prominently before any fishing discussion."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "species": {
+                        "type": "string",
+                        "description": "Species to look up (common name, partial match).",
+                    },
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc + " — for range plausibility check.",
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc + " — for range plausibility check.",
+                    },
+                },
+                "required": ["species"],
+            },
+        },
+        {
+            "name": "get_sar_species",
+            "description": (
+                "Returns all Species at Risk in a jurisdiction with their conservation status "
+                "and handling guidance. "
+                "Call when the user asks about protected species, what not to target, "
+                "what species require special care or reporting in Ontario, or what species "
+                "are threatened or endangered. Returns species sorted by severity "
+                "(Endangered first, then Threatened, then Special Concern, then Extirpated)."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "jurisdiction": {
+                        "type": "string",
+                        "description": (
+                            "ISO 3166-2 jurisdiction code. Default 'CA-ON' for Ontario."
                         ),
                     },
                 },
