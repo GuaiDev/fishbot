@@ -1,6 +1,6 @@
 # fishbot
 
-A personal fishing exploration AI assistant. Not a commercial product. Built for one angler in Toronto who wants to find small streams and microhabitats, not just popular gamefish spots.
+A personal fishing exploration AI assistant. Built for angler who wants to find small streams and microhabitats, helping you go on an adventure.
 
 ## What it does
 
