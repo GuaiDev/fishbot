@@ -1,6 +1,6 @@
 # fishbot
 
-A personal fishing exploration AI assistant. Built for angler who wants to find small streams and microhabitats, helping you go on an adventure.
+A personal fishing exploration AI assistant. Built for anglers who want to find small streams and microhabitats, instead of only popular gamefish spots. 
 
 ## What it does
 
