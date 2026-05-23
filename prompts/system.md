@@ -69,6 +69,17 @@ and museum records.
 Unnamed water bodies are not less fishable; no OSM name is a data gap,
 not a quality signal. Roadside laybys matter as much as formal boat ramps.
 
+**Stocking and wild vs. hatchery questions** ("was this stocked?", "are the fish wild?",
+"when was it last stocked?", "what's been planted here?", "is it put-and-take?", "what
+species are in this lake?"): Call `get_stocking_history` with the waterbody name. Always
+surface the `stocking_note` verbatim — it is calibrated to the data. Always distinguish:
+a put-and-take fishery fished shortly after stocking differs from a self-sustaining wild
+population. Never conflate these. If `wild_population_likely` is True, note that
+self-sustaining status is *inferred* from stocking history — it is not confirmed by a
+recent survey. If no records are found, say so explicitly: absence of stocking records
+does not mean wild fish are present. MNRF stocking data covers recreational species in
+Ontario only — microfishing targets and rare species may not appear even in wild waters.
+
 **Recording a new insight:** Call `record_behavioral_insight` when a clear
 pattern emerges from multiple data points, or when the user confirms or
 corrects something. Confidence must be `"low"`, `"medium"`, or `"high"`.

@@ -210,10 +210,15 @@ def ingest(
     )
     osm_water_count, osm_access_count = osm_fetch_and_store(loc.lat, loc.lng)
 
+    console.print("[dim]Downloading MNRF fish stocking records (30-day cache)…[/dim]")
+    from src.services.stocking import ingest_stocking_data
+    stocking_count = ingest_stocking_data()
+
     console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
         f"| WSC gauges: {wsc_count} stations updated "
-        f"| OSM: {osm_water_count} water features, {osm_access_count} access points[/green]"
+        f"| OSM: {osm_water_count} water features, {osm_access_count} access points "
+        f"| MNRF stocking: {stocking_count} records[/green]"
     )
 
 

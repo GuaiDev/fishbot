@@ -1,0 +1,11 @@
+X,Y,MNRF_District,Stocking_Year,Species,Official_Waterbody_Name,Official_French_Waterbody_Name,Unoffcial_Waterbody_Name,Waterbody_Location_Identifier,Geographic_Township,Developmental_Stage,Number_of_Fish_Stocked,Latitude,Longitude,ObjectId
+-8734525.77,5719999.09,Algonquin Park Zone - Ontario Parks,2024,Brook Trout,Blackfox Lake,lac Blackfox,,17-6975-50544,SPROULE,Yearlings,2450,45.62212,-78.46358,1
+-8766157.44,5702955.95,Algonquin Park Zone - Ontario Parks,2022,Brook Trout,,,Randall Lake (Unofficial Name),17-6759-50424,PECK,Yearlings,250,45.51494,-78.74773,2
+-8727202.06,5708624.30,Aurora District,2018,Rainbow Trout,Cloud Lake,,,17-7031-50472,CANISBAY,Fry,10000,45.55061,-78.39779,3
+-8739951.48,5708255.51,Aurora District,2021,Rainbow Trout,Cloud Lake,,,17-7031-50472,CANISBAY,Fingerlings,5000,45.54829,-78.51232,4
+-8750000.00,5710000.00,Kemptville District,2019,Walleye,Bass Lake,,,22-1234-56789,NORTH OXFORD,Fry,,43.21000,-76.54000,5
+-8760000.00,5720000.00,Kemptville District,2023,Walleye,Bass Lake,,,22-1234-56789,NORTH OXFORD,Yearlings,800,43.22000,-76.55000,6
+-8800000.00,5700000.00,Guelph District,2020,Brook Trout,,,Hidden Pond (local name),31-9999-00001,ERAMOSA,Fingerlings,3000,,,7
+-8810000.00,5690000.00,Guelph District,2016,Rainbow Trout,Silver Lake,,,31-8888-00002,NASSAGAWEYA,Fry,15000,43.50000,-80.10000,8
+-8820000.00,5680000.00,Owen Sound District,2023,Brook Trout,Maple Lake,,,41-5555-00003,SYDENHAM,Yearlings,600,44.30000,-80.90000,9
+-8830000.00,5670000.00,Owen Sound District,2024,Brook Trout,,,,,,Fry,,,,10

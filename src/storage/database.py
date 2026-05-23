@@ -176,6 +176,30 @@ def ensure_schema(db: Database) -> None:
         )
 
 
+    if "stocking_records" not in db.table_names():
+        db["stocking_records"].create(
+            {
+                "record_id": str,
+                "waterbody_name": str,
+                "waterbody_code": str,
+                "municipality": str,
+                "county": str,
+                "lat": float,
+                "lng": float,
+                "jurisdiction": str,
+                "species": str,
+                "species_code": str,
+                "year": int,
+                "month": int,
+                "quantity": int,
+                "life_stage": str,
+                "stocking_purpose": str,
+                "stocked_at": str,
+            },
+            pk="record_id",
+        )
+
+
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
     db.execute(

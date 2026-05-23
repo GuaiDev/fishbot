@@ -240,6 +240,17 @@ def _execute_tool(name: str, inputs: dict) -> str:
             radius_km=inputs.get("radius_km", 25),
             access_type=inputs.get("access_type"),
         )
+    if name == "get_stocking_history":
+        from src.services.stocking import get_stocking_for_agent
+
+        return get_stocking_for_agent(
+            waterbody_name=inputs.get("waterbody_name"),
+            species=inputs.get("species"),
+            lat=inputs.get("lat"),
+            lng=inputs.get("lng"),
+            radius_km=inputs.get("radius_km", 50),
+            year_from=inputs.get("year_from"),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -637,6 +648,48 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "get_stocking_history",
+            "description": (
+                "Query MNRF government fish stocking records for Ontario water bodies. "
+                "Use when the user asks about stocking, whether fish are wild or hatchery-raised, "
+                "when a lake was last stocked, what species have been planted, or whether "
+                "a fishery is put-and-take. Returns is_put_and_take and wild_population_likely "
+                "flags and a plain-English stocking_note for each matching water body."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "waterbody_name": {
+                        "type": "string",
+                        "description": "Name of the water body to search (partial match).",
+                    },
+                    "species": {
+                        "type": "string",
+                        "description": "Filter by species name (partial match).",
+                    },
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc + " — for spatial search.",
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc + " — for spatial search.",
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": (
+                            "Search radius in kilometres (default 50). Used with lat/lng."
+                        ),
+                    },
+                    "year_from": {
+                        "type": "integer",
+                        "description": "Earliest stocking year to include.",
+                    },
+                },
+                "required": [],
             },
         },
         {
