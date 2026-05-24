@@ -297,6 +297,16 @@ def _execute_tool(name: str, inputs: dict) -> str:
             lat=inputs.get("lat"),
             lng=inputs.get("lng"),
         )
+    if name == "get_water_quality":
+        from src.services.water_quality import get_water_quality_for_agent
+
+        return get_water_quality_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 50),
+            date_from=inputs.get("date_from"),
+            date_to=inputs.get("date_to"),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -1016,6 +1026,55 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": [],
+            },
+        },
+        {
+            "name": "get_water_quality",
+            "description": (
+                "Query PWQMN (Provincial Water Quality Monitoring Network) water quality data "
+                "for streams and rivers near a location. "
+                "Returns DO, pH, temperature, and conductivity stats with a habitat_assessment "
+                "block that lists species constraints (ruling_out) based on measured parameters. "
+                "Use this tool when the user asks about water quality, habitat suitability, "
+                "which species could plausibly live in a given stream, whether a stream is "
+                "too warm or acidic for trout, or any DO/pH/temperature question. "
+                "IMPORTANT: Parameters here are HABITAT CONSTRAINTS, not presence indicators — "
+                "a site passing all thresholds is habitable, not confirmed occupied. "
+                "Use ruling_out entries to filter species predictions; do not use these readings "
+                "to confirm a species is present. "
+                "Requires water quality data (run `make ingest` to populate). "
+                "Coverage: Ontario stream monitoring stations (strongest in southern Ontario)."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": "Search radius in kilometres. Default 50.",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": (
+                            "Optional start date (ISO format YYYY-MM-DD) to filter readings. "
+                            "Omit for all available history."
+                        ),
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": (
+                            "Optional end date (ISO format YYYY-MM-DD) to filter readings."
+                        ),
+                    },
+                },
+                "required": ["lat", "lng"],
             },
         },
     ]

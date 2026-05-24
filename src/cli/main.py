@@ -233,6 +233,10 @@ def ingest(
     from src.services.regulations import ingest_regulations
     reg_count = ingest_regulations()
 
+    console.print("[dim]Downloading PWQMN water quality field data (2021–present)…[/dim]")
+    from src.services.water_quality import ingest_water_quality_data
+    wq_count = ingest_water_quality_data()
+
     console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
         f"| WSC gauges: {wsc_count} stations updated "
@@ -241,7 +245,8 @@ def ingest(
         f"| Species: {species_count} ranges loaded "
         f"| Reddit: {reddit_count} posts indexed "
         f"| OHN: {ohn_seg_count} stream segments, {ohn_barrier_count} barriers "
-        f"| Regulations: {reg_count} FMZ zones[/green]"
+        f"| Regulations: {reg_count} FMZ zones "
+        f"| Water quality: {wq_count} readings[/green]"
     )
 
 

@@ -1,0 +1,11 @@
+YEAR,Profile_Name,Lab_Workorder_ID,Field_ID,Lab_Sample_ID,Collection_Site,Collection_Date,Collection_Time,Specific_Conductance_uS_cm_1,Water_Temperature_C,Dissolved_Oxygen_mgl,Field_PH,Turb_FNU,Comments
+2024,Lake Simcoe Conservation Authority,12001,50001,12001001,3007700702,06/15/2024,09:00:00,412,18.3,8.9,7.6,4.2,
+2024,Lake Simcoe Conservation Authority,12001,50002,12001002,3007700702,08/10/2024,10:30:00,398,24.7,6.1,7.4,5.1,Summer reading
+2024,Ausable Bayfield Conservation Authority,12002,50003,12002001,8002201602,06/15/2024,11:45:00,456,20.2,7.8,7.2,8.3,
+2024,Ausable Bayfield Conservation Authority,12002,50004,12002002,8002201602,08/10/2024,09:15:00,445,27.3,5.4,7.9,6.0,Warm reading
+2024,Ausable Bayfield Conservation Authority,12002,50005,12002003,8002201602,08/10/2024,10:00:00,,,2.8,6.8,,Low DO event — missing conductivity
+2024,Ausable Bayfield Conservation Authority,12002,50006,12002004,8002201602,08/10/2024,11:00:00,389,23.1,5.4,7.1,12.5,
+2024,Lake Simcoe Conservation Authority,13001,60001,13001001,3007700702,01/11/2024,13:21:00,732,3.0,12.18,,18.5,Winter reading missing pH
+2024,Lake Simcoe Conservation Authority,13001,60002,13001002,3007700702,01/11/2024,13:32:00,582,4.1,12.06,7.8,12.5,
+2024,Lake Simcoe Conservation Authority,13001,60003,13001003,3007700702,01/11/2024,14:00:00,,,,,242.0,Very turbid — only turbidity recorded
+2024,Mimico Creek Conservation Authority,13002,60004,13002001,2GA9990000,07/20/2024,09:00:00,300,25.3,3.8,8.1,9.0,Inactive station code

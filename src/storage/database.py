@@ -297,6 +297,31 @@ def ensure_schema(db: Database) -> None:
             pk=["zone", "jurisdiction", "regulation_year"],
         )
 
+    if "water_quality_readings" not in db.table_names():
+        db["water_quality_readings"].create(
+            {
+                "record_id": str,
+                "station_id": str,
+                "station_name": str,
+                "lat": float,
+                "lng": float,
+                "jurisdiction": str,
+                "sampled_at": str,
+                "do_mgl": float,
+                "ph": float,
+                "temp_c": float,
+                "conductivity_us_cm": float,
+                "turbidity_fnu": float,
+            },
+            pk="record_id",
+        )
+        db["water_quality_readings"].create_index(
+            ["station_id"], if_not_exists=True
+        )
+        db["water_quality_readings"].create_index(
+            ["sampled_at"], if_not_exists=True
+        )
+
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
