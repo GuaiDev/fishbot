@@ -38,7 +38,7 @@ Crowdsourced catch and observation data measures angler activity as much as fish
 
 - High report density does not imply high habitat quality. It often implies high pressure.
 - Low report density does not imply absence. It often implies low access or low observer effort.
-- Habitat features and systematic survey data (MNRF Broadscale Monitoring, Conservation Authority surveys, government datasets) are stronger signals than catch reports for predicting where fish actually live.
+- Habitat features and systematic survey data (Conservation Authority electrofishing surveys, government datasets) are stronger signals than catch reports for predicting where fish actually live.
 - "Untapped potential" inverts report density: high habitat × low reports × good access = top score.
 - When citing community data, the bot should distinguish between "fish are here" (presence) and "people are here" (pressure).
 
@@ -89,7 +89,7 @@ Queued (in suggested order):
 - 1i: MNRF stocking history
 - 1j: Native range maps + Species at Risk overlays
 - 1k: Reddit community RAG with technique extraction
-- 1l: MNRF Broadscale Monitoring + Conservation Authority surveys (the unbiased ground truth layer — biggest single contributor to the presence-vs-pressure principle)
+- 1l: Conservation Authority fish surveys — BLOCKED, see note below
 - 1m: Ontario Hydro Network + stream connectivity graph (foundation for predictive features)
 - 1n: MNRF regulations parser
 
@@ -101,4 +101,34 @@ Deferred to Phase 2:
 - Habitat-based species distribution models (first real ML layer)
 - Multi-jurisdiction expansion (BC, Quebec, US states beyond stubs)
 
-Sub-phases 1f through 1j are small (1-2 sessions each). 1k is medium. 1l and 1m are the big ones — budget a week of evenings each.
+Sub-phases 1f through 1j are small (1-2 sessions each). 1k is medium. 1m and 1n are the next big ones.
+
+## Data source reality check: 1l
+
+**MNRF Broadscale Monitoring (BsM) fish community data is not publicly available.**
+The actual survey records (species counts, lengths, weights from standardised lake
+netting and electrofishing) live in an internal MNRF database called `fishnetv3`.
+There is no public API, no bulk export, and no ArcGIS FeatureServer for this data.
+
+**Fish ON-Line is UI-only.** The GeoHub item (`4ee94762ab4e453f95fd977bfbf59e4a`)
+resolves to a Geocortex web application backed by a single MapServer with 13 layers —
+all administrative (access points, management zones, bathymetry, licence issuers).
+No species observation layer exists in the REST service. Species data shown in the app
+is served by internal Geocortex workflows with no queryable external endpoint.
+Bulk download is not possible; the open data catalogue entries are HTML links to the
+app itself.
+
+The only publicly available BsM data is **water chemistry** (pH, TP, DOC, 2008–2023)
+on data.ontario.ca — not fish community records.
+
+**TRCA RWMP is the closest real alternative.** The Toronto and Region Conservation
+Authority publishes Regional Watershed Monitoring Program (RWMP) fish community data
+at data.trca.ca — stream electrofishing (OSAP single-pass) across 9 Toronto-region
+watersheds (Humber, Don, Rouge, Duffins, Carruthers, Highland, Petticoat, Etobicoke,
+Mimico), 26 fixed stations resurveyed every ~3 years since 2000. Fields: species,
+count, total weight. SAR records removed from public release.
+Direct CSV: `data.trca.ca/dataset/00c1bab2-f6f5-44a9-9cc0-830960530f04/resource/
+4cca6683-a08b-4d0c-8faf-4952fca0ef58/download/2020-rwmp-fish-community-data.csv`
+**Caveat:** the data.trca.ca portal was consistently unresponsive during research
+(May 2026). When the portal becomes reliably accessible, a TRCA adapter can be added
+following the same pattern as `src/ingest/jurisdictions/ca_on/stocking.py`.
