@@ -263,6 +263,15 @@ def _execute_tool(name: str, inputs: dict) -> str:
         from src.services.species_ranges import get_sar_species_for_agent
 
         return get_sar_species_for_agent(inputs.get("jurisdiction", "CA-ON"))
+    if name == "search_reddit_fishing":
+        from src.services.reddit import search_reddit_for_agent
+
+        return search_reddit_for_agent(
+            query=inputs["query"],
+            species=inputs.get("species"),
+            jurisdiction=inputs.get("jurisdiction"),
+            limit=inputs.get("limit", 10),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -821,6 +830,49 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": [],
+            },
+        },
+        {
+            "name": "search_reddit_fishing",
+            "description": (
+                "Search locally-cached Reddit fishing community posts for technique, gear, "
+                "and local knowledge. Covers r/OntarioFishing, r/CanadianFishing, r/Fishing, "
+                "r/FlyFishing, r/Microfishing. "
+                "Use when the user asks what's working, community tips, local knowledge, "
+                "technique reports for a species or location, or what other anglers say. "
+                "IMPORTANT: Reddit data measures angler presence and activity, NOT fish abundance. "
+                "Always distinguish 'anglers report catching X here' from 'X is abundant here'. "
+                "A popular spot may be high-pressure, not high-quality. "
+                "An unpopular spot may hold excellent fish that nobody talks about. "
+                "Run `make ingest` to populate or refresh; posts may be days to weeks old."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "Search query — species, location, technique, gear, or free text."
+                        ),
+                    },
+                    "species": {
+                        "type": "string",
+                        "description": (
+                            "Optional: filter to posts that mention this species name."
+                        ),
+                    },
+                    "jurisdiction": {
+                        "type": "string",
+                        "description": (
+                            "Optional: filter by jurisdiction code, e.g. 'CA-ON'."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max posts to return. Default 10.",
+                    },
+                },
+                "required": ["query"],
             },
         },
     ]

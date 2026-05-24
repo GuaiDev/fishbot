@@ -221,6 +221,32 @@ def ensure_schema(db: Database) -> None:
             pk="species",
         )
 
+    if "reddit_posts" not in db.table_names():
+        db["reddit_posts"].create(
+            {
+                "post_id": str,
+                "subreddit": str,
+                "post_type": str,
+                "title": str,
+                "body": str,
+                "url": str,
+                "author": str,
+                "score": int,
+                "num_comments": int,
+                "parent_post_id": str,
+                "created_utc": str,
+                "extracted_species": str,   # JSON array
+                "extracted_locations": str,  # JSON array
+                "jurisdiction": str,
+                "ingested_at": str,
+            },
+            pk="post_id",
+        )
+
+    if "reddit_posts_fts" not in db.table_names():
+        db["reddit_posts"].enable_fts(["title", "body"], create_triggers=True)
+        db["reddit_posts"].populate_fts(["title", "body"])
+
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()

@@ -218,12 +218,17 @@ def ingest(
     from src.services.species_ranges import load_and_store as species_load_and_store
     species_count = species_load_and_store()
 
+    console.print("[dim]Fetching Reddit fishing community posts (r/OntarioFishing + others)…[/dim]")
+    from src.services.reddit import fetch_and_store as reddit_fetch_and_store
+    reddit_count = reddit_fetch_and_store()
+
     console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
         f"| WSC gauges: {wsc_count} stations updated "
         f"| OSM: {osm_water_count} water features, {osm_access_count} access points "
         f"| MNRF stocking: {stocking_count} records "
-        f"| Species: {species_count} ranges loaded[/green]"
+        f"| Species: {species_count} ranges loaded "
+        f"| Reddit: {reddit_count} posts indexed[/green]"
     )
 
 
