@@ -223,12 +223,20 @@ def ingest(
     reddit_count = reddit_fetch_and_store()
 
     console.print(
+        f"[dim]Fetching Ontario Hydro Network stream segments and barriers "
+        f"({radius_km:.0f}km bbox)…[/dim]"
+    )
+    from src.services.hydrology import ingest_hydro_network
+    ohn_seg_count, ohn_barrier_count = ingest_hydro_network(loc.lat, loc.lng, radius_km)
+
+    console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
         f"| WSC gauges: {wsc_count} stations updated "
         f"| OSM: {osm_water_count} water features, {osm_access_count} access points "
         f"| MNRF stocking: {stocking_count} records "
         f"| Species: {species_count} ranges loaded "
-        f"| Reddit: {reddit_count} posts indexed[/green]"
+        f"| Reddit: {reddit_count} posts indexed "
+        f"| OHN: {ohn_seg_count} stream segments, {ohn_barrier_count} barriers[/green]"
     )
 
 

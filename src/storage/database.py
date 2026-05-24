@@ -247,6 +247,42 @@ def ensure_schema(db: Database) -> None:
         db["reddit_posts"].enable_fts(["title", "body"], create_triggers=True)
         db["reddit_posts"].populate_fts(["title", "body"])
 
+    if "stream_segments" not in db.table_names():
+        db["stream_segments"].create(
+            {
+                "ogf_id": int,
+                "watercourse_type": str,
+                "name": str,
+                "flow_verified": int,   # 0 or 1
+                "permanency": str,
+                "flow_classification": str,
+                "length_m": float,
+                "geom_wkt": str,
+                "start_node": str,
+                "end_node": str,
+                "jurisdiction": str,
+                "ingested_at": str,
+            },
+            pk="ogf_id",
+        )
+        db["stream_segments"].create_index(["name"], if_not_exists=True)
+        db["stream_segments"].create_index(["start_node"], if_not_exists=True)
+        db["stream_segments"].create_index(["end_node"], if_not_exists=True)
+
+    if "barriers" not in db.table_names():
+        db["barriers"].create(
+            {
+                "ogf_id": int,
+                "barrier_type": str,
+                "geom_wkt": str,
+                "nearest_segment_ogf_id": int,
+                "snap_distance_m": float,
+                "jurisdiction": str,
+                "ingested_at": str,
+            },
+            pk="ogf_id",
+        )
+
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()

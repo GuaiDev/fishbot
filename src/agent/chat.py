@@ -272,6 +272,22 @@ def _execute_tool(name: str, inputs: dict) -> str:
             jurisdiction=inputs.get("jurisdiction"),
             limit=inputs.get("limit", 10),
         )
+    if name == "analyze_watershed":
+        from src.services.hydrology import analyze_watershed_for_agent
+
+        return analyze_watershed_for_agent(
+            lat=inputs["lat"],
+            lon=inputs["lon"],
+            species=inputs.get("species"),
+            radius_km=inputs.get("radius_km", 20.0),
+        )
+    if name == "find_connected_tributaries":
+        from src.services.hydrology import find_connected_tributaries_for_agent
+
+        return find_connected_tributaries_for_agent(
+            watercourse_name=inputs["watercourse_name"],
+            species=inputs.get("species"),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -873,6 +889,83 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": ["query"],
+            },
+        },
+        {
+            "name": "analyze_watershed",
+            "description": (
+                "Check stream connectivity between a location and confirmed species observations "
+                "using the Ontario Hydro Network graph. "
+                "Use when the user asks whether a species could be present based on upstream or "
+                "downstream confirmed sightings, what species are connected to a given reach, "
+                "or whether a waterfall or barrier separates a confirmed observation from their "
+                "fishing spot. "
+                "Returns a connectivity sentence: e.g. 'Brook trout confirmed 2.3km upstream — "
+                "stream connectivity is intact, no barriers detected.' "
+                "Requires OHN data (run `make ingest`). "
+                "Only covers the local bbox loaded at ingest."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lon": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "species": {
+                        "type": "string",
+                        "description": (
+                            "Optional species name to check connectivity for. "
+                            "If omitted, checks the top 3 most-observed species nearby."
+                        ),
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": (
+                            "Radius (km) to search for confirmed observations. Default 20."
+                        ),
+                    },
+                },
+                "required": ["lat", "lon"],
+            },
+        },
+        {
+            "name": "find_connected_tributaries",
+            "description": (
+                "Find tributary streams that join a named watercourse, using the OHN stream graph. "
+                "Use when the user asks what streams feed into a given river or creek, "
+                "which tributaries are accessible to a particular species, "
+                "or wants to explore the network branching off a main stem. "
+                "Returns named tributaries and unnamed segment counts. "
+                "Species filter applies barrier passability "
+                "(e.g. a falls blocks non-jumping species). "
+                "Requires OHN data (run `make ingest`)."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "watercourse_name": {
+                        "type": "string",
+                        "description": (
+                            "The official OHN name of the watercourse (e.g. 'Bronte Creek', "
+                            "'Credit River'). Must match the OFFICIAL_NAME_LABEL field exactly "
+                            "(case-insensitive)."
+                        ),
+                    },
+                    "species": {
+                        "type": "string",
+                        "description": (
+                            "Optional: filter tributaries by species passability. "
+                            "Falls are impassable for all species. Rapids block small-bodied fish. "
+                            "Sea Lamprey Barriers block lamprey only."
+                        ),
+                    },
+                },
+                "required": ["watercourse_name"],
             },
         },
     ]

@@ -1,0 +1,61 @@
+{
+  "features": [
+    {
+      "attributes": {
+        "OGF_ID": 10001,
+        "WATERCOURSE_TYPE": "Stream",
+        "OFFICIAL_NAME_LABEL": "Bronte Creek",
+        "FLOW_DIRECTION_VERIFIED_IND": "Yes",
+        "PERMANENCY": "Permanent",
+        "FLOW_CLASSIFICATION": "Primary",
+        "SYSTEM_CALCULATED_LENGTH": 2500.0
+      },
+      "geometry": {
+        "paths": [[[-79.5, 43.5], [-79.49, 43.505], [-79.48, 43.51]]]
+      }
+    },
+    {
+      "attributes": {
+        "OGF_ID": 10002,
+        "WATERCOURSE_TYPE": "Stream",
+        "OFFICIAL_NAME_LABEL": "Bronte Creek",
+        "FLOW_DIRECTION_VERIFIED_IND": "Yes",
+        "PERMANENCY": "Permanent",
+        "FLOW_CLASSIFICATION": "Primary",
+        "SYSTEM_CALCULATED_LENGTH": 2500.0
+      },
+      "geometry": {
+        "paths": [[[-79.48, 43.51], [-79.47, 43.515], [-79.46, 43.52]]]
+      }
+    },
+    {
+      "attributes": {
+        "OGF_ID": 10003,
+        "WATERCOURSE_TYPE": "Stream",
+        "OFFICIAL_NAME_LABEL": null,
+        "FLOW_DIRECTION_VERIFIED_IND": "Yes",
+        "PERMANENCY": "Permanent",
+        "FLOW_CLASSIFICATION": "Primary",
+        "SYSTEM_CALCULATED_LENGTH": 1250.0
+      },
+      "geometry": {
+        "paths": [[[-79.48, 43.51], [-79.475, 43.5075], [-79.47, 43.505]]]
+      }
+    },
+    {
+      "attributes": {
+        "OGF_ID": 10004,
+        "WATERCOURSE_TYPE": "Stream",
+        "OFFICIAL_NAME_LABEL": null,
+        "FLOW_DIRECTION_VERIFIED_IND": "No",
+        "PERMANENCY": "Permanent",
+        "FLOW_CLASSIFICATION": "Primary",
+        "SYSTEM_CALCULATED_LENGTH": 1500.0
+      },
+      "geometry": {
+        "paths": [[[-79.49, 43.495], [-79.5, 43.485]]]
+      }
+    }
+  ],
+  "exceededTransferLimit": false
+}

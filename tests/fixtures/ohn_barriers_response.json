@@ -1,0 +1,25 @@
+{
+  "features": [
+    {
+      "attributes": {
+        "OGF_ID": 20001,
+        "HYDROGRAPHIC_POINT_TYPE": "Falls"
+      },
+      "geometry": {
+        "x": -79.475,
+        "y": 43.5075
+      }
+    },
+    {
+      "attributes": {
+        "OGF_ID": 20002,
+        "HYDROGRAPHIC_POINT_TYPE": "Sea Lamprey Barrier"
+      },
+      "geometry": {
+        "x": -79.47,
+        "y": 43.515
+      }
+    }
+  ],
+  "exceededTransferLimit": false
+}
