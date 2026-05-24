@@ -48,6 +48,8 @@ This is the project's central thesis. It reshapes every prediction the bot makes
 
 OSM data tells us what water exists and where. It does not tell us whether fish are there or in what quantity. Never use water body size, name presence, or access quality as proxies for fish abundance or quality. These are convenience factors only. Habitat suitability and species predictions require Phase 2 data layers. When asked for "best spots", always be explicit about what data is and isn't available yet and what is being built to fill the gap.
 
+Water quality parameters (dissolved oxygen, pH, temperature) are a separate category: they are direct habitat constraints, not presence indicators. If DO is below a species' tolerance floor or pH is outside its viable range, the species cannot be there regardless of what crowdsourced data says. Use 1o/1s data to rule out implausible predictions; never use it to confirm presence. A site that passes water quality thresholds is merely habitable — not confirmed occupied.
+
 ## Conventions
 
 - `uv add` for all dependencies (never bare pip)
@@ -92,8 +94,13 @@ Completed:
 
 Queued (in suggested order):
 - 1l: Conservation Authority fish surveys — BLOCKED, see note below
+- 1o: Ontario Water Quality Monitoring Network (pH, DO, temperature, conductivity)
+- 1p: CABIN benthic macroinvertebrate data
+- 1q: Ontario surficial geology (substrate type)
+- 1r: eBird species observations
+- 1s: DFO stream temperature network
 
-Phase 1 data brain is otherwise complete. See Phase 2 deferred list below.
+Phase 2 does not begin until all queued sub-phases are committed.
 
 Deferred to Phase 2:
 - Satellite imagery ingestion (Sentinel-2, NAIP, SWOOP)
