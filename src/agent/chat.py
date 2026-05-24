@@ -288,6 +288,15 @@ def _execute_tool(name: str, inputs: dict) -> str:
             watercourse_name=inputs["watercourse_name"],
             species=inputs.get("species"),
         )
+    if name == "get_regulations":
+        from src.services.regulations import get_regulations_for_agent
+
+        return get_regulations_for_agent(
+            zone=inputs.get("zone"),
+            species=inputs.get("species"),
+            lat=inputs.get("lat"),
+            lng=inputs.get("lng"),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -966,6 +975,47 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": ["watercourse_name"],
+            },
+        },
+        {
+            "name": "get_regulations",
+            "description": (
+                "Look up Ontario fishing regulations for a specific Fisheries Management Zone (FMZ). "  # noqa: E501
+                "Use when the user asks about seasons, size limits, possession limits, slot sizes, "
+                "or whether a species can be kept in a particular zone. "
+                "Ontario has 20 FMZs — regulations vary by zone and sometimes by specific waterbody. "  # noqa: E501
+                "Provide 'zone' (integer 1-20) for precise lookup, or lat/lng for approximate detection. "  # noqa: E501
+                "Optionally filter to a specific species to get targeted context. "
+                "Always remind the user to verify against the current MNRF publication. "
+                "Requires regulations data (run `make ingest` to populate)."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "zone": {
+                        "type": "integer",
+                        "description": (
+                            "Ontario Fisheries Management Zone number (1-20). "
+                            "Preferred over lat/lng — provide this when the user knows their zone."
+                        ),
+                    },
+                    "species": {
+                        "type": "string",
+                        "description": (
+                            "Optional species name (e.g. 'walleye', 'largemouth bass', 'brook trout'). "  # noqa: E501
+                            "Narrows the returned text to sections mentioning that species."
+                        ),
+                    },
+                    "lat": {
+                        "type": "number",
+                        "description": "Latitude for approximate zone detection (used only if zone is omitted).",  # noqa: E501
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": "Longitude for approximate zone detection (used only if zone is omitted).",  # noqa: E501
+                    },
+                },
+                "required": [],
             },
         },
     ]

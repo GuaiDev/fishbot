@@ -283,6 +283,20 @@ def ensure_schema(db: Database) -> None:
             pk="ogf_id",
         )
 
+    if "regulation_chunks" not in db.table_names():
+        db["regulation_chunks"].create(
+            {
+                "zone": int,
+                "jurisdiction": str,
+                "regulation_year": int,
+                "raw_text": str,
+                "char_count": int,
+                "source_url": str,
+                "ingested_at": str,
+            },
+            pk=["zone", "jurisdiction", "regulation_year"],
+        )
+
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()

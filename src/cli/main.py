@@ -229,6 +229,10 @@ def ingest(
     from src.services.hydrology import ingest_hydro_network
     ohn_seg_count, ohn_barrier_count = ingest_hydro_network(loc.lat, loc.lng, radius_km)
 
+    console.print("[dim]Downloading and parsing MNRF Fishing Regulations Summary (annual PDF)…[/dim]")  # noqa: E501
+    from src.services.regulations import ingest_regulations
+    reg_count = ingest_regulations()
+
     console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
         f"| WSC gauges: {wsc_count} stations updated "
@@ -236,7 +240,8 @@ def ingest(
         f"| MNRF stocking: {stocking_count} records "
         f"| Species: {species_count} ranges loaded "
         f"| Reddit: {reddit_count} posts indexed "
-        f"| OHN: {ohn_seg_count} stream segments, {ohn_barrier_count} barriers[/green]"
+        f"| OHN: {ohn_seg_count} stream segments, {ohn_barrier_count} barriers "
+        f"| Regulations: {reg_count} FMZ zones[/green]"
     )
 
 

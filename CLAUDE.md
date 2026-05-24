@@ -79,19 +79,21 @@ Completed:
 - 1a: Project skeleton
 - 1b: MVP chat bot, profile, trip log, jurisdiction registry
 - 1c: iNaturalist ingestion + agent tool
-
-Queued (in suggested order):
 - 1d: Open-Meteo weather + barometric pressure trends
-- 1e: Tactical recommender (no new data source)
-- 1f: GBIF species occurrence (redundancy for iNaturalist)
+- 1e: Tactical recommender
+- 1f: GBIF species occurrence
 - 1g: Water Survey of Canada stream gauges
 - 1h: OpenStreetMap water features + access
 - 1i: MNRF stocking history
 - 1j: Native range maps + Species at Risk overlays
 - 1k: Reddit community RAG with technique extraction
+- 1m: Ontario Hydro Network + stream connectivity graph
+- 1n: MNRF regulations parser (PDF → FMZ zone chunks, get_regulations agent tool)
+
+Queued (in suggested order):
 - 1l: Conservation Authority fish surveys — BLOCKED, see note below
-- 1m: Ontario Hydro Network + stream connectivity graph (foundation for predictive features)
-- 1n: MNRF regulations parser
+
+Phase 1 data brain is otherwise complete. See Phase 2 deferred list below.
 
 Deferred to Phase 2:
 - Satellite imagery ingestion (Sentinel-2, NAIP, SWOOP)

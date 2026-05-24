@@ -28,6 +28,8 @@ class OntarioJurisdiction(Jurisdiction):
             "- Indigenous/First Nations waters and reserves are governed separately. If a "
             "question concerns those waters, flag it and direct the user to the relevant "
             "First Nation's authority.\n\n"
+            "Use the get_regulations tool to look up actual zone text from the MNRF "
+            "Recreational Fishing Regulations Summary (parsed from the official PDF). "
             "Always remind the user to verify current-year specifics with MNRF before "
             "relying on any specific limit, season, or slot size."
         )
