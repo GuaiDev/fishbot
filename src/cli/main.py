@@ -252,6 +252,14 @@ def ingest(
     benthic_count = ingest_benthic_data()
 
     console.print(
+        f"[dim]Fetching Ontario surficial geology tiles (MRD 128) within "
+        f"{radius_km:.0f}km of {loc.name}…[/dim]"
+    )
+    from src.services.geology import ingest_geology_data
+
+    geology_count = ingest_geology_data(loc.lat, loc.lng, radius_km)
+
+    console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
         f"| WSC gauges: {wsc_count} stations updated "
         f"| OSM: {osm_water_count} water features, {osm_access_count} access points "
@@ -261,7 +269,8 @@ def ingest(
         f"| OHN: {ohn_seg_count} stream segments, {ohn_barrier_count} barriers "
         f"| Regulations: {reg_count} FMZ zones "
         f"| Water quality: {wq_count} readings "
-        f"| Benthic samples: {benthic_count}[/green]"
+        f"| Benthic samples: {benthic_count} "
+        f"| Geology units: {geology_count}[/green]"
     )
 
 

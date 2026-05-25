@@ -315,6 +315,14 @@ def _execute_tool(name: str, inputs: dict) -> str:
             lng=inputs["lng"],
             radius_km=inputs.get("radius_km", 50),
         )
+    if name == "get_substrate":
+        from src.services.geology import get_substrate_for_agent
+
+        return get_substrate_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 10),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -1128,6 +1136,48 @@ def _tools(profile: Any) -> list[dict]:
                     "radius_km": {
                         "type": "number",
                         "description": "Search radius in kilometres. Default 50.",
+                    },
+                },
+                "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "get_substrate",
+            "description": (
+                "Query Ontario surficial geology (MRD 128) substrate type at a location. "
+                "Returns the dominant substrate class (coarse/fine/bedrock/organic/mixed) "
+                "at the point plus a summary of nearby units and a habitat note explaining "
+                "what the surface geology implies for stream bed character and species "
+                "plausibility. "
+                "Use this tool when the user asks about substrate, stream bed type, "
+                "gravel vs. silt, whether a stream likely has clean gravel for spawning, "
+                "or habitat suitability for substrate-sensitive species "
+                "(redhorse, darters, madtoms, lampreys). "
+                "IMPORTANT: Substrate class reflects surface geology, not confirmed "
+                "channel substrate. "
+                "Glaciofluvial (coarse) units are the strongest predictor of "
+                "gravel/cobble beds. "
+                "Combine with CABIN benthic EPT data for stronger habitat inference. "
+                "Coverage: southern Ontario only (roughly south of 46°N). "
+                "Requires geology data (run `make ingest` to populate)."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": (
+                            "Radius in km for nearby units summary. Default 10. "
+                            "Keep small (5–20) — geology units are dense within a tile."
+                        ),
                     },
                 },
                 "required": ["lat", "lng"],
