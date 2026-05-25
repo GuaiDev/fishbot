@@ -1,0 +1,7 @@
+"SiteVisitID/IdentifiantdeVisite","Province/Province","Site/Site","SiteName/Nomdusite","LocalBasinName/Nomdubassinlocal","Latitude","Longitude","StreamOrder/Ordreducoursdeau","JulianDay/JourJulien","Year/Année"
+"SV001","ON","ON-001","Bronte Creek","Lake Ontario Tributaries","43.42","-79.72","4","152","2022"
+"SV002","ON","ON-002","Credit River","Lake Ontario Tributaries","43.65","-79.73","5","155","2022"
+"SV003","ON","ON-003","Humber River","Lake Ontario Tributaries","43.78","-79.54","4","145","2021"
+"SV004","ON","ON-004","Speed River","Lake Erie Tributaries","43.53","-80.24","4","160","2023"
+"SV005","QC","QC-001","Rivière des Prairies","St Lawrence","45.55","-73.65","5","155","2022"
+"SV006","ON","ON-005","Grand River","Lake Erie Tributaries","43.37","-80.31","6","148","2022"

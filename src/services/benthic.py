@@ -13,28 +13,24 @@ logger = logging.getLogger(__name__)
 def ingest_benthic_data() -> int:
     """Download and upsert CABIN benthic data for Ontario. Returns record count."""
     from src.ingest.jurisdictions.ca_on.benthic import (
-        _get_cabin_resources,
-        download_cabin_csv,
-        parse_cabin_data,
+        build_samples,
+        download_benthic,
+        download_study,
+        load_study,
+        parse_benthic,
     )
 
-    resources = _get_cabin_resources()
-    if not resources:
-        logger.warning("No CABIN CSV resources discovered — check CKAN API or package ID")
+    study_path = download_study()
+    benthic_path = download_benthic()
+    study_meta, on_visit_ids = load_study(study_path)
+    if not on_visit_ids:
+        logger.warning("No Ontario visits found in CABIN study file")
         return 0
-
-    db = get_db()
-    total = 0
-    for res in resources:
-        csv_path = download_cabin_csv(res["name"], res["url"])
-        if csv_path is None:
-            continue
-        records = parse_cabin_data(csv_path)
-        if records:
-            upsert_benthic_samples(db, records)
-            total += len(records)
-            logger.info("Upserted %d CABIN benthic records from '%s'", len(records), res["name"])
-    return total
+    benthic_agg = parse_benthic(benthic_path, on_visit_ids)
+    records = build_samples(study_meta, benthic_agg)
+    if records:
+        upsert_benthic_samples(get_db(), records)
+    return len(records)
 
 
 def get_benthic_habitat_for_agent(
