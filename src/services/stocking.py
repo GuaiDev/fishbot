@@ -91,8 +91,14 @@ def get_stocking_for_agent(
         is_put_and_take = _compute_put_and_take(wb_records)
         wild_population_likely = _compute_wild_likely(wb_records, most_recent_year, life_stages)
         stocking_note = _build_stocking_note(
-            wb_name, wb_records, is_put_and_take, wild_population_likely,
-            most_recent_year, species_stocked, life_stages, total_quantity,
+            wb_name,
+            wb_records,
+            is_put_and_take,
+            wild_population_likely,
+            most_recent_year,
+            species_stocked,
+            life_stages,
+            total_quantity,
         )
 
         sorted_records = sorted(wb_records, key=lambda x: x.year, reverse=True)
@@ -107,18 +113,20 @@ def get_stocking_for_agent(
             for r in sorted_records[:5]
         ]
 
-        waterbodies.append({
-            "waterbody_name": wb_name,
-            "event_count": len(wb_records),
-            "is_put_and_take": is_put_and_take,
-            "wild_population_likely": wild_population_likely,
-            "most_recent_year": most_recent_year,
-            "species_stocked": species_stocked,
-            "life_stages": life_stages,
-            "total_quantity": total_quantity,
-            "stocking_note": stocking_note,
-            "events": events,
-        })
+        waterbodies.append(
+            {
+                "waterbody_name": wb_name,
+                "event_count": len(wb_records),
+                "is_put_and_take": is_put_and_take,
+                "wild_population_likely": wild_population_likely,
+                "most_recent_year": most_recent_year,
+                "species_stocked": species_stocked,
+                "life_stages": life_stages,
+                "total_quantity": total_quantity,
+                "stocking_note": stocking_note,
+                "events": events,
+            }
+        )
 
     total_waterbodies_found = len(waterbodies)
     waterbodies.sort(key=lambda w: w["most_recent_year"], reverse=True)

@@ -18,9 +18,7 @@ def upsert_regulation_chunks(db: Database, chunks: list[RegulationChunk]) -> Non
         }
         for c in chunks
     ]
-    db["regulation_chunks"].upsert_all(
-        rows, pk=["zone", "jurisdiction", "regulation_year"]
-    )
+    db["regulation_chunks"].upsert_all(rows, pk=["zone", "jurisdiction", "regulation_year"])
 
 
 def get_regulation_chunk(
@@ -52,9 +50,5 @@ def get_regulation_chunk(
 
 
 def count_regulation_chunks(db: Database, jurisdiction: str = "CA-ON") -> int:
-    rows = list(
-        db["regulation_chunks"].rows_where(
-            "jurisdiction = ?", [jurisdiction]
-        )
-    )
+    rows = list(db["regulation_chunks"].rows_where("jurisdiction = ?", [jurisdiction]))
     return len(rows)

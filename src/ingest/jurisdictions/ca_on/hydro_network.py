@@ -25,8 +25,7 @@ from shapely.geometry import LineString, Point
 from src.models.hydrology import HydroBarrier, StreamSegment
 
 _SERVICE_BASE = (
-    "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services"
-    "/LIO_OPEN_DATA/LIO_Open01/MapServer"
+    "https://ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_OPEN_DATA/LIO_Open01/MapServer"
 )
 _WATERCOURSE_LAYER = 26
 _HYDRO_POINT_LAYER = 6
@@ -123,6 +122,7 @@ def fetch_barriers(
 
 
 # ── internal parsers ──────────────────────────────────────────────────────────
+
 
 def _parse_segment(feat: dict) -> StreamSegment | None:
     attrs = feat.get("attributes", {})
@@ -226,6 +226,7 @@ def _snap_to_nearest_segment(
 
 # ── HTTP + cache ──────────────────────────────────────────────────────────────
 
+
 def _cached_get(url: str, params: dict) -> dict:
     """GET with 30-day file cache keyed by URL + sorted params."""
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -251,6 +252,7 @@ def _cached_get(url: str, params: dict) -> dict:
 
 
 # ── geometry helpers ──────────────────────────────────────────────────────────
+
 
 def _bbox(lat: float, lon: float, radius_km: float) -> tuple[float, float, float, float]:
     """Return (min_lon, min_lat, max_lon, max_lat) bounding box for a circle."""

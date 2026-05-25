@@ -15,12 +15,12 @@ _STATIONS_URL = "https://api.weather.gc.ca/collections/hydrometric-stations/item
 _REALTIME_URL = "https://api.weather.gc.ca/collections/hydrometric-realtime/items"
 _CACHE_DIR = Path("data/cache/wsc")
 _TTL_STATIONS = 86_400  # 24 hours — stations don't move
-_TTL_REALTIME = 3_600   # 1 hour — data refreshes every 5 minutes at source
+_TTL_REALTIME = 3_600  # 1 hour — data refreshes every 5 minutes at source
 _KM_PER_DEGREE = 111.0
 _USER_AGENT = "fishbot/1.0 (personal fishing assistant)"
 
 # Trend thresholds
-_LEVEL_TREND_THRESHOLD_M = 0.05    # 0.05m change over 3hr
+_LEVEL_TREND_THRESHOLD_M = 0.05  # 0.05m change over 3hr
 _DISCHARGE_TREND_THRESHOLD_PCT = 2.0  # 2% change over 3hr
 
 
@@ -61,9 +61,7 @@ def fetch_nearby_stations(lat: float, lng: float, radius_km: float = 50) -> list
     return stations
 
 
-def fetch_station_reading(
-    station_id: str, lat: float, lng: float
-) -> StreamGaugeReading | None:
+def fetch_station_reading(station_id: str, lat: float, lng: float) -> StreamGaugeReading | None:
     """Fetch current reading + trend for a single WSC station. Cached 1hr.
 
     Returns None if the station has no recent data or is offline.
@@ -163,9 +161,7 @@ def _as_float(value: object) -> float | None:
         return None
 
 
-def _compute_level_trend(
-    current: float | None, reference: float | None
-) -> str | None:
+def _compute_level_trend(current: float | None, reference: float | None) -> str | None:
     if current is None or reference is None:
         return None
     delta = current - reference
@@ -176,9 +172,7 @@ def _compute_level_trend(
     return "stable"
 
 
-def _compute_discharge_trend(
-    current: float | None, reference: float | None
-) -> str | None:
+def _compute_discharge_trend(current: float | None, reference: float | None) -> str | None:
     if current is None or reference is None or reference == 0:
         return None
     pct_change = (current - reference) / abs(reference) * 100

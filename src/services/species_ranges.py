@@ -20,9 +20,7 @@ _STATUS_SEVERITY = {
 
 
 def _in_ontario(lat: float, lng: float) -> bool:
-    return (
-        _ON_LAT_MIN <= lat <= _ON_LAT_MAX and _ON_LNG_MIN <= lng <= _ON_LNG_MAX
-    )
+    return _ON_LAT_MIN <= lat <= _ON_LAT_MAX and _ON_LNG_MIN <= lng <= _ON_LNG_MAX
 
 
 def get_species_range_for_agent(

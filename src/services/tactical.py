@@ -404,8 +404,7 @@ def _build_reasoning(
     if time_of_day is not None:
         tod_phrases = {
             "dawn": (
-                "Dawn is a prime window: low light, cool surface water, "
-                "predators pushing shallow."
+                "Dawn is a prime window: low light, cool surface water, predators pushing shallow."
             ),
             "morning": (
                 "Morning: fish are still active from the dawn feed. "
@@ -416,16 +415,12 @@ def _build_reasoning(
                 "work structure deep or wait for the evening bite."
             ),
             "afternoon": (
-                "Afternoon: fish staged deep but starting to move shallower "
-                "as sun angle drops."
+                "Afternoon: fish staged deep but starting to move shallower as sun angle drops."
             ),
             "evening": (
-                "Evening bite is ramping up — "
-                "fish moving from deep structure toward the shallows."
+                "Evening bite is ramping up — fish moving from deep structure toward the shallows."
             ),
-            "dusk": (
-                "Dusk is another prime window: low light, surface activity picking back up."
-            ),
+            "dusk": ("Dusk is another prime window: low light, surface activity picking back up."),
             "night": (
                 "Night fishing: go dark, add noise or vibration, slow down — "
                 "fish are hunting by lateral line."

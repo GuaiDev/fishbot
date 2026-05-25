@@ -21,9 +21,7 @@ import httpx
 
 from src.models.water_quality_reading import WaterQualityReading
 
-_STATIONS_URL = (
-    "https://files.ontario.ca/moe_mapping/downloads/2Water/PWQMN/PWQMN_Stations.csv"
-)
+_STATIONS_URL = "https://files.ontario.ca/moe_mapping/downloads/2Water/PWQMN/PWQMN_Stations.csv"
 _CKAN_PACKAGE_URL = (
     "https://data.ontario.ca/api/3/action/package_show"
     "?id=provincial-stream-water-quality-monitoring-network"
@@ -134,7 +132,8 @@ def download_field_data(resource_name: str, url: str) -> Path | None:
         if age < ttl:
             logger.info(
                 "PWQMN field data '%s' is fresh (%.0f days old), skipping",
-                label, age / 86400,
+                label,
+                age / 86400,
             )
             return dest
 
@@ -200,11 +199,7 @@ def parse_field_data(
         reader = csv.DictReader(f)
         for i, raw_row in enumerate(reader, start=1):
             # Normalize: strip whitespace from keys/values, replace spaces with underscores
-            row = {
-                k.strip().replace(" ", "_"): v.strip()
-                for k, v in raw_row.items()
-                if k
-            }
+            row = {k.strip().replace(" ", "_"): v.strip() for k, v in raw_row.items() if k}
             try:
                 record = _parse_row(i, row, stations)
             except Exception as exc:
@@ -248,9 +243,7 @@ def _parse_row(
     date_str = row.get("Collection_Date", "")
     sampled_at = _parse_date(date_str)
     if sampled_at is None:
-        logger.warning(
-            "PWQMN row %d: unparseable Collection_Date %r, skipping", row_num, date_str
-        )
+        logger.warning("PWQMN row %d: unparseable Collection_Date %r, skipping", row_num, date_str)
         return None
 
     raw_station = row.get("Collection_Site", "").strip()

@@ -30,9 +30,7 @@ def query_species_range(db: Database, species: str) -> SpeciesRange | None:
     return _row_to_range(rows[0])
 
 
-def query_sar_species(
-    db: Database, jurisdiction: str | None = None
-) -> list[SpeciesAtRisk]:
+def query_sar_species(db: Database, jurisdiction: str | None = None) -> list[SpeciesAtRisk]:
     status_placeholders = ",".join("?" * len(_AT_RISK_STATUSES))
     params: list[Any] = list(_AT_RISK_STATUSES)
 
@@ -51,9 +49,7 @@ def is_species_at_risk(db: Database, species: str) -> bool:
     sr = query_species_range(db, species)
     if sr is None:
         return False
-    return (sr.sara_status in _PROTECTED_STATUSES) or (
-        sr.ontario_status in _PROTECTED_STATUSES
-    )
+    return (sr.sara_status in _PROTECTED_STATUSES) or (sr.ontario_status in _PROTECTED_STATUSES)
 
 
 def _to_row(r: SpeciesRange) -> dict[str, Any]:

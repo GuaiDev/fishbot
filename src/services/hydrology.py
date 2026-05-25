@@ -23,10 +23,22 @@ from src.storage.database import get_db
 logger = logging.getLogger(__name__)
 
 # Species whose common names suggest strong swimming ability (pass Rapids)
-_STRONG_SWIMMERS = frozenset({
-    "salmon", "trout", "bass", "pike", "walleye", "muskie", "muskellunge",
-    "carp", "steelhead", "perch", "catfish", "bullhead",
-})
+_STRONG_SWIMMERS = frozenset(
+    {
+        "salmon",
+        "trout",
+        "bass",
+        "pike",
+        "walleye",
+        "muskie",
+        "muskellunge",
+        "carp",
+        "steelhead",
+        "perch",
+        "catfish",
+        "bullhead",
+    }
+)
 
 # Species (or keywords) blocked by Sea Lamprey Barriers
 _LAMPREY_KEYWORDS = frozenset({"lamprey"})
@@ -42,7 +54,7 @@ class HydrologyService:
     def __init__(self, db=None):
         self._db = db or get_db()
         self._graph: nx.DiGraph | None = None
-        self._seg_index: dict[int, StreamSegment] = {}   # ogf_id → segment
+        self._seg_index: dict[int, StreamSegment] = {}  # ogf_id → segment
 
     def _ensure_graph(self) -> nx.DiGraph:
         if self._graph is not None:
@@ -244,13 +256,15 @@ class HydrologyService:
                     blocking_barrier = bt
 
             place = obs.get("place_guess") or "nearby"
-            connected.append({
-                "lat": obs["lat"],
-                "lng": obs["lng"],
-                "place_guess": place,
-                "distance_km": round(path_km, 2),
-                "blocking_barrier": blocking_barrier,
-            })
+            connected.append(
+                {
+                    "lat": obs["lat"],
+                    "lng": obs["lng"],
+                    "place_guess": place,
+                    "distance_km": round(path_km, 2),
+                    "blocking_barrier": blocking_barrier,
+                }
+            )
 
             if blocking_barrier and path_km < nearest_barrier_dist_km:
                 nearest_barrier = blocking_barrier
@@ -347,24 +361,28 @@ def analyze_watershed_for_agent(
 
     if not confirmed:
         species_str = species or "any species"
-        return json.dumps({
-            "query": {"lat": lat, "lon": lon, "species": species, "radius_km": radius_km},
-            "result": "no_observations",
-            "note": (
-                f"No confirmed observations of {species_str} within {radius_km}km "
-                "in the local database. Run `make ingest` to populate observation data, "
-                "or try a larger radius."
-            ),
-        })
+        return json.dumps(
+            {
+                "query": {"lat": lat, "lon": lon, "species": species, "radius_km": radius_km},
+                "result": "no_observations",
+                "note": (
+                    f"No confirmed observations of {species_str} within {radius_km}km "
+                    "in the local database. Run `make ingest` to populate observation data, "
+                    "or try a larger radius."
+                ),
+            }
+        )
 
     if species:
         result = svc.connectivity_summary(lat, lon, species, confirmed)
-        return json.dumps({
-            "query": {"lat": lat, "lon": lon, "species": species},
-            "summary": result.summary_sentence,
-            "connected_observations": result.connected_observations,
-            "nearest_barrier": result.nearest_barrier,
-        })
+        return json.dumps(
+            {
+                "query": {"lat": lat, "lon": lon, "species": species},
+                "summary": result.summary_sentence,
+                "connected_observations": result.connected_observations,
+                "nearest_barrier": result.nearest_barrier,
+            }
+        )
 
     # No species specified: summarise all species found and pick the most common
     species_seen = {}
@@ -379,11 +397,13 @@ def analyze_watershed_for_agent(
         r = svc.connectivity_summary(lat, lon, sp, sp_obs)
         summaries.append({"species": sp, "summary": r.summary_sentence})
 
-    return json.dumps({
-        "query": {"lat": lat, "lon": lon, "radius_km": radius_km},
-        "species_found": species_seen,
-        "connectivity_summaries": summaries,
-    })
+    return json.dumps(
+        {
+            "query": {"lat": lat, "lon": lon, "radius_km": radius_km},
+            "species_found": species_seen,
+            "connectivity_summaries": summaries,
+        }
+    )
 
 
 def find_connected_tributaries_for_agent(
@@ -415,17 +435,19 @@ def find_connected_tributaries_for_agent(
     named = [v for v in unique.values() if v["name"] != "(unnamed)"]
     unnamed_count = len(unique) - len(named)
 
-    return json.dumps({
-        "watercourse": watercourse_name,
-        "species_filter": species,
-        "total_joining_segments": len(unique),
-        "named_tributaries": named,
-        "unnamed_segment_count": unnamed_count,
-        "note": (
-            "Segments are from the OHN Watercourse layer. Named tributaries are those "
-            "with an OFFICIAL_NAME_LABEL. Barriers shown are on the joining segment itself."
-        ),
-    })
+    return json.dumps(
+        {
+            "watercourse": watercourse_name,
+            "species_filter": species,
+            "total_joining_segments": len(unique),
+            "named_tributaries": named,
+            "unnamed_segment_count": unnamed_count,
+            "note": (
+                "Segments are from the OHN Watercourse layer. Named tributaries are those "
+                "with an OFFICIAL_NAME_LABEL. Barriers shown are on the joining segment itself."
+            ),
+        }
+    )
 
 
 def ingest_hydro_network(
@@ -493,6 +515,7 @@ def ingest_hydro_network(
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
+
 def _load_segments(db) -> list[StreamSegment]:
     if "stream_segments" not in db.table_names():
         return []
@@ -500,19 +523,21 @@ def _load_segments(db) -> list[StreamSegment]:
     segments = []
     for row in rows:
         try:
-            segments.append(StreamSegment(
-                ogf_id=row["ogf_id"],
-                watercourse_type=row["watercourse_type"] or "Stream",
-                name=row["name"],
-                flow_verified=bool(row["flow_verified"]),
-                permanency=row["permanency"] or "Permanent",
-                flow_classification=row["flow_classification"],
-                length_m=row["length_m"] or 0.0,
-                geom_wkt=row["geom_wkt"],
-                start_node=row["start_node"],
-                end_node=row["end_node"],
-                jurisdiction=row["jurisdiction"] or "CA-ON",
-            ))
+            segments.append(
+                StreamSegment(
+                    ogf_id=row["ogf_id"],
+                    watercourse_type=row["watercourse_type"] or "Stream",
+                    name=row["name"],
+                    flow_verified=bool(row["flow_verified"]),
+                    permanency=row["permanency"] or "Permanent",
+                    flow_classification=row["flow_classification"],
+                    length_m=row["length_m"] or 0.0,
+                    geom_wkt=row["geom_wkt"],
+                    start_node=row["start_node"],
+                    end_node=row["end_node"],
+                    jurisdiction=row["jurisdiction"] or "CA-ON",
+                )
+            )
         except Exception as exc:
             logger.debug("Skipping DB segment ogf_id=%s: %s", row.get("ogf_id"), exc)
     return segments
@@ -525,14 +550,16 @@ def _load_barriers(db) -> list[HydroBarrier]:
     barriers = []
     for row in rows:
         try:
-            barriers.append(HydroBarrier(
-                ogf_id=row["ogf_id"],
-                barrier_type=row["barrier_type"],
-                geom_wkt=row["geom_wkt"],
-                nearest_segment_ogf_id=row["nearest_segment_ogf_id"],
-                snap_distance_m=row["snap_distance_m"],
-                jurisdiction=row["jurisdiction"] or "CA-ON",
-            ))
+            barriers.append(
+                HydroBarrier(
+                    ogf_id=row["ogf_id"],
+                    barrier_type=row["barrier_type"],
+                    geom_wkt=row["geom_wkt"],
+                    nearest_segment_ogf_id=row["nearest_segment_ogf_id"],
+                    snap_distance_m=row["snap_distance_m"],
+                    jurisdiction=row["jurisdiction"] or "CA-ON",
+                )
+            )
         except Exception as exc:
             logger.debug("Skipping DB barrier ogf_id=%s: %s", row.get("ogf_id"), exc)
     return barriers
@@ -564,10 +591,15 @@ def _nearby_observations(
             f"WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?{species_clause}"
         )
         for row in db.execute(sql, args).fetchall():
-            results.append({
-                "lat": row[0], "lng": row[1],
-                "species": row[2], "common_name": row[3], "place_guess": row[4],
-            })
+            results.append(
+                {
+                    "lat": row[0],
+                    "lng": row[1],
+                    "species": row[2],
+                    "common_name": row[3],
+                    "place_guess": row[4],
+                }
+            )
 
     if "gbif_observations" in db.table_names():
         sql = (
@@ -575,15 +607,21 @@ def _nearby_observations(
             f"WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?{species_clause}"
         )
         for row in db.execute(sql, args).fetchall():
-            results.append({
-                "lat": row[0], "lng": row[1],
-                "species": row[2], "common_name": row[3], "place_guess": None,
-            })
+            results.append(
+                {
+                    "lat": row[0],
+                    "lng": row[1],
+                    "species": row[2],
+                    "common_name": row[3],
+                    "place_guess": None,
+                }
+            )
 
     return results
 
 
 # ── barrier passability ───────────────────────────────────────────────────────
+
 
 def _can_pass(species: str | None, barrier_type: str) -> bool:
     """Return True if species can pass the barrier."""

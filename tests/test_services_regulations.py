@@ -48,6 +48,7 @@ def empty_db(tmp_path, monkeypatch):
 
 # --- FMZ coordinate estimation ---
 
+
 def test_estimate_fmz_toronto():
     # Toronto is ~43.65, -79.38 → roughly Zone 6 or 5
     zone = _estimate_fmz(43.65, -79.38)
@@ -68,6 +69,7 @@ def test_estimate_fmz_thunder_bay():
 
 
 # --- service layer ---
+
 
 def test_no_zone_no_coords_returns_error():
     result = json.loads(get_regulations_for_agent())
@@ -115,6 +117,7 @@ def test_latlon_triggers_zone_detection(populated_db):
 
 
 # --- _extract_species_context ---
+
 
 def test_extract_species_context_found():
     text = "ZONE 5\n" + "x" * 200 + "Walleye: open May 1, limit 4." + "x" * 200

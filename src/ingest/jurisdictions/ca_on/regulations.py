@@ -19,8 +19,7 @@ from src.models.regulation import RegulationChunk
 
 _REG_YEAR = 2026
 _PDF_URL = (
-    "https://www.ontario.ca/files/2025-12/"
-    "mnr-2026-fishing-regulations-summary-en-2025-12-08.pdf"
+    "https://www.ontario.ca/files/2025-12/mnr-2026-fishing-regulations-summary-en-2025-12-08.pdf"
 )
 _RAW_PATH = Path(f"data/raw/mnrf_regulations_{_REG_YEAR}.pdf")
 _TTL_SECONDS = 365 * 86400  # annual publication; re-download only on next year's release
@@ -41,9 +40,7 @@ def download_regulations_pdf() -> Path:
     if _RAW_PATH.exists():
         age = time.time() - _RAW_PATH.stat().st_mtime
         if age < _TTL_SECONDS:
-            logger.info(
-                "MNRF regulations PDF is fresh (%.0f days old), skipping", age / 86400
-            )
+            logger.info("MNRF regulations PDF is fresh (%.0f days old), skipping", age / 86400)
             return _RAW_PATH
 
     _RAW_PATH.parent.mkdir(parents=True, exist_ok=True)

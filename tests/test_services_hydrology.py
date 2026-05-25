@@ -17,45 +17,69 @@ from src.services.hydrology import HydrologyService, _build_summary, _can_pass
 
 _SEGMENTS = [
     StreamSegment(
-        ogf_id=10001, watercourse_type="Stream", name="Bronte Creek",
-        flow_verified=True, permanency="Permanent", flow_classification="Primary",
+        ogf_id=10001,
+        watercourse_type="Stream",
+        name="Bronte Creek",
+        flow_verified=True,
+        permanency="Permanent",
+        flow_classification="Primary",
         length_m=2500.0,
         geom_wkt="LINESTRING (-79.5 43.5, -79.49 43.505, -79.48 43.51)",
-        start_node="-79.5,43.5", end_node="-79.48,43.51",
+        start_node="-79.5,43.5",
+        end_node="-79.48,43.51",
     ),
     StreamSegment(
-        ogf_id=10002, watercourse_type="Stream", name="Bronte Creek",
-        flow_verified=True, permanency="Permanent", flow_classification="Primary",
+        ogf_id=10002,
+        watercourse_type="Stream",
+        name="Bronte Creek",
+        flow_verified=True,
+        permanency="Permanent",
+        flow_classification="Primary",
         length_m=2500.0,
         geom_wkt="LINESTRING (-79.48 43.51, -79.47 43.515, -79.46 43.52)",
-        start_node="-79.48,43.51", end_node="-79.46,43.52",
+        start_node="-79.48,43.51",
+        end_node="-79.46,43.52",
     ),
     StreamSegment(
-        ogf_id=10003, watercourse_type="Stream", name=None,
-        flow_verified=True, permanency="Permanent", flow_classification="Primary",
+        ogf_id=10003,
+        watercourse_type="Stream",
+        name=None,
+        flow_verified=True,
+        permanency="Permanent",
+        flow_classification="Primary",
         length_m=1250.0,
         geom_wkt="LINESTRING (-79.48 43.51, -79.475 43.5075, -79.47 43.505)",
-        start_node="-79.48,43.51", end_node="-79.47,43.505",
+        start_node="-79.48,43.51",
+        end_node="-79.47,43.505",
     ),
     StreamSegment(
-        ogf_id=10004, watercourse_type="Stream", name=None,
-        flow_verified=False, permanency="Permanent", flow_classification="Primary",
+        ogf_id=10004,
+        watercourse_type="Stream",
+        name=None,
+        flow_verified=False,
+        permanency="Permanent",
+        flow_classification="Primary",
         length_m=1500.0,
         geom_wkt="LINESTRING (-79.49 43.495, -79.5 43.485)",
-        start_node="-79.49,43.495", end_node="-79.5,43.485",
+        start_node="-79.49,43.495",
+        end_node="-79.5,43.485",
     ),
 ]
 
 _FALLS_BARRIER = HydroBarrier(
-    ogf_id=20001, barrier_type="Falls",
+    ogf_id=20001,
+    barrier_type="Falls",
     geom_wkt="POINT (-79.475 43.5075)",
-    nearest_segment_ogf_id=10003, snap_distance_m=0.0,
+    nearest_segment_ogf_id=10003,
+    snap_distance_m=0.0,
 )
 
 _SLB_BARRIER = HydroBarrier(
-    ogf_id=20002, barrier_type="Sea Lamprey Barrier",
+    ogf_id=20002,
+    barrier_type="Sea Lamprey Barrier",
     geom_wkt="POINT (-79.47 43.515)",
-    nearest_segment_ogf_id=10002, snap_distance_m=0.0,
+    nearest_segment_ogf_id=10002,
+    snap_distance_m=0.0,
 )
 
 
@@ -66,13 +90,16 @@ def _make_service(segments=None, barriers=None) -> HydrologyService:
     svc._seg_index = {}
     segs = _SEGMENTS if segments is None else segments
     bars = [] if barriers is None else barriers
-    with patch("src.services.hydrology._load_segments", return_value=segs), \
-         patch("src.services.hydrology._load_barriers", return_value=bars):
+    with (
+        patch("src.services.hydrology._load_segments", return_value=segs),
+        patch("src.services.hydrology._load_barriers", return_value=bars),
+    ):
         svc._ensure_graph()
     return svc
 
 
 # ── graph construction ────────────────────────────────────────────────────────
+
 
 def test_verified_segment_creates_directed_edge():
     svc = _make_service()
@@ -105,6 +132,7 @@ def test_node_count():
 
 # ── upstream / downstream traversal ──────────────────────────────────────────
 
+
 def test_upstream_of_node_b_returns_seg1():
     svc = _make_service()
     # B is at (-79.48, 43.51); upstream is A via Seg1
@@ -133,11 +161,12 @@ def test_max_km_limits_traversal():
     # From A, Seg1 = 2.5km to B, Seg2 = 5km to C; limit to 3km
     result = svc.downstream_of(43.5, -79.5, max_km=3.0)
     ogf_ids = {r["ogf_id"] for r in result}
-    assert 10001 in ogf_ids   # 2.5km — within limit
+    assert 10001 in ogf_ids  # 2.5km — within limit
     assert 10002 not in ogf_ids  # 5km total — exceeds limit
 
 
 # ── reachable_from with barrier filtering ────────────────────────────────────
+
 
 def test_reachable_from_prunes_at_falls_for_all_species():
     svc = _make_service(barriers=[_FALLS_BARRIER])
@@ -145,7 +174,7 @@ def test_reachable_from_prunes_at_falls_for_all_species():
     result = svc.reachable_from(43.51, -79.48, species="Brook Trout", max_km=50)
     ogf_ids = {r["ogf_id"] for r in result}
     assert 10003 not in ogf_ids  # Seg3 blocked by Falls
-    assert 10002 in ogf_ids      # Seg2 is free
+    assert 10002 in ogf_ids  # Seg2 is free
 
 
 def test_reachable_from_sea_lamprey_barrier_blocks_only_lamprey():
@@ -157,11 +186,12 @@ def test_reachable_from_sea_lamprey_barrier_blocks_only_lamprey():
     trout_ogf_ids = {r["ogf_id"] for r in trout_result}
     lamprey_ogf_ids = {r["ogf_id"] for r in lamprey_result}
 
-    assert 10002 in trout_ogf_ids     # trout passes SLB
+    assert 10002 in trout_ogf_ids  # trout passes SLB
     assert 10002 not in lamprey_ogf_ids  # lamprey blocked
 
 
 # ── connected_tributaries ────────────────────────────────────────────────────
+
 
 def test_connected_tributaries_finds_unnamed_trib():
     svc = _make_service()
@@ -185,6 +215,7 @@ def test_connected_tributaries_unknown_name_returns_empty():
 
 
 # ── connectivity_summary ──────────────────────────────────────────────────────
+
 
 def test_connectivity_summary_sentence_no_observations():
     svc = _make_service()
@@ -223,6 +254,7 @@ def test_connectivity_summary_no_graph_data():
 
 # ── barrier passability ───────────────────────────────────────────────────────
 
+
 def test_falls_impassable_for_all():
     assert _can_pass("Brook Trout", "Falls") is False
     assert _can_pass("Sea Lamprey", "Falls") is False
@@ -256,6 +288,7 @@ def test_rapids_impassable_for_microfishing_targets():
 
 
 # ── summary sentence format ───────────────────────────────────────────────────
+
 
 def test_build_summary_no_observations():
     sentence = _build_summary("Brook Trout", [], None)

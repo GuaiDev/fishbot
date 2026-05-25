@@ -40,8 +40,16 @@ class TestWaterFeature:
 
     def test_all_feature_types_valid(self):
         all_types = [
-            "lake", "river", "stream", "pond", "reservoir",
-            "wetland", "canal", "ditch", "drain", "bay",
+            "lake",
+            "river",
+            "stream",
+            "pond",
+            "reservoir",
+            "wetland",
+            "canal",
+            "ditch",
+            "drain",
+            "bay",
         ]
         for ft in all_types:
             f = WaterFeature(**{**_BASE_FEATURE, "feature_type": ft})
@@ -78,8 +86,13 @@ class TestAccessPoint:
 
     def test_all_access_types_valid(self):
         all_types = [
-            "boat_launch", "parking", "trail_head", "fishing_spot",
-            "public_land", "conservation_area", "park",
+            "boat_launch",
+            "parking",
+            "trail_head",
+            "fishing_spot",
+            "public_land",
+            "conservation_area",
+            "park",
         ]
         for at in all_types:
             p = AccessPoint(**{**_BASE_POINT, "access_type": at})

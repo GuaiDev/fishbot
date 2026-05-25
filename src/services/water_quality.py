@@ -63,19 +63,26 @@ def get_water_quality_for_agent(
     )
 
     if not records:
-        return json.dumps({
-            "query": {"lat": lat, "lng": lng, "radius_km": radius_km,
-                      "date_from": date_from, "date_to": date_to},
-            "station_count": 0,
-            "reading_count": 0,
-            "stations": [],
-            "summary": {},
-            "habitat_assessment": {
-                "ruling_out": [],
-                "note": "No PWQMN water quality readings found within the query area. "
-                        "Run `make ingest` to populate the database.",
-            },
-        })
+        return json.dumps(
+            {
+                "query": {
+                    "lat": lat,
+                    "lng": lng,
+                    "radius_km": radius_km,
+                    "date_from": date_from,
+                    "date_to": date_to,
+                },
+                "station_count": 0,
+                "reading_count": 0,
+                "stations": [],
+                "summary": {},
+                "habitat_assessment": {
+                    "ruling_out": [],
+                    "note": "No PWQMN water quality readings found within the query area. "
+                    "Run `make ingest` to populate the database.",
+                },
+            }
+        )
 
     # Per-station summary
     by_station: dict[str, list] = {}
@@ -86,14 +93,16 @@ def get_water_quality_for_agent(
     for sid, recs in by_station.items():
         first = recs[0]
         dates = sorted(r.sampled_at for r in recs)
-        stations_out.append({
-            "station_id": sid,
-            "station_name": first.station_name,
-            "lat": first.lat,
-            "lng": first.lng,
-            "reading_count": len(recs),
-            "date_range": [dates[0].isoformat(), dates[-1].isoformat()],
-        })
+        stations_out.append(
+            {
+                "station_id": sid,
+                "station_name": first.station_name,
+                "lat": first.lat,
+                "lng": first.lng,
+                "reading_count": len(recs),
+                "date_range": [dates[0].isoformat(), dates[-1].isoformat()],
+            }
+        )
 
     # Aggregate parameter stats across all records in area
     do_vals = [r.do_mgl for r in records if r.do_mgl is not None]
@@ -104,8 +113,7 @@ def get_water_quality_for_agent(
 
     # Summer readings (June–August) for coldwater threshold
     summer_temps = [
-        r.temp_c for r in records
-        if r.temp_c is not None and r.sampled_at.month in (6, 7, 8)
+        r.temp_c for r in records if r.temp_c is not None and r.sampled_at.month in (6, 7, 8)
     ]
 
     summary: dict = {}
@@ -124,20 +132,22 @@ def get_water_quality_for_agent(
 
     habitat_assessment = _assess_habitat(do_vals, ph_vals, summer_temps, cond_vals)
 
-    return json.dumps({
-        "query": {
-            "lat": lat,
-            "lng": lng,
-            "radius_km": radius_km,
-            "date_from": date_from,
-            "date_to": date_to,
-        },
-        "station_count": len(by_station),
-        "reading_count": len(records),
-        "stations": stations_out,
-        "summary": summary,
-        "habitat_assessment": habitat_assessment,
-    })
+    return json.dumps(
+        {
+            "query": {
+                "lat": lat,
+                "lng": lng,
+                "radius_km": radius_km,
+                "date_from": date_from,
+                "date_to": date_to,
+            },
+            "station_count": len(by_station),
+            "reading_count": len(records),
+            "stations": stations_out,
+            "summary": summary,
+            "habitat_assessment": habitat_assessment,
+        }
+    )
 
 
 def _stats(vals: list[float]) -> dict:

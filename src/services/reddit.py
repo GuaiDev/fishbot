@@ -23,40 +23,44 @@ def search_reddit_for_agent(
     )
 
     if not posts:
-        return json.dumps({
-            "query": query,
-            "count": 0,
-            "note": (
-                "No Reddit posts found matching this query. "
-                "Run `make ingest` to populate the Reddit community database, "
-                "or the database may not contain content for this topic yet."
-            ),
-        })
-
-    return json.dumps({
-        "query": query,
-        "count": len(posts),
-        "source_note": (
-            "Community fishing reports. "
-            "High post volume on a spot reflects angler pressure, not fish abundance. "
-            "Low results may indicate low angler presence rather than fish absence."
-        ),
-        "posts": [
+        return json.dumps(
             {
-                "post_id": p.post_id,
-                "subreddit": p.subreddit,
-                "title": p.title,
-                "body": p.body[:600] + ("..." if len(p.body) > 600 else ""),
-                "url": p.url,
-                "score": p.score,
-                "created_utc": p.created_utc.isoformat(),
-                "extracted_species": p.extracted_species,
-                "extracted_locations": p.extracted_locations,
-                "jurisdiction": p.jurisdiction,
+                "query": query,
+                "count": 0,
+                "note": (
+                    "No Reddit posts found matching this query. "
+                    "Run `make ingest` to populate the Reddit community database, "
+                    "or the database may not contain content for this topic yet."
+                ),
             }
-            for p in posts
-        ],
-    })
+        )
+
+    return json.dumps(
+        {
+            "query": query,
+            "count": len(posts),
+            "source_note": (
+                "Community fishing reports. "
+                "High post volume on a spot reflects angler pressure, not fish abundance. "
+                "Low results may indicate low angler presence rather than fish absence."
+            ),
+            "posts": [
+                {
+                    "post_id": p.post_id,
+                    "subreddit": p.subreddit,
+                    "title": p.title,
+                    "body": p.body[:600] + ("..." if len(p.body) > 600 else ""),
+                    "url": p.url,
+                    "score": p.score,
+                    "created_utc": p.created_utc.isoformat(),
+                    "extracted_species": p.extracted_species,
+                    "extracted_locations": p.extracted_locations,
+                    "jurisdiction": p.jurisdiction,
+                }
+                for p in posts
+            ],
+        }
+    )
 
 
 def fetch_and_store(
@@ -94,9 +98,7 @@ def fetch_and_store(
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         if status == 403:
-            log.warning(
-                "Reddit fetch blocked (403) — API credentials may be required. Skipping."
-            )
+            log.warning("Reddit fetch blocked (403) — API credentials may be required. Skipping.")
         elif status == 429:
             log.warning("Reddit rate-limited (429) — try again later. Skipping.")
         else:

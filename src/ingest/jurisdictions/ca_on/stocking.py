@@ -15,9 +15,7 @@ import httpx
 
 from src.models.stocking_record import StockingRecord
 
-_DOWNLOAD_URL = (
-    "https://geohub.lio.gov.on.ca/datasets/c725d683af734e6da7850fe0f0b73eb3_0.csv"
-)
+_DOWNLOAD_URL = "https://geohub.lio.gov.on.ca/datasets/c725d683af734e6da7850fe0f0b73eb3_0.csv"
 _RAW_PATH = Path("data/raw/mnrf_stocking.csv")
 _TTL_SECONDS = 30 * 86400  # 30 days
 _USER_AGENT = "fishbot/1.0 (personal fishing exploration bot)"

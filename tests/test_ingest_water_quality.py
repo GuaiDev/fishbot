@@ -20,6 +20,7 @@ FIXTURE_STATIONS = Path(__file__).parent / "fixtures" / "pwqmn_stations_sample.c
 def _stations_from_fixture() -> dict:
     """Load station lookup from the test fixture (bypasses HTTP)."""
     import csv
+
     stations = {}
     with FIXTURE_STATIONS.open(newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):

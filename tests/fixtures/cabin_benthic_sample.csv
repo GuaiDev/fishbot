@@ -1,0 +1,7 @@
+SiteVisitID/IDVisite,Site/Site,SiteName/NomSite,Latitude/Latitude,Longitude/Longitude,Province/Province,VisitYear/AnnéeVisite,JulianDay/JourJulien,StreamOrder/OrdreStrahler,LocalBasin/BassinLocal,SubSample/SouséchantillonCompté,Baetidae,Ephemerellidae,Heptageniidae,Perlidae,Chloroperlidae,Hydropsychidae,Rhyacophilidae,Chironomidae,Oligochaeta
+SV001,ON-001,Bronte Creek,43.42,-79.72,ON,2022,152,4,Lake Ontario,300,30,20,25,15,10,40,20,15,10
+SV002,ON-002,Credit River,43.65,-79.73,ON,2022,155,5,Lake Ontario,500,20,10,15,5,3,25,8,50,40
+SV003,ON-003,Humber River,43.78,-79.54,ON,2021,145,4,Lake Ontario,0,5,3,4,0,0,8,0,60,50
+SV004,ON-004,Speed River,43.53,-80.24,ON,2023,160,4,Lake Erie,200,25,15,20,12,8,35,18,10,5
+SV005,QC-001,Rivière des Prairies,45.55,-73.65,QC,2022,155,5,St Lawrence,250,20,12,15,6,4,25,12,45,35
+SV006,ON-005,Grand River,43.37,-80.31,ON,2022,148,6,Lake Erie,400,15,8,12,4,2,20,5,100,80

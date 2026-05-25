@@ -175,7 +175,6 @@ def ensure_schema(db: Database) -> None:
             ["station_id", "reading_datetime"], unique=True, if_not_exists=True
         )
 
-
     if "stocking_records" not in db.table_names():
         db["stocking_records"].create(
             {
@@ -198,7 +197,6 @@ def ensure_schema(db: Database) -> None:
             },
             pk="record_id",
         )
-
 
     if "species_ranges" not in db.table_names():
         db["species_ranges"].create(
@@ -235,7 +233,7 @@ def ensure_schema(db: Database) -> None:
                 "num_comments": int,
                 "parent_post_id": str,
                 "created_utc": str,
-                "extracted_species": str,   # JSON array
+                "extracted_species": str,  # JSON array
                 "extracted_locations": str,  # JSON array
                 "jurisdiction": str,
                 "ingested_at": str,
@@ -253,7 +251,7 @@ def ensure_schema(db: Database) -> None:
                 "ogf_id": int,
                 "watercourse_type": str,
                 "name": str,
-                "flow_verified": int,   # 0 or 1
+                "flow_verified": int,  # 0 or 1
                 "permanency": str,
                 "flow_classification": str,
                 "length_m": float,
@@ -315,16 +313,10 @@ def ensure_schema(db: Database) -> None:
             },
             pk="record_id",
         )
-        db["water_quality_readings"].create_index(
-            ["station_id"], if_not_exists=True
-        )
-        db["water_quality_readings"].create_index(
-            ["sampled_at"], if_not_exists=True
-        )
+        db["water_quality_readings"].create_index(["station_id"], if_not_exists=True)
+        db["water_quality_readings"].create_index(["sampled_at"], if_not_exists=True)
 
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-    db.execute(
-        "DELETE FROM stream_gauge_readings WHERE reading_datetime < ?", [cutoff]
-    )
+    db.execute("DELETE FROM stream_gauge_readings WHERE reading_datetime < ?", [cutoff])

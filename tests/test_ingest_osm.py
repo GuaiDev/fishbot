@@ -22,14 +22,18 @@ def _make_mock_response(data: dict) -> MagicMock:
 
 # ── water features ────────────────────────────────────────────────────────────
 
+
 def test_fetch_water_features_returns_all_three(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_water.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         features = osm.fetch_water_features(43.65, -79.38)
 
     assert len(features) == 3
@@ -37,12 +41,15 @@ def test_fetch_water_features_returns_all_three(tmp_path):
 
 def test_named_lake_parsed_correctly(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_water.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         features = osm.fetch_water_features(43.65, -79.38)
 
     lake = next(f for f in features if f.name == "Heart Lake")
@@ -54,12 +61,15 @@ def test_named_lake_parsed_correctly(tmp_path):
 
 def test_river_centroid_from_way_geometry(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_water.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         features = osm.fetch_water_features(43.65, -79.38)
 
     river = next(f for f in features if f.name == "Humber River")
@@ -72,12 +82,15 @@ def test_river_centroid_from_way_geometry(tmp_path):
 
 def test_unnamed_pond_included_with_no_name(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_water.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         features = osm.fetch_water_features(43.65, -79.38)
 
     pond = next(f for f in features if f.feature_type == "pond")
@@ -87,12 +100,15 @@ def test_unnamed_pond_included_with_no_name(tmp_path):
 
 def test_area_m2_computed_for_closed_polygon(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_water.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         features = osm.fetch_water_features(43.65, -79.38)
 
     pond = next(f for f in features if f.feature_type == "pond")
@@ -102,12 +118,15 @@ def test_area_m2_computed_for_closed_polygon(tmp_path):
 
 def test_area_m2_none_for_river_line(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_water.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         features = osm.fetch_water_features(43.65, -79.38)
 
     river = next(f for f in features if f.name == "Humber River")
@@ -116,12 +135,15 @@ def test_area_m2_none_for_river_line(tmp_path):
 
 def test_area_m2_none_for_node(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_water.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         features = osm.fetch_water_features(43.65, -79.38)
 
     lake = next(f for f in features if f.name == "Heart Lake")
@@ -130,12 +152,15 @@ def test_area_m2_none_for_node(tmp_path):
 
 def test_osm_id_format(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_water.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         features = osm.fetch_water_features(43.65, -79.38)
 
     ids = {f.osm_id for f in features}
@@ -146,11 +171,14 @@ def test_osm_id_format(tmp_path):
 
 def test_empty_response_returns_empty_list(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
 
-    with patch("httpx.post", return_value=_make_mock_response({"elements": []})), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response({"elements": []})),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         features = osm.fetch_water_features(43.65, -79.38)
 
     assert features == []
@@ -158,14 +186,18 @@ def test_empty_response_returns_empty_list(tmp_path):
 
 # ── access points ─────────────────────────────────────────────────────────────
 
+
 def test_fetch_access_points_returns_all_three(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_access.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         points = osm.fetch_access_points(43.65, -79.38)
 
     assert len(points) == 3
@@ -173,12 +205,15 @@ def test_fetch_access_points_returns_all_three(tmp_path):
 
 def test_boat_ramp_mapped_to_boat_launch(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_access.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         points = osm.fetch_access_points(43.65, -79.38)
 
     ramp = next(p for p in points if p.access_type == "boat_launch")
@@ -188,12 +223,15 @@ def test_boat_ramp_mapped_to_boat_launch(tmp_path):
 
 def test_fishing_spot_mapped_correctly(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_access.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         points = osm.fetch_access_points(43.65, -79.38)
 
     fishing = next(p for p in points if p.access_type == "fishing_spot")
@@ -203,12 +241,15 @@ def test_fishing_spot_mapped_correctly(tmp_path):
 
 def test_park_centroid_from_way_geometry(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_access.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         points = osm.fetch_access_points(43.65, -79.38)
 
     park = next(p for p in points if p.access_type == "park")
@@ -221,14 +262,18 @@ def test_park_centroid_from_way_geometry(tmp_path):
 
 # ── caching ───────────────────────────────────────────────────────────────────
 
+
 def test_cache_hit_skips_http(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_water.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)) as mock_post, \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)) as mock_post,
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         osm.fetch_water_features(43.65, -79.38)
         osm.fetch_water_features(43.65, -79.38)  # second call → cache hit
 
@@ -237,12 +282,15 @@ def test_cache_hit_skips_http(tmp_path):
 
 def test_cache_miss_writes_file(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_water.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)), \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)),
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         osm.fetch_water_features(43.65, -79.38)
 
     cache_files = list(tmp_path.glob("*.json"))
@@ -251,12 +299,15 @@ def test_cache_miss_writes_file(tmp_path):
 
 def test_access_cache_hit_skips_http(tmp_path):
     import importlib
+
     osm = importlib.import_module("src.ingest.global.osm")
     fixture = _load_fixture("osm_access.json")
 
-    with patch("httpx.post", return_value=_make_mock_response(fixture)) as mock_post, \
-         patch("time.sleep"), \
-         patch.object(osm, "_CACHE_DIR", tmp_path):
+    with (
+        patch("httpx.post", return_value=_make_mock_response(fixture)) as mock_post,
+        patch("time.sleep"),
+        patch.object(osm, "_CACHE_DIR", tmp_path),
+    ):
         osm.fetch_access_points(43.65, -79.38)
         osm.fetch_access_points(43.65, -79.38)
 

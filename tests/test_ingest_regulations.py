@@ -1,6 +1,5 @@
 """Tests for MNRF regulations ingest — no live downloads, no real PDF."""
 
-
 import httpx
 
 from src.ingest.jurisdictions.ca_on import regulations as reg_mod
@@ -72,13 +71,16 @@ def test_split_fmz_header_variant():
 
 def test_split_largest_chunk_wins_on_duplicate_zone_header():
     """If the same zone header appears twice, the larger chunk is kept."""
-    text = "ZONE 1\nshort.\nZONE 2\nfull content for zone 2 with lots of text.\nZONE 1\neven shorter."  # noqa: E501
+    text = (
+        "ZONE 1\nshort.\nZONE 2\nfull content for zone 2 with lots of text.\nZONE 1\neven shorter."  # noqa: E501
+    )
     chunks = _split_by_zone(text)
     zone1_chunks = [c for c in chunks if c.zone == 1]
     assert len(zone1_chunks) == 1
 
 
 # --- download freshness test ---
+
 
 def test_download_skips_if_fresh(tmp_path, monkeypatch):
     fresh_pdf = tmp_path / "mnrf_regulations_2026.pdf"

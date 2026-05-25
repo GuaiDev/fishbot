@@ -94,6 +94,7 @@ def test_record_unverified_blocked(tmp_path, monkeypatch):
 
     # Confirm nothing was written
     from src.storage.insights import query_insights
+
     assert query_insights(db, species="brook trout") == []
 
 
@@ -109,8 +110,7 @@ def test_record_valid_insight(tmp_path, monkeypatch):
             condition_type="behavioral",
             condition_context="post-cold-front",
             conclusion=(
-                "Brook trout feed aggressively 30-60 min after a cold front "
-                "in streams under 15C."
+                "Brook trout feed aggressively 30-60 min after a cold front in streams under 15C."
             ),
             confidence="medium",
             source_type="trip_log",
@@ -125,6 +125,7 @@ def test_record_valid_insight(tmp_path, monkeypatch):
 
     # Confirm it was written
     from src.storage.insights import query_insights
+
     stored = query_insights(db, species="brook trout")
     assert len(stored) == 1
     assert stored[0].jurisdiction == "CA-ON"

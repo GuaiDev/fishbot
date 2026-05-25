@@ -38,18 +38,20 @@ def test_valid_full_record():
 
 
 def test_optional_fields_none():
-    r = StockingRecord(**_valid_data(
-        waterbody_code=None,
-        municipality=None,
-        county=None,
-        lat=None,
-        lng=None,
-        species_code=None,
-        month=None,
-        quantity=None,
-        life_stage=None,
-        stocking_purpose=None,
-    ))
+    r = StockingRecord(
+        **_valid_data(
+            waterbody_code=None,
+            municipality=None,
+            county=None,
+            lat=None,
+            lng=None,
+            species_code=None,
+            month=None,
+            quantity=None,
+            life_stage=None,
+            stocking_purpose=None,
+        )
+    )
     assert r.waterbody_code is None
     assert r.lat is None
     assert r.lng is None

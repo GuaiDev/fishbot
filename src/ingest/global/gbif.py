@@ -37,19 +37,19 @@ _USER_AGENT = "fishbot/1.0 (personal fishing exploration bot; https://github.com
 # 0 occurrences because the backbone places all fish orders as direct children of Chordata
 # with no classKey set. Querying by orderKey is the only reliable way to get fish records.
 _FISH_ORDER_KEYS = [
-    587,   # Perciformes — perch, darters, bass, sunfish, walleye
+    587,  # Perciformes — perch, darters, bass, sunfish, walleye
     1313,  # Salmoniformes — trout, salmon, whitefish
     1153,  # Cypriniformes — minnows, chubs, dace, shiners, carp
-    548,   # Esociformes — pike, pickerel, mudminnow
-    708,   # Siluriformes — catfish, madtoms
-    549,   # Gadiformes — burbot
+    548,  # Esociformes — pike, pickerel, mudminnow
+    708,  # Siluriformes — catfish, madtoms
+    549,  # Gadiformes — burbot
     1103,  # Acipenseriformes — sturgeon
-    771,   # Petromyzontiformes — lampreys
+    771,  # Petromyzontiformes — lampreys
     1167,  # Lepisosteiformes — gars
-    494,   # Amiiformes — bowfin
-    538,   # Clupeiformes — shad, herring, alewife
+    494,  # Amiiformes — bowfin
+    538,  # Clupeiformes — shad, herring, alewife
     1068,  # Osmeriformes — smelt
-    550,   # Gasterosteiformes — sticklebacks
+    550,  # Gasterosteiformes — sticklebacks
 ]
 
 # Exclude HUMAN_OBSERVATION — those records are ~99% iNaturalist mirrors already ingested separately

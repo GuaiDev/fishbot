@@ -6,16 +6,16 @@ from pydantic import BaseModel, field_validator
 
 
 class WaterQualityReading(BaseModel):
-    record_id: str                      # str(Field_ID) from PWQMN field data
-    station_id: str                     # Collection_Site (10-digit PWQMN code)
+    record_id: str  # str(Field_ID) from PWQMN field data
+    station_id: str  # Collection_Site (10-digit PWQMN code)
     station_name: str | None = None
     lat: float | None = None
     lng: float | None = None
     jurisdiction: str = "CA-ON"
     sampled_at: date
-    do_mgl: float | None = None         # Dissolved_Oxygen_mgl
-    ph: float | None = None             # Field_PH
-    temp_c: float | None = None         # Water_Temperature_C
+    do_mgl: float | None = None  # Dissolved_Oxygen_mgl
+    ph: float | None = None  # Field_PH
+    temp_c: float | None = None  # Water_Temperature_C
     conductivity_us_cm: float | None = None  # Specific_Conductance_uS_cm_1
     turbidity_fnu: float | None = None  # Turb_FNU
 

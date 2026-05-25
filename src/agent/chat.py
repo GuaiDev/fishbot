@@ -307,6 +307,14 @@ def _execute_tool(name: str, inputs: dict) -> str:
             date_from=inputs.get("date_from"),
             date_to=inputs.get("date_to"),
         )
+    if name == "get_benthic_habitat":
+        from src.services.benthic import get_benthic_habitat_for_agent
+
+        return get_benthic_habitat_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 50),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -650,8 +658,16 @@ def _tools(profile: Any) -> list[dict]:
                     "feature_type": {
                         "type": "string",
                         "enum": [
-                            "lake", "river", "stream", "pond", "reservoir",
-                            "wetland", "canal", "ditch", "drain", "bay",
+                            "lake",
+                            "river",
+                            "stream",
+                            "pond",
+                            "reservoir",
+                            "wetland",
+                            "canal",
+                            "ditch",
+                            "drain",
+                            "bay",
                         ],
                         "description": "Optional: restrict to a specific water body type.",
                     },
@@ -697,8 +713,13 @@ def _tools(profile: Any) -> list[dict]:
                     "access_type": {
                         "type": "string",
                         "enum": [
-                            "boat_launch", "parking", "trail_head", "fishing_spot",
-                            "public_land", "conservation_area", "park",
+                            "boat_launch",
+                            "parking",
+                            "trail_head",
+                            "fishing_spot",
+                            "public_land",
+                            "conservation_area",
+                            "park",
                         ],
                         "description": "Optional: restrict to a specific access type.",
                     },
@@ -786,8 +807,7 @@ def _tools(profile: Any) -> list[dict]:
                     "water_temp_c": {
                         "type": "number",
                         "description": (
-                            "Observed water temperature in Celsius "
-                            "(overrides auto-fetched value)."
+                            "Observed water temperature in Celsius (overrides auto-fetched value)."
                         ),
                     },
                     "time_of_day": {
@@ -898,9 +918,7 @@ def _tools(profile: Any) -> list[dict]:
                     },
                     "jurisdiction": {
                         "type": "string",
-                        "description": (
-                            "Optional: filter by jurisdiction code, e.g. 'CA-ON'."
-                        ),
+                        "description": ("Optional: filter by jurisdiction code, e.g. 'CA-ON'."),
                     },
                     "limit": {
                         "type": "integer",
@@ -1072,6 +1090,44 @@ def _tools(profile: Any) -> list[dict]:
                         "description": (
                             "Optional end date (ISO format YYYY-MM-DD) to filter readings."
                         ),
+                    },
+                },
+                "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "get_benthic_habitat",
+            "description": (
+                "Query CABIN (Canadian Aquatic Biomonitoring Network) benthic macroinvertebrate "
+                "data for streams near a location. "
+                "Returns EPT (Ephemeroptera, Plecoptera, Trichoptera) proportion and richness "
+                "per site, with a habitat_assessment interpreting what the benthic community "
+                "implies for fish species plausibility. "
+                "EPT taxa are clean-water indicators: high EPT proportion = good substrate and "
+                "oxygen; low EPT = degraded or impaired habitat. "
+                "Use this tool when the user asks about stream health, substrate quality, "
+                "whether a stream could support sensitive species (darters, brook trout, "
+                "redhorse, lampreys), or what the benthic community tells us about a stream. "
+                "IMPORTANT: High EPT proportion means the habitat is suitable — it does NOT "
+                "confirm the species is present. Always combine with iNaturalist/GBIF data. "
+                "Requires CABIN data (run `make ingest` to populate). "
+                "Coverage: Ontario streams with historical CABIN sampling (strongest in "
+                "southern Ontario watersheds)."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": "Search radius in kilometres. Default 50.",
                     },
                 },
                 "required": ["lat", "lng"],

@@ -170,7 +170,9 @@ def profile() -> None:
 @app.command()
 def ingest(
     radius_km: float = typer.Option(50.0, "--radius", help="Search radius in km"),
-    days_back: int = typer.Option(90, "--days", help="How many days of iNaturalist history to pull"),  # noqa: E501
+    days_back: int = typer.Option(
+        90, "--days", help="How many days of iNaturalist history to pull"
+    ),  # noqa: E501
 ) -> None:
     """Pull fish observations from iNaturalist and GBIF near your home location."""
     from src.services.gbif import fetch_and_store as gbif_fetch_and_store
@@ -205,21 +207,23 @@ def ingest(
     wsc_count = wsc_fetch_and_store(loc.lat, loc.lng, radius_km=radius_km)
 
     console.print(
-        f"[dim]Fetching OSM water features (50km) and access points (25km) "
-        f"near {loc.name}…[/dim]"
+        f"[dim]Fetching OSM water features (50km) and access points (25km) near {loc.name}…[/dim]"
     )
     osm_water_count, osm_access_count = osm_fetch_and_store(loc.lat, loc.lng)
 
     console.print("[dim]Downloading MNRF fish stocking records (30-day cache)…[/dim]")
     from src.services.stocking import ingest_stocking_data
+
     stocking_count = ingest_stocking_data()
 
     console.print("[dim]Loading Ontario species range database…[/dim]")
     from src.services.species_ranges import load_and_store as species_load_and_store
+
     species_count = species_load_and_store()
 
     console.print("[dim]Fetching Reddit fishing community posts (r/OntarioFishing + others)…[/dim]")
     from src.services.reddit import fetch_and_store as reddit_fetch_and_store
+
     reddit_count = reddit_fetch_and_store()
 
     console.print(
@@ -227,15 +231,25 @@ def ingest(
         f"({radius_km:.0f}km bbox)…[/dim]"
     )
     from src.services.hydrology import ingest_hydro_network
+
     ohn_seg_count, ohn_barrier_count = ingest_hydro_network(loc.lat, loc.lng, radius_km)
 
-    console.print("[dim]Downloading and parsing MNRF Fishing Regulations Summary (annual PDF)…[/dim]")  # noqa: E501
+    console.print(
+        "[dim]Downloading and parsing MNRF Fishing Regulations Summary (annual PDF)…[/dim]"
+    )  # noqa: E501
     from src.services.regulations import ingest_regulations
+
     reg_count = ingest_regulations()
 
     console.print("[dim]Downloading PWQMN water quality field data (2021–present)…[/dim]")
     from src.services.water_quality import ingest_water_quality_data
+
     wq_count = ingest_water_quality_data()
+
+    console.print("[dim]Downloading CABIN benthic macroinvertebrate data (Ontario)…[/dim]")
+    from src.services.benthic import ingest_benthic_data
+
+    benthic_count = ingest_benthic_data()
 
     console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
@@ -246,7 +260,8 @@ def ingest(
         f"| Reddit: {reddit_count} posts indexed "
         f"| OHN: {ohn_seg_count} stream segments, {ohn_barrier_count} barriers "
         f"| Regulations: {reg_count} FMZ zones "
-        f"| Water quality: {wq_count} readings[/green]"
+        f"| Water quality: {wq_count} readings "
+        f"| Benthic samples: {benthic_count}[/green]"
     )
 
 

@@ -15,30 +15,30 @@ from src.storage.regulations import (
 # Ordered most-specific first. Overlap is intentional — first match wins.
 # These are approximations; zone boundaries are irregular polygons.
 _FMZ_BOXES: list[tuple[int, float, float, float, float]] = [
-    (4,  43.9, 46.0, -82.0, -81.0),   # Bruce Peninsula / Manitoulin
-    (1,  41.6, 42.9, -83.5, -78.8),   # Lake Erie north shore
-    (2,  42.0, 43.8, -83.0, -81.0),   # Lake St. Clair / Huron south
-    (3,  43.5, 45.0, -82.0, -80.5),   # Georgian Bay south / Huron
-    (5,  43.0, 45.3, -80.5, -79.0),   # Simcoe / Muskoka south / GTA lake shore
-    (6,  44.2, 45.2, -79.0, -77.0),   # Kawartha / Trent
-    (9,  44.5, 45.5, -76.5, -75.5),   # Rideau Lakes
-    (8,  44.0, 45.2, -77.0, -75.8),   # Frontenac / Kingston
-    (7,  44.0, 45.5, -77.5, -74.5),   # Eastern Ontario / St. Lawrence
-    (11, 44.7, 46.5, -79.0, -77.0),   # Haliburton / Bancroft
-    (10, 45.0, 47.5, -78.5, -74.5),   # Ottawa River / Renfrew
-    (13, 44.8, 46.5, -81.0, -79.5),   # Parry Sound / Muskoka north
-    (12, 45.0, 47.0, -80.5, -78.5),   # Algonquin / Nipissing
-    (14, 45.5, 47.5, -82.0, -79.0),   # Sudbury / North Bay
-    (15, 46.0, 47.5, -84.5, -83.0),   # Sault Ste. Marie
-    (16, 47.5, 49.5, -86.5, -83.0),   # Thunder Bay east / White River
-    (19, 49.0, 50.5, -95.2, -92.0),   # Kenora / Lake of the Woods
-    (17, 47.5, 50.0, -92.0, -86.5),   # Thunder Bay north / Atikokan
-    (18, 49.0, 51.5, -95.2, -88.0),   # Sioux Lookout / Red Lake
-    (20, 50.0, 56.9, -88.0, -77.0),   # Far north / James Bay
+    (4, 43.9, 46.0, -82.0, -81.0),  # Bruce Peninsula / Manitoulin
+    (1, 41.6, 42.9, -83.5, -78.8),  # Lake Erie north shore
+    (2, 42.0, 43.8, -83.0, -81.0),  # Lake St. Clair / Huron south
+    (3, 43.5, 45.0, -82.0, -80.5),  # Georgian Bay south / Huron
+    (5, 43.0, 45.3, -80.5, -79.0),  # Simcoe / Muskoka south / GTA lake shore
+    (6, 44.2, 45.2, -79.0, -77.0),  # Kawartha / Trent
+    (9, 44.5, 45.5, -76.5, -75.5),  # Rideau Lakes
+    (8, 44.0, 45.2, -77.0, -75.8),  # Frontenac / Kingston
+    (7, 44.0, 45.5, -77.5, -74.5),  # Eastern Ontario / St. Lawrence
+    (11, 44.7, 46.5, -79.0, -77.0),  # Haliburton / Bancroft
+    (10, 45.0, 47.5, -78.5, -74.5),  # Ottawa River / Renfrew
+    (13, 44.8, 46.5, -81.0, -79.5),  # Parry Sound / Muskoka north
+    (12, 45.0, 47.0, -80.5, -78.5),  # Algonquin / Nipissing
+    (14, 45.5, 47.5, -82.0, -79.0),  # Sudbury / North Bay
+    (15, 46.0, 47.5, -84.5, -83.0),  # Sault Ste. Marie
+    (16, 47.5, 49.5, -86.5, -83.0),  # Thunder Bay east / White River
+    (19, 49.0, 50.5, -95.2, -92.0),  # Kenora / Lake of the Woods
+    (17, 47.5, 50.0, -92.0, -86.5),  # Thunder Bay north / Atikokan
+    (18, 49.0, 51.5, -95.2, -88.0),  # Sioux Lookout / Red Lake
+    (20, 50.0, 56.9, -88.0, -77.0),  # Far north / James Bay
 ]
 
 _MAX_SPECIES_CONTEXT = 3000  # chars returned when species filter applied
-_MAX_OVERVIEW = 2000         # chars returned for zone overview (no species filter)
+_MAX_OVERVIEW = 2000  # chars returned for zone overview (no species filter)
 
 
 def ingest_regulations() -> int:
