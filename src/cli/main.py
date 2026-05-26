@@ -271,6 +271,21 @@ def ingest(
 
     seed_dispersal_insights()
 
+    from src.storage.database import get_db as _get_db
+    from src.storage.stream_temperature import is_data_loaded as _temp_loaded
+
+    _db = _get_db()
+    if _temp_loaded(_db):
+        temp_count = _db.execute(
+            "SELECT COUNT(*) FROM stream_temperature_summaries"
+        ).fetchone()[0]
+        temp_line = f"| Stream temp: {temp_count} stations "
+    else:
+        console.print(
+            "[dim]Stream temperature: not loaded — run make ingest-hydat once to enable[/dim]"
+        )
+        temp_line = ""
+
     console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
         f"| WSC gauges: {wsc_count} stations updated "
@@ -283,8 +298,46 @@ def ingest(
         f"| Water quality: {wq_count} readings "
         f"| Benthic samples: {benthic_count} "
         f"| Geology units: {geology_count} "
-        f"| eBird: {ebird_count} piscivore observations[/green]"
+        f"| eBird: {ebird_count} piscivore observations "
+        f"{temp_line}[/green]"
     )
+
+
+@app.command(name="ingest-hydat")
+def ingest_hydat(
+    radius_km: float = typer.Option(
+        100.0, "--radius", help="Extraction radius in km around home location"
+    ),
+) -> None:
+    """One-time: download HYDAT, extract Ontario stream temperature data, store in app DB."""
+    import importlib
+
+    profile = load_profile()
+    if not profile.home_location:
+        console.print(
+            "[red]Home location not set. Run `fishbot profile` and enter your coordinates.[/red]"
+        )
+        raise typer.Exit(1)
+
+    loc = profile.home_location
+    console.print(
+        f"[dim]Downloading HYDAT (~270MB) and extracting Ontario temperature stations "
+        f"within {radius_km:.0f}km of {loc.name}…[/dim]"
+    )
+    console.print("[dim]This may take a few minutes on first run.[/dim]")
+
+    _hydat = importlib.import_module("src.ingest.global.hydat_temperature")
+    count = _hydat.download_and_extract(loc.lat, loc.lng, radius_km=radius_km)
+
+    if count == 0:
+        console.print(
+            "[yellow]No Ontario temperature stations found in HYDAT for this radius. "
+            "Try a larger --radius.[/yellow]"
+        )
+    else:
+        console.print(
+            f"[green]Stream temperature: {count} Ontario stations extracted and stored.[/green]"
+        )
 
 
 def _print_profile(p: UserProfile) -> None:

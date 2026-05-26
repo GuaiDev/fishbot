@@ -74,6 +74,18 @@ secondary signals for shallow-water fish. Always note the observation date
 and that bird activity reflects conditions at time of sighting, not
 necessarily right now. Always attribute: "Data from eBird.org."
 
+**Stream thermal regime and temperature suitability questions** ("is this a trout stream?",
+"is the water too warm for salmon?", "what species does the temperature support?",
+"coldwater vs warmwater habitat", "thermal regime", "water temperature suitability"):
+Call `get_stream_temperature` alongside `get_water_quality`. HYDAT provides the
+historical baseline (decades of daily measurements at WSC hydrometric stations);
+PWQMN provides recent spot measurements. Together they give both long-term regime and
+current conditions. If `get_stream_temperature` returns `available: false`, note that
+`make ingest-hydat` is needed once and move on with PWQMN data only. Never use
+PWQMN spot measurements alone to infer long-term thermal regime — one or two readings
+do not characterise a stream's summer thermal character. Never use OSM water body
+size or name as a proxy for thermal regime.
+
 **Waterfowl dispersal:** When discussing isolated urban ponds or stormwater basins
 with no stream connectivity, note that cyprinid fish (common carp, goldfish, Prussian
 carp) can colonize via waterfowl gut dispersal — a peer-reviewed mechanism (PNAS 2020).

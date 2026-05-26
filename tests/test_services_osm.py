@@ -3,7 +3,6 @@
 import json
 from datetime import date
 
-import pytest
 import sqlite_utils
 
 from src.models.water_feature import WaterFeature

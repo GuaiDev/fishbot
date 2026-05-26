@@ -338,6 +338,41 @@ def ensure_schema(db: Database) -> None:
         db["bird_observations"].create_index(["species_code"], if_not_exists=True)
         db["bird_observations"].create_index(["observed_on"], if_not_exists=True)
 
+    if "stream_temperature_readings" not in db.table_names():
+        db["stream_temperature_readings"].create(
+            {
+                "station_id": str,
+                "station_name": str,
+                "lat": float,
+                "lng": float,
+                "jurisdiction": str,
+                "year": int,
+                "month": int,
+                "mean_temp_c": float,
+                "max_temp_c": float,
+                "min_temp_c": float,
+                "days_measured": int,
+            },
+            pk=["station_id", "year", "month"],
+        )
+
+    if "stream_temperature_summaries" not in db.table_names():
+        db["stream_temperature_summaries"].create(
+            {
+                "station_id": str,
+                "station_name": str,
+                "lat": float,
+                "lng": float,
+                "jurisdiction": str,
+                "summer_mean_c": float,
+                "summer_max_c": float,
+                "thermal_regime": str,
+                "years_of_data": int,
+                "species_notes": str,
+            },
+            pk="station_id",
+        )
+
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()

@@ -332,6 +332,14 @@ def _execute_tool(name: str, inputs: dict) -> str:
             radius_km=inputs.get("radius_km", 50),
             days_back=inputs.get("days_back", 30),
         )
+    if name == "get_stream_temperature":
+        from src.services.stream_temperature import get_stream_temperature_for_agent
+
+        return get_stream_temperature_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 50),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -1231,6 +1239,40 @@ def _tools(profile: Any) -> list[dict]:
                     "days_back": {
                         "type": "integer",
                         "description": "Days of history to include. Default 30, max 30.",
+                    },
+                },
+                "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "get_stream_temperature",
+            "description": (
+                "Returns historical thermal regime from HYDAT daily temperature records — "
+                "whether streams in this area are coldwater, coolwater, or warmwater, "
+                "and what species that implies. "
+                "Coldwater (<18°C summer mean) supports brook trout, lake trout, and salmonids. "
+                "Coolwater (18–23°C) supports walleye, pike, bass; marginal for salmonids. "
+                "Warmwater (>23°C) supports bass, catfish, carp, sunfish; too warm for salmonids. "
+                "Data comes from decades of WSC/ECCC hydrometric station monitoring — "
+                "a historical baseline, not a real-time reading. "
+                "Use alongside get_water_quality: HYDAT provides the long-term thermal regime; "
+                "PWQMN provides recent spot temperature measurements. "
+                "If not loaded, returns a setup message (requires one-time make ingest-hydat)."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": "Search radius in kilometres. Default 50.",
                     },
                 },
                 "required": ["lat", "lng"],

@@ -1,4 +1,4 @@
-.PHONY: run test lint format ingest recent
+.PHONY: run test lint format ingest ingest-hydat recent
 
 run:
 	uv run python -m src.cli.main run
@@ -14,6 +14,9 @@ format:
 
 ingest:
 	uv run python -m src.cli.main ingest
+
+ingest-hydat:
+	uv run python -m src.cli.main ingest-hydat
 
 recent:
 	uv run python -m src.cli.main recent
