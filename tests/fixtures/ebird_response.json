@@ -1,0 +1,47 @@
+[
+  {
+    "speciesCode": "grbher3",
+    "comName": "Great Blue Heron",
+    "sciName": "Ardea herodias",
+    "locId": "L2372551",
+    "locName": "Toronto Harbour",
+    "obsDt": "2026-05-24 08:30",
+    "howMany": 2,
+    "lat": 43.643,
+    "lng": -79.381,
+    "obsValid": true,
+    "obsReviewed": false,
+    "locationPrivate": false,
+    "subId": "S234567890"
+  },
+  {
+    "speciesCode": "grbher3",
+    "comName": "Great Blue Heron",
+    "sciName": "Ardea herodias",
+    "locId": "L1234567",
+    "locName": "Humber River at Old Mill",
+    "obsDt": "2026-05-23 16:15",
+    "howMany": 1,
+    "lat": 43.648,
+    "lng": -79.484,
+    "obsValid": true,
+    "obsReviewed": true,
+    "locationPrivate": false,
+    "subId": "S234567891"
+  },
+  {
+    "speciesCode": "grbher3",
+    "comName": "Great Blue Heron",
+    "sciName": "Ardea herodias",
+    "locId": "L9999999",
+    "locName": "Personal Location",
+    "obsDt": "2026-05-22",
+    "howMany": null,
+    "lat": 43.701,
+    "lng": -79.421,
+    "obsValid": true,
+    "obsReviewed": false,
+    "locationPrivate": true,
+    "subId": "S234567892"
+  }
+]

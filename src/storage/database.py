@@ -317,6 +317,28 @@ def ensure_schema(db: Database) -> None:
         db["water_quality_readings"].create_index(["sampled_at"], if_not_exists=True)
 
 
+    if "bird_observations" not in db.table_names():
+        db["bird_observations"].create(
+            {
+                "obs_id": str,
+                "species_code": str,
+                "common_name": str,
+                "scientific_name": str,
+                "lat": float,
+                "lng": float,
+                "observed_on": str,
+                "how_many": int,
+                "location_name": str,
+                "jurisdiction": str,
+                "piscivore_significance": str,
+                "fetched_at": str,
+            },
+            pk="obs_id",
+        )
+        db["bird_observations"].create_index(["species_code"], if_not_exists=True)
+        db["bird_observations"].create_index(["observed_on"], if_not_exists=True)
+
+
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
     db.execute("DELETE FROM stream_gauge_readings WHERE reading_datetime < ?", [cutoff])

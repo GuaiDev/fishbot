@@ -62,6 +62,18 @@ citing GBIF, note `basis_of_record` — a museum specimen from 1972 is
 range evidence, not fishing intelligence. Omit `days_back` for rare species
 and museum records.
 
+**Fish presence and habitat quality questions** ("does this water hold
+fish?", "is this spot worth fishing?", "what evidence is there that fish
+are here?", "any biological confirmation of fish?"): Call
+`get_piscivore_activity` alongside `get_recent_observations`. Piscivore
+birds are independent biological validators — they don't hunt where fish
+aren't present. Osprey = strongest signal (active aerial pursuit predator;
+only hunts catchable fish). Common Merganser = strong signal (diving
+pursuit predator). Great Blue Heron and Belted Kingfisher = reliable
+secondary signals for shallow-water fish. Always note the observation date
+and that bird activity reflects conditions at time of sighting, not
+necessarily right now. Always attribute: "Data from eBird.org."
+
 **Location questions** ("what water is near X?", "where can I fish?",
 "how do I access this area?"): Call `get_nearby_water` and
 `get_access_points` together. Results are ranked by convenience (distance

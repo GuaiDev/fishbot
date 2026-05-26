@@ -323,6 +323,15 @@ def _execute_tool(name: str, inputs: dict) -> str:
             lng=inputs["lng"],
             radius_km=inputs.get("radius_km", 10),
         )
+    if name == "get_piscivore_activity":
+        from src.services.ebird import get_piscivore_activity_for_agent
+
+        return get_piscivore_activity_for_agent(
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 50),
+            days_back=inputs.get("days_back", 30),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -1178,6 +1187,50 @@ def _tools(profile: Any) -> list[dict]:
                             "Radius in km for nearby units summary. Default 10. "
                             "Keep small (5–20) — geology units are dense within a tile."
                         ),
+                    },
+                },
+                "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "get_piscivore_activity",
+            "description": (
+                "Returns recent eBird observations of fish-eating birds "
+                "(osprey, great blue heron, belted kingfisher, common merganser, "
+                "double-crested cormorant) near a location. "
+                "These birds are independent biological indicators of fish presence — "
+                "they don't hunt where fish aren't there. "
+                "Osprey and Common Merganser are the strongest signals: "
+                "both are active pursuit predators that only hunt where fish are "
+                "abundant and catchable. Heron and kingfisher are strong secondary "
+                "signals for shallow-water fish. Cormorant indicates productive habitat "
+                "but also targets invertebrates. "
+                "Proactive use: when the user asks about fish presence, whether a water "
+                "body holds fish, or wants biological confirmation of habitat quality — "
+                "call this alongside get_recent_observations and get_gbif_observations "
+                "to cross-validate from an independent data source. "
+                "Always cite eBird.org as the source and note the observation date. "
+                "Requires eBird data (run `make ingest` to populate). "
+                "Data from eBird.org (Cornell Lab of Ornithology)."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": "Search radius in kilometres. Default 50, max 50.",
+                    },
+                    "days_back": {
+                        "type": "integer",
+                        "description": "Days of history to include. Default 30, max 30.",
                     },
                 },
                 "required": ["lat", "lng"],

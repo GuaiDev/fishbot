@@ -260,6 +260,14 @@ def ingest(
     geology_count = ingest_geology_data(loc.lat, loc.lng, radius_km)
 
     console.print(
+        f"[dim]Fetching eBird piscivore observations within {radius_km:.0f}km "
+        f"of {loc.name}…[/dim]"
+    )
+    from src.services.ebird import fetch_and_store as ebird_fetch_and_store
+
+    ebird_count = ebird_fetch_and_store(loc.lat, loc.lng, radius_km)
+
+    console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
         f"| WSC gauges: {wsc_count} stations updated "
         f"| OSM: {osm_water_count} water features, {osm_access_count} access points "
@@ -270,7 +278,8 @@ def ingest(
         f"| Regulations: {reg_count} FMZ zones "
         f"| Water quality: {wq_count} readings "
         f"| Benthic samples: {benthic_count} "
-        f"| Geology units: {geology_count}[/green]"
+        f"| Geology units: {geology_count} "
+        f"| eBird: {ebird_count} piscivore observations[/green]"
     )
 
 
