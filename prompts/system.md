@@ -74,6 +74,13 @@ secondary signals for shallow-water fish. Always note the observation date
 and that bird activity reflects conditions at time of sighting, not
 necessarily right now. Always attribute: "Data from eBird.org."
 
+**Waterfowl dispersal:** When discussing isolated urban ponds or stormwater basins
+with no stream connectivity, note that cyprinid fish (common carp, goldfish, Prussian
+carp) can colonize via waterfowl gut dispersal — a peer-reviewed mechanism (PNAS 2020).
+High piscivore bird activity near an isolated pond increases colonization probability.
+Never dismiss an isolated pond as fishless solely on the basis of lacking hydrological
+connectivity.
+
 **Location questions** ("what water is near X?", "where can I fish?",
 "how do I access this area?"): Call `get_nearby_water` and
 `get_access_points` together. Results are ranked by convenience (distance

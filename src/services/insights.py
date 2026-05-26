@@ -1,10 +1,13 @@
 """Agent-facing service for behavioral insights."""
 
 import json
+from pathlib import Path
 
 from src.models.behavioral_insight import BehavioralInsight
 from src.storage.database import get_db
 from src.storage.insights import insert_insight, query_insights
+
+_DISPERSAL_SEED_PATH = Path("data/processed/dispersal_insights.json")
 
 
 def get_behavioral_insights_for_agent(
@@ -44,6 +47,30 @@ def get_behavioral_insights_for_agent(
             ],
         }
     )
+
+
+def seed_dispersal_insights() -> int:
+    """Load waterfowl-dispersal behavioral insights from seed file; skip duplicates.
+
+    Returns the number of newly inserted records (0 if already seeded).
+    """
+    if not _DISPERSAL_SEED_PATH.exists():
+        return 0
+    raw = json.loads(_DISPERSAL_SEED_PATH.read_text(encoding="utf-8"))
+    db = get_db()
+    count = 0
+    for entry in raw:
+        existing = list(
+            db["behavioral_insights"].rows_where(
+                "LOWER(species) = ? AND condition_context = ? AND is_current = 1",
+                [entry["species"].lower(), entry["condition_context"]],
+            )
+        )
+        if not existing:
+            insight = BehavioralInsight(**entry)
+            insert_insight(db, insight)
+            count += 1
+    return count
 
 
 def record_behavioral_insight_for_agent(

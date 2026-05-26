@@ -8,6 +8,7 @@ import importlib
 import json
 import math
 import warnings
+from datetime import date, timedelta
 
 import httpx
 
@@ -19,6 +20,12 @@ _osm = importlib.import_module("src.ingest.global.osm")
 _NON_FISHABLE_TYPES = frozenset({"ditch", "drain"})
 _MIN_FISHABLE_AREA_M2 = 50.0
 _MAX_RESULTS = 15
+_ISOLATED_TYPES = frozenset({"pond", "reservoir"})
+_DISPERSAL_NOTE = (
+    "Isolated water body with recent waterfowl activity. Cyprinid colonization via "
+    "bird dispersal is scientifically plausible (PNAS 2020) — worth sampling even "
+    "without stream connectivity."
+)
 _DATA_STATUS = (
     "OSM shows what water exists and where. "
     "Current ranking is by convenience only (distance + size). "
@@ -48,8 +55,9 @@ def get_nearby_water_for_agent(
         and not (f.area_m2 is not None and f.area_m2 < _MIN_FISHABLE_AREA_M2)
     ]
 
+    db = get_db()
+
     if not_in_trip_log:
-        db = get_db()
         visited: set[str] = set()
         for row in db["trips"].rows_where("location_name IS NOT NULL"):
             name = row.get("location_name")
@@ -84,19 +92,25 @@ def get_nearby_water_for_agent(
         else:
             display_name = f"unnamed {f.feature_type}"
 
-        results.append(
-            {
-                "osm_id": f.osm_id,
-                "display_name": display_name,
-                "name": f.name,
-                "feature_type": f.feature_type,
-                "distance_km": round(dist, 2),
-                "jurisdiction": f.jurisdiction,
-                "area_m2": f.area_m2,
-                "_dist": dist,
-                "_area": f.area_m2 or 0.0,
-            }
-        )
+        entry: dict = {
+            "osm_id": f.osm_id,
+            "display_name": display_name,
+            "name": f.name,
+            "feature_type": f.feature_type,
+            "distance_km": round(dist, 2),
+            "jurisdiction": f.jurisdiction,
+            "area_m2": f.area_m2,
+            "_dist": dist,
+            "_area": f.area_m2 or 0.0,
+        }
+        if (
+            f.feature_type in _ISOLATED_TYPES
+            and not _has_nearby_stream(db, f.lat, f.lng)
+            and _has_recent_bird_activity(db, f.lat, f.lng)
+        ):
+            entry["waterfowl_dispersal_flag"] = True
+            entry["dispersal_note"] = _DISPERSAL_NOTE
+        results.append(entry)
 
     # Composite convenience score: 60% distance (closer = better) +
     # 40% inverted size (larger = more water to explore, NOT a quality signal).
@@ -153,6 +167,46 @@ def get_access_points_for_agent(
 
     results.sort(key=lambda x: x["distance_km"])
     return json.dumps({"access_points": results[:_MAX_RESULTS]})
+
+
+def _has_nearby_stream(db, lat: float, lng: float, radius_m: float = 200) -> bool:
+    """Return True if any OHN stream segment has a first vertex within radius_m."""
+    if "stream_segments" not in db.table_names():
+        return False
+    deg = radius_m / 111_000
+    row = db.execute(
+        """
+        SELECT COUNT(*) FROM (
+          SELECT
+            CAST(SUBSTR(p, 1, INSTR(p,' ')-1) AS REAL) vlng,
+            CAST(SUBSTR(p, INSTR(p,' ')+1,
+                        CASE WHEN INSTR(p,',')>0
+                             THEN INSTR(p,',')-INSTR(p,' ')-1
+                             ELSE LENGTH(p) END) AS REAL) vlat
+          FROM (SELECT TRIM(SUBSTR(geom_wkt, INSTR(geom_wkt,'(')+1)) p
+                FROM stream_segments)
+        )
+        WHERE vlat BETWEEN ? AND ? AND vlng BETWEEN ? AND ?
+        """,
+        [lat - deg, lat + deg, lng - deg * 1.4, lng + deg * 1.4],
+    ).fetchone()
+    return bool(row and row[0] > 0)
+
+
+def _has_recent_bird_activity(
+    db, lat: float, lng: float, days: int = 30, radius_m: float = 500
+) -> bool:
+    """Return True if bird_observations exist within radius_m in the last days."""
+    if "bird_observations" not in db.table_names():
+        return False
+    deg = radius_m / 111_000
+    since = (date.today() - timedelta(days=days)).isoformat()
+    row = db.execute(
+        """SELECT COUNT(*) FROM bird_observations
+           WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND observed_on >= ?""",
+        [lat - deg, lat + deg, lng - deg * 1.4, lng + deg * 1.4, since],
+    ).fetchone()
+    return bool(row and row[0] > 0)
 
 
 def fetch_and_store(lat: float, lng: float) -> tuple[int, int]:

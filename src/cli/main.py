@@ -260,12 +260,16 @@ def ingest(
     geology_count = ingest_geology_data(loc.lat, loc.lng, radius_km)
 
     console.print(
-        f"[dim]Fetching eBird piscivore observations within {radius_km:.0f}km "
-        f"of {loc.name}…[/dim]"
+        f"[dim]Fetching eBird piscivore observations within {radius_km:.0f}km of {loc.name}…[/dim]"
     )
     from src.services.ebird import fetch_and_store as ebird_fetch_and_store
 
     ebird_count = ebird_fetch_and_store(loc.lat, loc.lng, radius_km)
+
+    console.print("[dim]Seeding waterfowl dispersal behavioral insights…[/dim]")
+    from src.services.insights import seed_dispersal_insights
+
+    seed_dispersal_insights()
 
     console.print(
         f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "

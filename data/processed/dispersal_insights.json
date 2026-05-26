@@ -1,0 +1,22 @@
+[
+  {
+    "species": "Common Carp",
+    "condition_type": "habitat",
+    "condition_context": "isolated-stormwater-pond",
+    "conclusion": "Common carp and related cyprinids (goldfish, Prussian carp) can colonize isolated urban stormwater ponds via waterfowl gut dispersal — a peer-reviewed mechanism (Lovas-Kiss et al. 2020, PNAS). High waterfowl activity near isolated ponds increases colonization probability. Worth sampling with microfishing gear even without hydrological connectivity.",
+    "confidence": "high",
+    "source_type": "agent_synthesis",
+    "source_detail": "Lovas-Kiss et al. 2020 PNAS 117(27):15397-15399; Biological Invasions 2025 stormwater pond dispersal",
+    "evidence_count": 2
+  },
+  {
+    "species": "Goldfish",
+    "condition_type": "habitat",
+    "condition_context": "isolated-stormwater-pond",
+    "conclusion": "Common carp and related cyprinids (goldfish, Prussian carp) can colonize isolated urban stormwater ponds via waterfowl gut dispersal — a peer-reviewed mechanism (Lovas-Kiss et al. 2020, PNAS). High waterfowl activity near isolated ponds increases colonization probability. Worth sampling with microfishing gear even without hydrological connectivity.",
+    "confidence": "high",
+    "source_type": "agent_synthesis",
+    "source_detail": "Lovas-Kiss et al. 2020 PNAS 117(27):15397-15399; Biological Invasions 2025 stormwater pond dispersal",
+    "evidence_count": 2
+  }
+]
