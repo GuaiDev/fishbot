@@ -56,9 +56,21 @@ def ensure_schema(db: Database) -> None:
                 "place_guess": str,
                 "jurisdiction": str,
                 "ingested_at": str,
+                "geoprivacy": str,
+                "is_obscured": int,
+                "obscuration_radius_km": float,
             },
             pk="observation_id",
         )
+    else:
+        # Migrate existing observations table — add geoprivacy columns if absent
+        obs_cols = {c.name for c in db["observations"].columns}
+        if "geoprivacy" not in obs_cols:
+            db["observations"].add_column("geoprivacy", str, not_null_default="open")
+        if "is_obscured" not in obs_cols:
+            db["observations"].add_column("is_obscured", int, not_null_default=0)
+        if "obscuration_radius_km" not in obs_cols:
+            db["observations"].add_column("obscuration_radius_km", float)
 
     if "recommendations" not in db.table_names():
         db["recommendations"].create(

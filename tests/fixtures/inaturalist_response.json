@@ -13,6 +13,7 @@
       "location": "43.8500,-79.0300",
       "observed_on": "2026-04-15",
       "quality_grade": "research",
+      "geoprivacy": "open",
       "photos": [
         {
           "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/123/square.jpg"
@@ -33,6 +34,7 @@
       "location": "42.3200,-83.1800",
       "observed_on": "2026-04-10",
       "quality_grade": "needs_id",
+      "geoprivacy": "obscured",
       "photos": [],
       "user": {
         "login": "michiganmicrofisher"

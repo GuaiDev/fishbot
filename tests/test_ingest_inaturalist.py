@@ -49,6 +49,28 @@ def test_fetch_returns_observations(tmp_path: Path):
     assert "Etheostoma caeruleum" in species
 
 
+def test_geoprivacy_fields_parsed(tmp_path: Path):
+    cache = tmp_path / "cache" / "inaturalist"
+    fixture = _fixture_data()
+
+    with (
+        patch("src.ingest.global.inaturalist._CACHE_DIR", cache),
+        patch("httpx.get", return_value=_mock_response(fixture)),
+    ):
+        observations = fetch_observations(lat=43.65, lng=-79.38, radius_km=50, days_back=90)
+
+    by_species = {o.species: o for o in observations}
+    open_obs = by_species["Cottus cognatus"]
+    assert open_obs.geoprivacy == "open"
+    assert open_obs.is_obscured is False
+    assert open_obs.obscuration_radius_km is None
+
+    obscured_obs = by_species["Etheostoma caeruleum"]
+    assert obscured_obs.geoprivacy == "obscured"
+    assert obscured_obs.is_obscured is True
+    assert obscured_obs.obscuration_radius_km == 22.0
+
+
 def test_jurisdiction_tagged_correctly(tmp_path: Path):
     cache = tmp_path / "cache" / "inaturalist"
     fixture = _fixture_data()

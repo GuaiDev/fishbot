@@ -37,6 +37,27 @@ def test_optional_fields_default_none():
     assert obs.place_guess is None
 
 
+def test_geoprivacy_defaults():
+    obs = Observation(**_valid_obs())
+    assert obs.geoprivacy == "open"
+    assert obs.is_obscured is False
+    assert obs.obscuration_radius_km is None
+
+
+def test_obscured_observation():
+    obs = Observation(
+        **_valid_obs(geoprivacy="obscured", is_obscured=True, obscuration_radius_km=22.0)
+    )
+    assert obs.is_obscured is True
+    assert obs.obscuration_radius_km == 22.0
+
+
+def test_private_geoprivacy():
+    obs = Observation(**_valid_obs(geoprivacy="private", is_obscured=False))
+    assert obs.geoprivacy == "private"
+    assert obs.is_obscured is False
+
+
 def test_optional_fields_set():
     obs = Observation(
         **_valid_obs(

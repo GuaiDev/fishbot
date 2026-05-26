@@ -32,6 +32,12 @@ Python 3.11+, uv, SQLite via sqlite-utils, Anthropic SDK (claude-sonnet-4-6 defa
 - Indigenous/First Nations waters: flag as separate jurisdiction, do not predict within them
 - Spot discovery output stays personal — no export features that broadcast spot lists
 
+## Data quality principle: obscured iNaturalist observations
+
+Obscured iNaturalist observations are not discarded and not treated as precise. They contribute soft presence evidence distributed across stream segments within the obscuration radius (22 km), weighted by habitat suitability. This preserves the conservation value of the geoprivacy feature while extracting maximum signal from the data.
+
+The `observations` table stores three fields to support this: `geoprivacy` ("open"/"obscured"/"private"), `is_obscured` (bool), and `obscuration_radius_km` (22.0 for obscured, None for open). The soft-label pipeline in the SDM feature matrix uses `get_obscured_observations()` from `src/storage/observations.py` to retrieve these records for distributing presence weights across candidate segments.
+
 ## Core principle: presence vs. pressure
 
 Crowdsourced catch and observation data measures angler activity as much as fish presence. The bot must not confuse the two:

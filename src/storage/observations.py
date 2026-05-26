@@ -38,6 +38,11 @@ def query_observations(
     return [_row_to_obs(r) for r in rows]
 
 
+def get_obscured_observations(db: Database) -> list[Observation]:
+    rows = db["observations"].rows_where("is_obscured = 1")
+    return [_row_to_obs(r) for r in rows]
+
+
 def _obs_to_row(obs: Observation) -> dict[str, Any]:
     return {
         "observation_id": obs.observation_id,
@@ -53,6 +58,9 @@ def _obs_to_row(obs: Observation) -> dict[str, Any]:
         "place_guess": obs.place_guess,
         "jurisdiction": obs.jurisdiction,
         "ingested_at": obs.ingested_at.isoformat(),
+        "geoprivacy": obs.geoprivacy,
+        "is_obscured": int(obs.is_obscured),
+        "obscuration_radius_km": obs.obscuration_radius_km,
     }
 
 
@@ -60,4 +68,8 @@ def _row_to_obs(row: dict[str, Any]) -> Observation:
     decoded = dict(row)
     decoded["observed_on"] = date.fromisoformat(row["observed_on"])
     decoded["ingested_at"] = datetime.fromisoformat(row["ingested_at"])
+    # Handle rows written before geoprivacy columns were added
+    decoded.setdefault("geoprivacy", "open")
+    decoded.setdefault("is_obscured", False)
+    decoded.setdefault("obscuration_radius_km", None)
     return Observation.model_validate(decoded)

@@ -93,6 +93,9 @@ def _parse_observation(result: dict) -> Observation:
     photo_url = photos[0]["url"] if photos else None
     user = result.get("user") or {}
 
+    geoprivacy = result.get("geoprivacy") or "open"
+    is_obscured = geoprivacy == "obscured"
+
     return Observation(
         observation_id=result["id"],
         species=taxon.get("name", "Unknown"),
@@ -106,4 +109,7 @@ def _parse_observation(result: dict) -> Observation:
         observer=user.get("login"),
         place_guess=result.get("place_guess"),
         jurisdiction=jurisdiction_for_coords(lat, lng),
+        geoprivacy=geoprivacy,
+        is_obscured=is_obscured,
+        obscuration_radius_km=22.0 if is_obscured else None,
     )

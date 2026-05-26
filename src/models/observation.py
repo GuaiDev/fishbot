@@ -19,3 +19,8 @@ class Observation(BaseModel):
     place_guess: str | None = None
     jurisdiction: str
     ingested_at: datetime = Field(default_factory=datetime.now)
+    # iNaturalist geoprivacy — "open", "obscured", or "private"
+    geoprivacy: str | None = "open"
+    is_obscured: bool = False
+    # 22.0 km for obscured observations (iNat randomises within ~0.2° box)
+    obscuration_radius_km: float | None = None
