@@ -1,6 +1,6 @@
 ## Project
 
-Personal fishing exploration bot. Multi-jurisdiction (Canada + US), Ontario first. Phase 1 = data brain under construction. Gamification, aquarium, trip planner, map UI all deferred. NOT for public release.
+Personal fishing exploration bot. Multi-jurisdiction (Canada + US), Ontario first. **Phase 1 complete** — all data ingestion layers built and verified. Gamification, aquarium, trip planner, map UI all deferred. NOT for public release.
 
 ## My fishing context
 
@@ -75,42 +75,42 @@ Water quality parameters (dissolved oxygen, pH, temperature) are a separate cate
 - System prompt: `prompts/system.md` (edit without code changes)
 - This file: read every session start
 
-## Phase 1 data source roadmap
+## Phase 1 data source roadmap — COMPLETE
 
-Completed:
-- 1a: Project skeleton
-- 1b: MVP chat bot, profile, trip log, jurisdiction registry
-- 1c: iNaturalist ingestion + agent tool
-- 1d: Open-Meteo weather + barometric pressure trends
-- 1e: Tactical recommender
-- 1f: GBIF species occurrence
-- 1g: Water Survey of Canada stream gauges
-- 1h: OpenStreetMap water features + access
-- 1i: MNRF stocking history
-- 1j: Native range maps + Species at Risk overlays
-- 1k: Reddit community RAG with technique extraction
-- 1m: Ontario Hydro Network + stream connectivity graph
-- 1n: MNRF regulations parser (PDF → FMZ zone chunks, get_regulations agent tool)
+All sub-phases committed as of 2026-05-26. Phase 2 planning begins next session.
 
-Queued (in suggested order):
-- 1l: Conservation Authority fish surveys — BLOCKED, see note below
-- 1o: Ontario Water Quality Monitoring Network (pH, DO, temperature, conductivity)
-- 1p: CABIN benthic macroinvertebrate data
-- 1q: Ontario surficial geology (substrate type)
-- 1r: eBird species observations
-- 1s: DFO stream temperature network
+### What was built
 
-Phase 2 does not begin until all queued sub-phases are committed.
+| Sub-phase | Description | Adapter | Rows |
+|-----------|-------------|---------|------|
+| 1a | Project skeleton | — | — |
+| 1b | MVP chat bot, profile, trip log, jurisdiction registry | — | — |
+| 1c | iNaturalist ingestion + agent tool | `global/inaturalist.py` | 284 observations |
+| 1d | Open-Meteo weather + barometric pressure trends | `global/weather.py` | live |
+| 1e | Tactical recommender | — | — |
+| 1f | GBIF species occurrence | `global/gbif.py` | 3,501 occurrences |
+| 1g | Water Survey of Canada stream gauges | `global/wsc.py` | 297 gauge readings |
+| 1h | OpenStreetMap water features + access | `global/osm.py` | 25,914 water features, 23,852 access points, 35 barriers |
+| 1i | MNRF stocking history | `ca_on/stocking.py` | 12,756 stocking records |
+| 1j | Native range maps + Species at Risk overlays | `ca_on/species_ranges.py` | 64 species ranges |
+| 1k | Reddit community RAG with technique extraction | — | (RAG index; 0 posts cached) |
+| 1l | Conservation Authority fish surveys | — | BLOCKED — see note below |
+| 1m | Ontario Hydro Network + stream connectivity graph | `ca_on/hydro_network.py` | 28,473 stream segments |
+| 1n | MNRF regulations parser | `ca_on/regulations.py` | 20 FMZ regulation chunks |
+| 1o | Ontario Water Quality Monitoring Network | `ca_on/water_quality.py` | 17,507 readings (pH, DO, temp, conductivity) |
+| 1p | CABIN benthic macroinvertebrate data | `ca_on/benthic.py` | 3,310 samples |
+| 1q | Ontario surficial geology (substrate type) | `ca_on/geology.py` | 10,751 geology units |
+| 1r | eBird piscivore observations | `global/ebird.py` | 1,558 bird observations |
+| 1s | DFO stream temperature network | `global/hydat_temperature.py` | 435 station summaries |
 
-Deferred to Phase 2:
+### Phase 2 (next session — begin planning)
+
 - Satellite imagery ingestion (Sentinel-2, NAIP, SWOOP)
 - Satellite-derived bathymetry
 - Microsoft Building Footprints + accessibility scoring
 - Spot discovery pipeline
 - Habitat-based species distribution models (first real ML layer)
 - Multi-jurisdiction expansion (BC, Quebec, US states beyond stubs)
-
-Sub-phases 1f through 1j are small (1-2 sessions each). 1k is medium. 1m and 1n are the next big ones.
 
 ## Data source reality check: 1l
 
