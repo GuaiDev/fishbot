@@ -304,40 +304,16 @@ def ingest(
 
 
 @app.command(name="ingest-hydat")
-def ingest_hydat(
-    radius_km: float = typer.Option(
-        100.0, "--radius", help="Extraction radius in km around home location"
-    ),
-) -> None:
-    """One-time: download HYDAT, extract Ontario stream temperature data, store in app DB."""
+def ingest_hydat() -> None:
+    """Derive stream thermal regime from PWQMN water quality readings in the database.
+
+    Run after make ingest.
+    """
     import importlib
 
-    profile = load_profile()
-    if not profile.home_location:
-        console.print(
-            "[red]Home location not set. Run `fishbot profile` and enter your coordinates.[/red]"
-        )
-        raise typer.Exit(1)
-
-    loc = profile.home_location
-    console.print(
-        f"[dim]Downloading HYDAT (~270MB) and extracting Ontario temperature stations "
-        f"within {radius_km:.0f}km of {loc.name}…[/dim]"
-    )
-    console.print("[dim]This may take a few minutes on first run.[/dim]")
-
     _hydat = importlib.import_module("src.ingest.global.hydat_temperature")
-    count = _hydat.download_and_extract(loc.lat, loc.lng, radius_km=radius_km)
-
-    if count == 0:
-        console.print(
-            "[yellow]No Ontario temperature stations found in HYDAT for this radius. "
-            "Try a larger --radius.[/yellow]"
-        )
-    else:
-        console.print(
-            f"[green]Stream temperature: {count} Ontario stations extracted and stored.[/green]"
-        )
+    count = _hydat.derive_from_pwqmn(get_db())
+    console.print(f"Derived thermal regime for {count} stations from PWQMN water quality data")
 
 
 def _print_profile(p: UserProfile) -> None:
