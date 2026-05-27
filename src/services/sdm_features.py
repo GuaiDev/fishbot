@@ -1,7 +1,7 @@
 """SDM feature matrix builder for OHN stream segments.
 
 Joins all Phase 1 habitat data layers onto stream segments.
-Output: one row per segment with 17 features.
+Output: one row per segment with 16 features.
 
 Feature source note:
   Features 6-7 (thermal_regime, summer_mean_temp_c) come from
@@ -15,7 +15,7 @@ Feature source note:
 import logging
 import re
 import time
-from collections import Counter, deque
+from collections import deque
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -44,7 +44,6 @@ _WQ_MAX_KM = 15.0
 _THERMAL_MAX_KM = 15.0
 _EPT_MAX_KM = 15.0
 _BARRIER_MAX_KM = 20.0
-_CATCHMENT_MAX_KM = 100.0
 _OBS_MAX_KM = 50.0
 _STOCKING_RADIUS_DEG = 0.018  # ~2km
 _OBS_DENSITY_DEG = 0.225  # ~25km
@@ -55,7 +54,6 @@ _COORD_RE = re.compile(r"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)")
 
 _HABITAT_COLS = [
     "substrate_category",
-    "upstream_catchment_geology",
     "thermal_regime",
     "summer_mean_temp_c",
     "do_median_mgl",
@@ -64,6 +62,8 @@ _HABITAT_COLS = [
     "ept_quality",
     "ept_proportion",
     "barrier_count_upstream",
+    # pwqmn_coverage is intentionally excluded: it's always bool (never null),
+    # so including it would inflate coverage_fraction meaninglessly.
 ]
 
 
@@ -87,27 +87,100 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
     G = HydrologyService(db).get_graph()
     snap_fn = _make_snap_fn(G)
 
-    segments = list(db["stream_segments"].rows)
+    # Pre-compute node position arrays once for all spatial subgraph filtering
+    nodes_list = list(G.nodes())
+    node_lats = np.array([float(n.split(",")[1]) for n in nodes_list])
+    node_lngs = np.array([float(n.split(",")[0]) for n in nodes_list])
 
+    segments = list(db["stream_segments"].rows)
+    logger.info("Segments: %d total", len(segments))
+
+    t = time.time()
+    logger.info("Computing centroids and Strahler order...")
     centroids = _segment_centroids(segments)
     strahler = _compute_strahler_order(G)
+    logger.info("  centroids + Strahler: %.1fs", time.time() - t)
 
+    t = time.time()
     geology_rows = list(db["geology_units"].rows)
+    logger.info("Assigning local geology substrate (%d units)...", len(geology_rows))
     local_substrate = _assign_geology(centroids, geology_rows)
-    upstream_catchment = _upstream_catchment_geology(G, local_substrate)
+    logger.info("  geology local: %.1fs", time.time() - t)
 
     thermal_rows = list(db["stream_temperature_summaries"].rows)
-    thermal_map = _assign_from_upstream_stations(G, snap_fn, thermal_rows, _THERMAL_MAX_KM)
+    thermal_src_pts = [
+        (float(r["lat"]), float(r["lng"]))
+        for r in thermal_rows
+        if r.get("lat") and r.get("lng")
+    ]
+    G_thermal = _subgraph_near_sources(
+        G, nodes_list, node_lats, node_lngs, thermal_src_pts, _THERMAL_MAX_KM
+    )
+    t = time.time()
+    logger.info(
+        "Computing thermal features... (%d stations, %d/%d graph nodes)",
+        len(thermal_rows), G_thermal.number_of_nodes(), G.number_of_nodes(),
+    )
+    thermal_map = _assign_from_upstream_stations(
+        G_thermal, snap_fn, thermal_rows, _THERMAL_MAX_KM
+    )
+    logger.info("  thermal: %.1fs", time.time() - t)
 
     wq_rows = list(db["water_quality_readings"].rows)
     wq_agg = _aggregate_wq_by_station(wq_rows)
-    wq_map = _assign_from_upstream_stations(G, snap_fn, wq_agg, _WQ_MAX_KM)
+    wq_src_pts = [
+        (float(r["lat"]), float(r["lng"]))
+        for r in wq_agg
+        if r.get("lat") and r.get("lng")
+    ]
+    G_wq = _subgraph_near_sources(
+        G, nodes_list, node_lats, node_lngs, wq_src_pts, _WQ_MAX_KM
+    )
+    t = time.time()
+    logger.info(
+        "Computing water quality features... (%d stations, %d/%d graph nodes)",
+        len(wq_agg), G_wq.number_of_nodes(), G.number_of_nodes(),
+    )
+    wq_map = _assign_from_upstream_stations(G_wq, snap_fn, wq_agg, _WQ_MAX_KM)
+    logger.info("  WQ: %.1fs", time.time() - t)
 
     benthic_rows = list(db["benthic_samples"].rows)
-    ept_map = _assign_from_upstream_stations(G, snap_fn, benthic_rows, _EPT_MAX_KM)
+    ept_src_pts = [
+        (float(r["lat"]), float(r["lng"]))
+        for r in benthic_rows
+        if r.get("lat") and r.get("lng")
+    ]
+    G_ept = _subgraph_near_sources(
+        G, nodes_list, node_lats, node_lngs, ept_src_pts, _EPT_MAX_KM
+    )
+    t = time.time()
+    logger.info(
+        "Computing EPT/benthic features... (%d sites, %d/%d graph nodes)",
+        len(benthic_rows), G_ept.number_of_nodes(), G.number_of_nodes(),
+    )
+    ept_map = _assign_from_upstream_stations(G_ept, snap_fn, benthic_rows, _EPT_MAX_KM)
+    logger.info("  EPT: %.1fs", time.time() - t)
 
+    # Filter to only barriers that were snapped to a segment during ingest —
+    # unsnapped barriers are too far from the network to affect any segment's count.
     barrier_rows = list(db["barriers"].rows)
-    barrier_counts = _count_upstream_barriers(G, snap_fn, barrier_rows)
+    snapped_barriers = [r for r in barrier_rows if r.get("nearest_segment_ogf_id")]
+    barrier_src_pts = []
+    for r in snapped_barriers:
+        coords = _COORD_RE.findall(r.get("geom_wkt", ""))
+        if coords:
+            barrier_src_pts.append((float(coords[0][1]), float(coords[0][0])))
+    G_barriers = _subgraph_near_sources(
+        G, nodes_list, node_lats, node_lngs, barrier_src_pts, _BARRIER_MAX_KM
+    )
+    t = time.time()
+    logger.info(
+        "Counting upstream barriers... (%d/%d barriers snapped, %d/%d graph nodes)",
+        len(snapped_barriers), len(barrier_rows),
+        G_barriers.number_of_nodes(), G.number_of_nodes(),
+    )
+    barrier_counts = _count_upstream_barriers(G_barriers, snap_fn, snapped_barriers)
+    logger.info("  barriers: %.1fs", time.time() - t)
 
     obs_rows = list(db["observations"].rows)
     gbif_rows = list(db["gbif_observations"].rows)
@@ -115,15 +188,17 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
         [(r["lat"], r["lng"]) for r in obs_rows if r.get("lat") and r.get("lng")]
         + [(r["lat"], r["lng"]) for r in gbif_rows if r.get("lat") and r.get("lng")]
     )
-    seg_start_nodes = {r["ogf_id"]: r["start_node"] for r in segments}
-    seg_end_nodes = {r["ogf_id"]: r["end_node"] for r in segments}
-    obs_distances = _nearest_observation_distance(
-        G, snap_fn, all_obs_pts, seg_start_nodes, seg_end_nodes
-    )
+    t = time.time()
+    logger.info("Computing observation distances... (%d obs)", len(all_obs_pts))
+    obs_distances = _nearest_observation_distance(centroids, all_obs_pts)
     obs_density = _observation_density(centroids, all_obs_pts)
+    logger.info("  observations: %.1fs", time.time() - t)
 
+    t = time.time()
+    logger.info("Assigning stocking events...")
     stocking_rows = list(db["stocking_records"].rows)
     stocking_map = _assign_stocking(centroids, stocking_rows)
+    logger.info("  stocking: %.1fs", time.time() - t)
 
     rows = []
     for seg in segments:
@@ -143,7 +218,6 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
                 "length_m": seg.get("length_m"),
                 "flow_verified": bool(seg.get("flow_verified", 0)),
                 "substrate_category": local_substrate.get(oid),
-                "upstream_catchment_geology": upstream_catchment.get(oid),
                 "thermal_regime": thermal.get("thermal_regime", "unknown"),
                 "summer_mean_temp_c": thermal.get("summer_mean_c"),
                 "do_median_mgl": wq.get("do_median_mgl"),
@@ -156,6 +230,10 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
                 "observation_density_25km": obs_density.get(oid, 0),
                 "is_stocked_within_5yr": stocking.get("is_stocked", False),
                 "nearest_stocked_species": stocking.get("species"),
+                # True = segment has a PWQMN thermal station within 15km network
+                # distance; False = outside monitoring coverage (correlates with
+                # Canadian Shield / northern Ontario)
+                "pwqmn_coverage": oid in thermal_map,
             }
         )
 
@@ -212,6 +290,39 @@ def _make_snap_fn(G: nx.DiGraph):
         return nodes[idx]
 
     return snap_fn
+
+
+# ── spatial subgraph helper ───────────────────────────────────────────────────
+
+
+def _subgraph_near_sources(
+    G: nx.DiGraph,
+    nodes_list: list[str],
+    node_lats: np.ndarray,
+    node_lngs: np.ndarray,
+    source_pts: list[tuple[float, float]],
+    buffer_km: float,
+) -> nx.DiGraph:
+    """Return G.subgraph() restricted to nodes within bbox(source_pts) + buffer_km.
+
+    Avoids running BFS across the full 300k-node graph when source points only
+    cover a fraction of it (e.g. CABIN sites in southern Ontario only).
+    """
+    if not source_pts:
+        return G
+
+    src_lats = [p[0] for p in source_pts]
+    src_lngs = [p[1] for p in source_pts]
+    lat_buf = buffer_km / 111.0
+    lng_buf = buffer_km / 80.5  # approx at 43°N
+    mask = (
+        (node_lats >= min(src_lats) - lat_buf)
+        & (node_lats <= max(src_lats) + lat_buf)
+        & (node_lngs >= min(src_lngs) - lng_buf)
+        & (node_lngs <= max(src_lngs) + lng_buf)
+    )
+    included = {nodes_list[i] for i in np.where(mask)[0]}
+    return G.subgraph(included)
 
 
 # ── feature helpers ───────────────────────────────────────────────────────────
@@ -275,58 +386,25 @@ def _assign_geology(
     if not geology_rows or not centroids:
         return {}
 
-    geo_lats = np.array([r["centroid_lat"] for r in geology_rows])
-    geo_lngs = np.array([r["centroid_lng"] for r in geology_rows])
+    from scipy.spatial import cKDTree
+
     classes = [r["substrate_class"] for r in geology_rows]
+    # Scale to km before building tree so lat/lng axes are comparable
+    geo_coords = np.array([
+        [r["centroid_lat"] * 111.0, r["centroid_lng"] * 80.5]
+        for r in geology_rows
+    ])
+    tree = cKDTree(geo_coords)
 
-    result: dict[int, str] = {}
-    for ogf_id, (lat, lng) in centroids.items():
-        dists = np.sqrt((geo_lats - lat) ** 2 + (geo_lngs - lng) ** 2)
-        result[ogf_id] = classes[int(np.argmin(dists))]
-    return result
+    ogf_ids = list(centroids.keys())
+    seg_coords = np.array([
+        [centroids[k][0] * 111.0, centroids[k][1] * 80.5]
+        for k in ogf_ids
+    ])
+    _, indices = tree.query(seg_coords)
 
+    return {ogf_ids[i]: classes[indices[i]] for i in range(len(ogf_ids))}
 
-def _upstream_catchment_geology(
-    G: nx.DiGraph,
-    local_substrate: dict[int, str],
-) -> dict[int, str]:
-    """Majority substrate_class within 100km upstream of each segment."""
-    node_cache: dict[str, str] = {}
-    result: dict[int, str] = {}
-
-    for u, v, data in G.edges(data=True):
-        ogf_id = data.get("ogf_id")
-        if ogf_id is None:
-            continue
-
-        if u not in node_cache:
-            visited: set[str] = {u}
-            queue: deque[tuple[str, float]] = deque([(u, 0.0)])
-            substrates: list[str] = []
-
-            while queue:
-                current, dist = queue.popleft()
-                for pred in G.predecessors(current):
-                    if pred in visited:
-                        continue
-                    edge = G[pred][current]
-                    new_dist = dist + edge.get("length_m", 0.0) / 1000.0
-                    if new_dist <= _CATCHMENT_MAX_KM:
-                        visited.add(pred)
-                        up_id = edge.get("ogf_id")
-                        if up_id and up_id in local_substrate:
-                            substrates.append(local_substrate[up_id])
-                        queue.append((pred, new_dist))
-
-            node_cache[u] = (
-                Counter(substrates).most_common(1)[0][0]
-                if substrates
-                else local_substrate.get(ogf_id, "unknown")
-            )
-
-        result[ogf_id] = node_cache[u]
-
-    return result
 
 
 def _aggregate_wq_by_station(wq_rows: list[dict]) -> list[dict]:
@@ -367,7 +445,7 @@ def _assign_from_upstream_stations(
         if lat is None or lng is None:
             continue
         node = snap_fn(float(lat), float(lng))
-        if node is None:
+        if node is None or node not in G:
             continue
 
         visited: set[str] = {node}
@@ -407,7 +485,7 @@ def _count_upstream_barriers(
             continue
         lng, lat = float(coords[0][0]), float(coords[0][1])
         node = snap_fn(lat, lng)
-        if node is None:
+        if node is None or node not in G:
             continue
 
         visited: set[str] = {node}
@@ -431,46 +509,36 @@ def _count_upstream_barriers(
 
 
 def _nearest_observation_distance(
-    G: nx.DiGraph,
-    snap_fn: Any,
+    centroids: dict[int, tuple[float, float]],
     obs_latlngs: list[tuple[float, float]],
-    seg_start_nodes: dict[int, str],
-    seg_end_nodes: dict[int, str],
     max_km: float = _OBS_MAX_KM,
 ) -> dict[int, float | None]:
-    """Multi-source Dijkstra: O(V+E) distance from every segment to nearest observation.
+    """Euclidean-distance proxy from each segment centroid to nearest observation.
 
-    Seeds the graph frontier simultaneously from all observation snap-nodes.
-    Each node records distance when first reached — equivalent to running
-    Dijkstra from every observation independently but in one O(V+E) pass.
+    Uses Euclidean (not network) distance — fast at 300km scale and sufficient
+    for a pressure/sampling proxy. Network distance would be more accurate but
+    is too slow across the full 300km extent with 50k source points.
     """
-    sources: set[str] = set()
-    for lat, lng in obs_latlngs:
-        node = snap_fn(lat, lng)
-        if node:
-            sources.add(node)
-
-    if not sources:
+    if not obs_latlngs or not centroids:
         return {}
 
-    node_dists: dict[str, float] = dict(
-        nx.multi_source_dijkstra_path_length(
-            G.to_undirected(),
-            sources,
-            cutoff=max_km * 1000.0,
-            weight="length_m",
-        )
-    )
+    from scipy.spatial import cKDTree
 
-    result: dict[int, float | None] = {}
-    for ogf_id, start in seg_start_nodes.items():
-        end = seg_end_nodes.get(ogf_id)
-        candidates = [
-            node_dists[n] / 1000.0 for n in (start, end) if n and n in node_dists
-        ]
-        result[ogf_id] = min(candidates) if candidates else None
+    # Scale to km so lat/lng axes are comparable (43°N: 1°lat≈111km, 1°lng≈80.5km)
+    obs_arr = np.array([[lat * 111.0, lng * 80.5] for lat, lng in obs_latlngs])
+    tree = cKDTree(obs_arr)
 
-    return result
+    ogf_ids = list(centroids.keys())
+    seg_arr = np.array([
+        [centroids[k][0] * 111.0, centroids[k][1] * 80.5]
+        for k in ogf_ids
+    ])
+    dists_km, _ = tree.query(seg_arr)
+
+    return {
+        ogf_ids[i]: float(dists_km[i]) if dists_km[i] <= max_km else None
+        for i in range(len(ogf_ids))
+    }
 
 
 def _observation_density(
@@ -482,25 +550,16 @@ def _observation_density(
     if not obs_pts:
         return {ogf_id: 0 for ogf_id in centroids}
 
-    cell = 0.5
-    from collections import defaultdict
+    from scipy.spatial import cKDTree
 
-    grid: dict[tuple[int, int], list[tuple[float, float]]] = defaultdict(list)
-    for lat, lng in obs_pts:
-        grid[(round(lat / cell), round(lng / cell))].append((lat, lng))
+    obs_coords = np.array([[lng, lat] for lat, lng in obs_pts])
+    tree = cKDTree(obs_coords)
 
-    cells_r = int(radius_deg / cell) + 1
-    result: dict[int, int] = {}
-    for ogf_id, (lat, lng) in centroids.items():
-        clat, clng = round(lat / cell), round(lng / cell)
-        count = 0
-        for dlat in range(-cells_r, cells_r + 1):
-            for dlng in range(-cells_r, cells_r + 1):
-                for plat, plng in grid.get((clat + dlat, clng + dlng), []):
-                    if abs(plat - lat) <= radius_deg and abs(plng - lng) <= radius_deg:
-                        count += 1
-        result[ogf_id] = count
-    return result
+    ogf_ids = list(centroids.keys())
+    seg_coords = np.array([[centroids[k][1], centroids[k][0]] for k in ogf_ids])
+    counts = tree.query_ball_point(seg_coords, r=radius_deg, return_length=True)
+
+    return dict(zip(ogf_ids, counts))
 
 
 def _assign_stocking(

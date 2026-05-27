@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
     "rich>=15.0.0",
+    "scipy>=1.17.1",
     "shapely>=2.1.2",
     "sqlite-utils>=3.39",
     "typer>=0.25.1",

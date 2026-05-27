@@ -328,7 +328,7 @@ def build_features() -> None:
     elapsed = time.time() - t0
     pct = coverage_fraction(df) * 100
     console.print(
-        f"Feature matrix: {len(df):,} segments, 17 features, {pct:.1f}% coverage"
+        f"Feature matrix: {len(df):,} segments, 16 features, {pct:.1f}% coverage"
         f" ({elapsed:.1f}s)"
     )
 

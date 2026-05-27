@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import networkx as nx
+import numpy as np
 
 from src.services.sdm_features import (
     _aggregate_wq_by_station,
@@ -15,7 +16,7 @@ from src.services.sdm_features import (
     _nearest_observation_distance,
     _observation_density,
     _segment_centroids,
-    _upstream_catchment_geology,
+    _subgraph_near_sources,
     build_feature_matrix,
     coverage_fraction,
 )
@@ -104,22 +105,34 @@ def test_assign_geology_empty_returns_empty():
     assert _assign_geology({}, geo) == {}
 
 
-def test_upstream_catchment_geology_fork():
-    # Y-fork: two headwaters (H1→J, H2→J) both coarse, then J→M bedrock.
-    # Segment M should inherit "coarse" from its upstream catchment,
-    # not "bedrock" from its own local geology.
-    H1 = _node(-79.0, 45.0)
-    H2 = _node(-79.2, 45.0)
-    J = _node(-79.1, 44.9)
-    M = _node(-79.1, 44.8)
-    G = _make_graph((H1, J, 1, 5000), (H2, J, 2, 5000), (J, M, 3, 5000))
-    local = {1: "coarse", 2: "coarse", 3: "bedrock"}
-    result = _upstream_catchment_geology(G, local)
-    # Headwaters have no upstream → fall back to own substrate
-    assert result[1] == "coarse"
-    assert result[2] == "coarse"
-    # Confluence segment: upstream is [coarse, coarse] → majority "coarse"
-    assert result[3] == "coarse"
+
+def test_subgraph_near_sources_excludes_distant_nodes():
+    """Nodes outside bbox + buffer are excluded from the returned subgraph."""
+    A = _node(-79.0, 44.5)
+    B = _node(-79.0, 44.4)
+    C = _node(-85.0, 44.0)   # far away in western Ontario
+    G = _make_graph((A, B, 1, 5000), (B, C, 2, 5000))
+
+    nodes_list = list(G.nodes())
+    n_lats = np.array([float(n.split(",")[1]) for n in nodes_list])
+    n_lngs = np.array([float(n.split(",")[0]) for n in nodes_list])
+
+    # Source near A with 50km buffer — B is within range, C is not
+    G_sub = _subgraph_near_sources(G, nodes_list, n_lats, n_lngs, [(44.5, -79.0)], 50.0)
+    assert A in G_sub.nodes()
+    assert B in G_sub.nodes()
+    assert C not in G_sub.nodes()
+
+
+def test_subgraph_near_sources_empty_returns_full_graph():
+    A = _node(-79.0, 44.5)
+    B = _node(-79.0, 44.4)
+    G = _make_graph((A, B, 1, 5000))
+    nodes_list = list(G.nodes())
+    n_lats = np.array([float(n.split(",")[1]) for n in nodes_list])
+    n_lngs = np.array([float(n.split(",")[0]) for n in nodes_list])
+    G_sub = _subgraph_near_sources(G, nodes_list, n_lats, n_lngs, [], 50.0)
+    assert G_sub is G
 
 
 def test_aggregate_wq_by_station():
@@ -191,29 +204,22 @@ def test_count_upstream_barriers():
     assert counts.get(2, 0) == 1
 
 
-def test_nearest_observation_distance_multi_source():
-    # Two observations: one at S1, one at S2
-    # Chain: S1→A→B←S2 (B is downstream of both)
-    S1 = _node(-79.0, 44.5)
-    A = _node(-79.0, 44.4)
-    B = _node(-79.0, 44.3)
-    S2 = _node(-79.1, 44.3)
-    G = _make_graph((S1, A, 1, 5000), (A, B, 2, 5000), (S2, B, 3, 3000))
-
-    snap_fn = _make_snap_fn(G)
+def test_nearest_observation_distance_euclidean():
+    # Seg 1 centroid is exactly at an observation → distance ≈ 0
+    # Seg 2 centroid is between the two observations → small non-zero distance
+    # Seg 3 centroid is exactly at the other observation → distance ≈ 0
+    centroids = {
+        1: (44.5, -79.0),
+        2: (44.4, -79.0),
+        3: (44.3, -79.1),
+    }
     obs = [(44.5, -79.0), (44.3, -79.1)]
-    seg_starts = {1: S1, 2: A, 3: S2}
-    seg_ends = {1: A, 2: B, 3: B}
 
-    dists = _nearest_observation_distance(G, snap_fn, obs, seg_starts, seg_ends)
+    dists = _nearest_observation_distance(centroids, obs)
 
-    # Seg 1 start_node = S1, which is an observation source → distance 0
-    assert dists.get(1) == 0.0
-    # Seg 3 start_node = S2, also an observation source → distance 0
-    assert dists.get(3) == 0.0
-    # Seg 2 is 5km from S1, 3km from S2 → multi-source picks 3km
-    assert dists.get(2) is not None
-    assert dists[2] <= 5.0
+    assert dists[1] is not None and dists[1] < 0.01
+    assert dists[3] is not None and dists[3] < 0.01
+    assert dists[2] is not None and dists[2] > 0
 
 
 def test_observation_density_counts_within_radius():
@@ -446,7 +452,7 @@ def test_build_feature_matrix_integration(tmp_path: Path):
     assert len(df) == 5
     expected_cols = {
         "ogf_id", "stream_order", "length_m", "flow_verified",
-        "substrate_category", "upstream_catchment_geology",
+        "substrate_category",
         "thermal_regime", "summer_mean_temp_c",
         "do_median_mgl", "ph_median", "conductivity_median_us_cm",
         "ept_quality", "ept_proportion",
@@ -454,6 +460,7 @@ def test_build_feature_matrix_integration(tmp_path: Path):
         "distance_to_nearest_observation_km",
         "observation_density_25km",
         "is_stocked_within_5yr", "nearest_stocked_species",
+        "pwqmn_coverage",
     }
     assert expected_cols.issubset(set(df.columns))
 
@@ -470,6 +477,14 @@ def test_build_feature_matrix_integration(tmp_path: Path):
 
     # Parquet was written to tmp path
     assert parquet_path.exists()
+
+    # pwqmn_coverage: thermal station at H1 (-79.0, 44.5) is within 15km of
+    # segment 1 (H1→J, 12km). Segment 2 starts at H2 (-79.2, 44.5), 16km away
+    # from the station — beyond the 15km cutoff. Segments 3-5 are >15km downstream.
+    seg1_row = df[df["ogf_id"] == 1].iloc[0]
+    assert seg1_row["pwqmn_coverage"] is True or seg1_row["pwqmn_coverage"] == True  # noqa: E712
+    # pwqmn_coverage is a bool column — must be present for all rows
+    assert df["pwqmn_coverage"].notna().all()
 
     # Coverage fraction is a float between 0 and 1
     cov = coverage_fraction(df)
