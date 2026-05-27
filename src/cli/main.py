@@ -169,7 +169,7 @@ def profile() -> None:
 
 @app.command()
 def ingest(
-    radius_km: float = typer.Option(50.0, "--radius", help="Search radius in km"),
+    radius_km: float = typer.Option(300.0, "--radius", help="Search radius in km"),
     days_back: int = typer.Option(
         90, "--days", help="How many days of iNaturalist history to pull"
     ),  # noqa: E501
@@ -314,6 +314,23 @@ def ingest_hydat() -> None:
     _hydat = importlib.import_module("src.ingest.global.hydat_temperature")
     count = _hydat.derive_from_pwqmn(get_db())
     console.print(f"Derived thermal regime for {count} stations from PWQMN water quality data")
+
+
+@app.command(name="build-features")
+def build_features() -> None:
+    """Build the SDM feature matrix from all Phase 1 data layers."""
+    import time
+
+    from src.services.sdm_features import build_feature_matrix, coverage_fraction
+
+    t0 = time.time()
+    df = build_feature_matrix(get_db())
+    elapsed = time.time() - t0
+    pct = coverage_fraction(df) * 100
+    console.print(
+        f"Feature matrix: {len(df):,} segments, 17 features, {pct:.1f}% coverage"
+        f" ({elapsed:.1f}s)"
+    )
 
 
 def _print_profile(p: UserProfile) -> None:

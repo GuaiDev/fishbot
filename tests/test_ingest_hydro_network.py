@@ -206,24 +206,11 @@ def test_barrier_snaps_to_nearest_segment(cache_dir):
     assert slb.nearest_segment_ogf_id == 10002
 
 
-# ── caching ───────────────────────────────────────────────────────────────────
+# ── geometry simplification ───────────────────────────────────────────────────
 
 
-def test_cache_hit_skips_http(cache_dir):
-    from src.ingest.jurisdictions.ca_on.hydro_network import fetch_watercourses
-
-    fixture = _load_fixture("ohn_watercourse_response.json")
-    with (
-        patch(_HYDRO_HTTPX, side_effect=_paged_side_effect(fixture)) as mock_get,
-        patch(_HYDRO_CACHE, cache_dir),
-    ):
-        fetch_watercourses(43.5, -79.48, radius_km=10)
-        fetch_watercourses(43.5, -79.48, radius_km=10)
-
-    assert mock_get.call_count == 2
-
-
-def test_cache_miss_writes_file(cache_dir):
+def test_segment_not_simplified_within_75km(cache_dir):
+    """Segment close to home keeps LINESTRING WKT."""
     from src.ingest.jurisdictions.ca_on.hydro_network import fetch_watercourses
 
     fixture = _load_fixture("ohn_watercourse_response.json")
@@ -231,7 +218,100 @@ def test_cache_miss_writes_file(cache_dir):
         patch(_HYDRO_HTTPX, side_effect=_paged_side_effect(fixture)),
         patch(_HYDRO_CACHE, cache_dir),
     ):
+        # Home at 43.5, -79.48 — fixture segments are <2km away
+        segments = fetch_watercourses(43.5, -79.48, radius_km=10)
+
+    for seg in segments:
+        assert seg.geom_wkt.startswith("LINESTRING"), (
+            f"Segment {seg.ogf_id} should be LINESTRING when <75km from home"
+        )
+
+
+def test_segment_simplified_beyond_75km(cache_dir):
+    """Segment far from home is stored as POINT (centroid) WKT."""
+    from src.ingest.jurisdictions.ca_on.hydro_network import fetch_watercourses
+
+    fixture = _load_fixture("ohn_watercourse_response.json")
+    # Grid tiling makes many HTTP calls (one per sub-tile); use return_value so
+    # any number of calls succeeds. OGF_IDs deduplicate across tiles, giving 4 segments.
+    with (
+        patch(_HYDRO_HTTPX, return_value=_mock_response(fixture)),
+        patch(_HYDRO_CACHE, cache_dir),
+    ):
+        # Home in eastern Ontario (~450km from fixture segments near Toronto)
+        segments = fetch_watercourses(46.5, -76.0, radius_km=500)
+
+    assert len(segments) > 0
+    for seg in segments:
+        assert seg.geom_wkt.startswith("POINT"), (
+            f"Segment {seg.ogf_id} should be simplified to POINT when >75km from home"
+        )
+        # start_node and end_node must still be set (topology preserved)
+        assert seg.start_node
+        assert seg.end_node
+
+
+# ── tiled pagination ──────────────────────────────────────────────────────────
+
+
+def test_tiling_triggered_on_exact_page_size(cache_dir):
+    """When a tile returns exactly _PAGE_SIZE records, bbox is split into quadrants."""
+    from src.ingest.jurisdictions.ca_on.hydro_network import fetch_watercourses
+
+    fixture = _load_fixture("ohn_watercourse_response.json")
+    # fixture has 4 features; patch _PAGE_SIZE to 4 so first page triggers tiling
+    empty_response = _mock_response({"features": []})
+
+    call_log: list[int] = []
+
+    def counting_side_effect(*args, **kwargs):
+        call_log.append(1)
+        if len(call_log) == 1:
+            return _mock_response(fixture)   # first call: full page (triggers tiling)
+        return empty_response                 # all subsequent calls: empty
+
+    with (
+        patch(_HYDRO_HTTPX, side_effect=counting_side_effect),
+        patch(_HYDRO_CACHE, cache_dir),
+        patch("src.ingest.jurisdictions.ca_on.hydro_network._PAGE_SIZE", 4),
+    ):
+        fetch_watercourses(43.5, -79.48, radius_km=10)
+
+    # Without tiling: 2 calls (page 0 = 4 features, page 4 = empty).
+    # With tiling triggered: 4 additional quadrant calls → total ≥ 6.
+    assert len(call_log) >= 6, (
+        f"Expected ≥6 HTTP calls when tiling is triggered, got {len(call_log)}"
+    )
+
+
+# ── caching ───────────────────────────────────────────────────────────────────
+
+
+def test_cache_hit_skips_http(cache_dir):
+    from src.ingest.jurisdictions.ca_on.hydro_network import fetch_watercourses
+
+    fixture = _load_fixture("ohn_watercourse_response.json")
+    # Fixture has 4 features << _PAGE_SIZE, so pagination stops after 1 HTTP call.
+    # The second fetch is a cache hit — no further HTTP calls.
+    with (
+        patch(_HYDRO_HTTPX, return_value=_mock_response(fixture)) as mock_get,
+        patch(_HYDRO_CACHE, cache_dir),
+    ):
+        fetch_watercourses(43.5, -79.48, radius_km=10)
+        fetch_watercourses(43.5, -79.48, radius_km=10)
+
+    assert mock_get.call_count == 1
+
+
+def test_cache_miss_writes_file(cache_dir):
+    from src.ingest.jurisdictions.ca_on.hydro_network import fetch_watercourses
+
+    fixture = _load_fixture("ohn_watercourse_response.json")
+    with (
+        patch(_HYDRO_HTTPX, return_value=_mock_response(fixture)),
+        patch(_HYDRO_CACHE, cache_dir),
+    ):
         fetch_watercourses(43.5, -79.48, radius_km=10)
 
     cache_files = list(cache_dir.glob("*.json"))
-    assert len(cache_files) == 2
+    assert len(cache_files) == 1

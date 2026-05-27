@@ -100,6 +100,10 @@ class HydrologyService:
 
     # ── public query API ──────────────────────────────────────────────────────
 
+    def get_graph(self) -> nx.DiGraph:
+        """Return the stream network DiGraph, building it if needed."""
+        return self._ensure_graph()
+
     def upstream_of(self, lat: float, lon: float, max_km: float = 20.0) -> list[dict]:
         """BFS upstream from the nearest node. Returns edge dicts sorted by distance."""
         G = self._ensure_graph()
@@ -453,7 +457,7 @@ def find_connected_tributaries_for_agent(
 def ingest_hydro_network(
     lat: float,
     lon: float,
-    radius_km: float = 50.0,
+    radius_km: float = 300.0,
 ) -> tuple[int, int]:
     """Fetch and store OHN watercourse segments and barriers. Returns (seg_count, barrier_count)."""
     from datetime import datetime
@@ -469,6 +473,11 @@ def ingest_hydro_network(
     barriers = fetch_barriers(lat, lon, radius_km, segments=segments)
 
     now = datetime.utcnow().isoformat()
+
+    if "stream_segments" in db.table_names():
+        db["stream_segments"].delete_where()
+    if "barriers" in db.table_names():
+        db["barriers"].delete_where()
 
     seg_rows = [
         {
