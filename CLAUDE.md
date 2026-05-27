@@ -38,6 +38,10 @@ Obscured iNaturalist observations are not discarded and not treated as precise. 
 
 The `observations` table stores three fields to support this: `geoprivacy` ("open"/"obscured"/"private"), `is_obscured` (bool), and `obscuration_radius_km` (22.0 for obscured, None for open). The soft-label pipeline in the SDM feature matrix uses `get_obscured_observations()` from `src/storage/observations.py` to retrieve these records for distributing presence weights across candidate segments.
 
+## Data quality principle: Rainbow Trout stocking confound
+
+Rainbow Trout SDM requires a stocking-site exclusion layer during training. 3.67 million fish were stocked at 187 Ontario sites between 2021–2025. Training on raw occurrence data will model put-and-take stream accessibility, not habitat suitability. Use the `is_stocked_within_5yr` flag from the SDM feature matrix to exclude stocked-site records from training data for this species. Rainbow Trout is the most severely affected species in our dataset; Bluegill has minor stocking (34k fish, 3 sites) that should not materially bias a province-wide model.
+
 ## Core principle: presence vs. pressure
 
 Crowdsourced catch and observation data measures angler activity as much as fish presence. The bot must not confuse the two:

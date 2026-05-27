@@ -8,7 +8,15 @@
     "extirpated_from_ontario": false,
     "general_range": "Widespread across southern and central Ontario, Great Lakes basin, Shield lakes and rivers with rocky substrate.",
     "habitat_notes": "Prefers clear, cool-to-warm rocky rivers and lakes with gravel/boulder substrate. Highly tolerant of current.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-PA", "US-NY", "US-MN", "US-WI"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-PA",
+      "US-NY",
+      "US-MN",
+      "US-WI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -24,7 +32,15 @@
     "extirpated_from_ontario": false,
     "general_range": "Southern Ontario, Great Lakes shorelines, warm lakes and slow rivers below the Shield.",
     "habitat_notes": "Prefers warm, weedy, shallow water with soft substrate. Less tolerant of current than smallmouth.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-PA", "US-NY", "US-MN", "US-WI"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-PA",
+      "US-NY",
+      "US-MN",
+      "US-WI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -39,8 +55,16 @@
     "introduced": false,
     "extirpated_from_ontario": false,
     "general_range": "Province-wide across Ontario including Shield lakes. One of the most widely distributed freshwater fish in the world.",
-    "habitat_notes": "Weedy bays, shallow vegetated areas of lakes and slow rivers. Ambush predator — structure-dependent.",
-    "jurisdictions_present": ["CA-ON", "CA-MB", "CA-SK", "US-MN", "US-WI", "US-MI", "US-NY"],
+    "habitat_notes": "Weedy bays, shallow vegetated areas of lakes and slow rivers. Ambush predator \u2014 structure-dependent.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-MB",
+      "CA-SK",
+      "US-MN",
+      "US-WI",
+      "US-MI",
+      "US-NY"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -56,7 +80,13 @@
     "extirpated_from_ontario": false,
     "general_range": "St. Lawrence River, Georgian Bay, Lake of the Woods, select Shield and Precambrian lakes. Scattered but locally common.",
     "habitat_notes": "Large lakes and rivers with weedy bays and deep drop-offs. Apex ambush predator; requires substantial forage base.",
-    "jurisdictions_present": ["CA-ON", "US-WI", "US-MN", "US-OH", "US-NY"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-WI",
+      "US-MN",
+      "US-OH",
+      "US-NY"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -65,14 +95,16 @@
   },
   {
     "species": "Tiger Muskie",
-    "scientific_name": "Esox masquinongy × Esox lucius",
+    "scientific_name": "Esox masquinongy \u00d7 Esox lucius",
     "native_to_ontario": false,
     "native_to_great_lakes": false,
     "introduced": true,
     "extirpated_from_ontario": false,
     "general_range": "Stocked selectively by MNRF in specific Ontario waters as a put-and-take trophy fish.",
-    "habitat_notes": "Same habitat preferences as Muskellunge. Sterile hybrid — cannot reproduce.",
-    "jurisdictions_present": ["CA-ON"],
+    "habitat_notes": "Same habitat preferences as Muskellunge. Sterile hybrid \u2014 cannot reproduce.",
+    "jurisdictions_present": [
+      "CA-ON"
+    ],
     "sara_status": null,
     "ontario_status": null,
     "cosewic_status": null,
@@ -88,7 +120,16 @@
     "extirpated_from_ontario": false,
     "general_range": "Province-wide. Exceptionally abundant in Shield lakes, Lake Erie, Lake of the Woods. Thrives in turbid, wind-exposed systems.",
     "habitat_notes": "Large lakes and rivers with sandy/gravel shoals for spawning. Prefers low light; most active at dawn, dusk, and at night.",
-    "jurisdictions_present": ["CA-ON", "CA-MB", "CA-SK", "US-MN", "US-WI", "US-MI", "US-OH", "US-NY"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-MB",
+      "CA-SK",
+      "US-MN",
+      "US-WI",
+      "US-MI",
+      "US-OH",
+      "US-NY"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -104,7 +145,13 @@
     "extirpated_from_ontario": false,
     "general_range": "Large rivers in southern Ontario, Lake Erie, Lake St. Clair, St. Lawrence River. Less common than walleye.",
     "habitat_notes": "Turbid, large rivers with sandy substrate. More tolerant of turbidity and current than walleye.",
-    "jurisdictions_present": ["CA-ON", "US-MN", "US-WI", "US-ND", "US-OH"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MN",
+      "US-WI",
+      "US-ND",
+      "US-OH"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -119,12 +166,21 @@
     "introduced": false,
     "extirpated_from_ontario": false,
     "general_range": "Cold, clean headwater streams and spring-fed lakes across the Canadian Shield and Algonquin Park. Sensitive to warming and acidification.",
-    "habitat_notes": "Requires cold (<20°C), well-oxygenated, clear water with gravel substrate for spawning. Intolerant of pollution.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "CA-NB", "US-NY", "US-PA", "US-VT", "US-ME", "US-MI"],
+    "habitat_notes": "Requires cold (<20\u00b0C), well-oxygenated, clear water with gravel substrate for spawning. Intolerant of pollution.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "CA-NB",
+      "US-NY",
+      "US-PA",
+      "US-VT",
+      "US-ME",
+      "US-MI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Sensitive species — handle with wet hands and minimize air exposure. Many streams have special size/bag limits.",
+    "fishing_notes": "Sensitive species \u2014 handle with wet hands and minimize air exposure. Many streams have special size/bag limits.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -136,7 +192,13 @@
     "extirpated_from_ontario": false,
     "general_range": "Introduced and self-sustaining in many cold Ontario streams and Great Lakes tributaries. Lake-run populations present.",
     "habitat_notes": "Cold streams and rivers. More tolerant of warmer water than brook trout. Often holds in deeper pools.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-WI", "US-NY", "US-PA"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-WI",
+      "US-NY",
+      "US-PA"
+    ],
     "sara_status": null,
     "ontario_status": null,
     "cosewic_status": null,
@@ -152,11 +214,17 @@
     "extirpated_from_ontario": false,
     "general_range": "Widely introduced in cold Ontario rivers and Great Lakes tributaries. Lake-run (steelhead) populations use major tributaries like Credit, Grand, Nottawasaga, Saugeen.",
     "habitat_notes": "Cold rivers and streams. Lake-run fish enter tributaries in fall (some) and spring for spawning runs.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-WI", "US-NY", "US-OH"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-WI",
+      "US-NY",
+      "US-OH"
+    ],
     "sara_status": null,
     "ontario_status": null,
     "cosewic_status": null,
-    "fishing_notes": "Pacific native (steelhead race). Introduced and reproducing in Great Lakes system. Steelhead runs are signature fisheries — spring runs in Credit, Grand, Saugeen.",
+    "fishing_notes": "Pacific native (steelhead race). Introduced and reproducing in Great Lakes system. Steelhead runs are signature fisheries \u2014 spring runs in Credit, Grand, Saugeen.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -167,24 +235,33 @@
     "introduced": false,
     "extirpated_from_ontario": false,
     "general_range": "Deep, cold, oligotrophic Shield lakes and Great Lakes. Lake Superior, Georgian Bay, Lake Nipigon are strongholds.",
-    "habitat_notes": "Requires cold (<10°C), deep, well-oxygenated water. Spawns on rocky shoals in fall. Intolerant of warming.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "CA-MB", "US-MI", "US-MN", "US-WI"],
+    "habitat_notes": "Requires cold (<10\u00b0C), deep, well-oxygenated water. Spawns on rocky shoals in fall. Intolerant of warming.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "CA-MB",
+      "US-MI",
+      "US-MN",
+      "US-WI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Slot limits and special regulations in many waters. Check MNRF rules. Slow-growing — handle carefully.",
+    "fishing_notes": "Slot limits and special regulations in many waters. Check MNRF rules. Slow-growing \u2014 handle carefully.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
     "species": "Splake",
-    "scientific_name": "Salvelinus fontinalis × Salvelinus namaycush",
+    "scientific_name": "Salvelinus fontinalis \u00d7 Salvelinus namaycush",
     "native_to_ontario": false,
     "native_to_great_lakes": false,
     "introduced": true,
     "extirpated_from_ontario": false,
     "general_range": "Stocked in select Ontario Shield lakes as a put-and-take alternative to lake trout. MNRF-managed.",
     "habitat_notes": "Cold, deep lakes. Sterile hybrid with intermediate habitat requirements between brook and lake trout.",
-    "jurisdictions_present": ["CA-ON"],
+    "jurisdictions_present": [
+      "CA-ON"
+    ],
     "sara_status": null,
     "ontario_status": null,
     "cosewic_status": null,
@@ -199,8 +276,16 @@
     "introduced": false,
     "extirpated_from_ontario": false,
     "general_range": "Ubiquitous across Ontario lakes and rivers. Among the most abundant panfish in the Great Lakes.",
-    "habitat_notes": "Highly adaptable — lakes, rivers, weedy to open water. Schools over sandy or mixed substrate.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-WI", "US-MN", "US-NY", "US-PA"],
+    "habitat_notes": "Highly adaptable \u2014 lakes, rivers, weedy to open water. Schools over sandy or mixed substrate.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-WI",
+      "US-MN",
+      "US-NY",
+      "US-PA"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -216,11 +301,16 @@
     "extirpated_from_ontario": false,
     "general_range": "Invasive in Lake Ontario and tributaries. Spreading through the Great Lakes. Atlantic coast native.",
     "habitat_notes": "Adaptable to fresh and brackish water. Competes with yellow perch and other natives.",
-    "jurisdictions_present": ["CA-ON", "US-NY", "US-OH", "US-MI"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-NY",
+      "US-OH",
+      "US-MI"
+    ],
     "sara_status": null,
     "ontario_status": null,
     "cosewic_status": null,
-    "fishing_notes": "Invasive in Ontario. No restrictions on harvest — encouraged to not release.",
+    "fishing_notes": "Invasive in Ontario. No restrictions on harvest \u2014 encouraged to not release.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -232,7 +322,13 @@
     "extirpated_from_ontario": false,
     "general_range": "Southern Ontario rivers and Lake Erie, Lake St. Clair, Thames, Grand, Detroit River. Northernmost limit of range.",
     "habitat_notes": "Large rivers and lake shorelines with sandy/silty substrate. Nocturnal feeder. Prefers warm, turbid water.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-MI", "US-IN", "US-IL"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-MI",
+      "US-IN",
+      "US-IL"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -248,7 +344,13 @@
     "extirpated_from_ontario": false,
     "general_range": "Widespread across southern and central Ontario in warm, weedy lakes and slow rivers.",
     "habitat_notes": "Tolerant of warm, turbid, low-oxygen water. Often found in mucky-bottomed ponds and weedy bays.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-NY", "US-PA"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-NY",
+      "US-PA"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -264,7 +366,12 @@
     "extirpated_from_ontario": false,
     "general_range": "Southern Ontario, less common than brown bullhead. Warmer, more turbid waters in the Lake Erie and Lake Ontario drainages.",
     "habitat_notes": "Very tolerant of turbidity and low oxygen. Prefers muddy-bottomed warm-water systems.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-MI", "US-IN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-MI",
+      "US-IN"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -280,7 +387,14 @@
     "extirpated_from_ontario": false,
     "general_range": "Widespread in rocky and weedy lakes and rivers across southern and central Ontario.",
     "habitat_notes": "Rocky substrate, aquatic vegetation, moderate current. Often co-occurs with smallmouth bass.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-WI", "US-NY", "US-PA", "US-OH"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-WI",
+      "US-NY",
+      "US-PA",
+      "US-OH"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -296,7 +410,13 @@
     "extirpated_from_ontario": false,
     "general_range": "Abundant in weedy, shallow lakes and slow rivers across southern Ontario.",
     "habitat_notes": "Heavily vegetated, warm, shallow water. Tolerates some temperature variation.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-NY", "US-PA"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-NY",
+      "US-PA"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -312,7 +432,13 @@
     "extirpated_from_ontario": false,
     "general_range": "Southern Ontario lakes and slow rivers. More abundant in southwestern Ontario than farther north.",
     "habitat_notes": "Warm, weedy, shallow lakes. Often found in dense submergent vegetation near drop-offs.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-IN", "US-WI"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-IN",
+      "US-WI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -328,7 +454,12 @@
     "extirpated_from_ontario": false,
     "general_range": "Southern Ontario, Lake Erie watershed, Lake St. Clair. Patchy distribution near the northern edge of range.",
     "habitat_notes": "Turbid, weedy, warm lakes and reservoirs. More tolerant of turbidity than black crappie.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-MI", "US-IN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-MI",
+      "US-IN"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -344,7 +475,13 @@
     "extirpated_from_ontario": false,
     "general_range": "Southern Ontario lakes. Somewhat more widespread than white crappie in Ontario.",
     "habitat_notes": "Clear, weedy lakes and slow rivers. Prefers clearer water than white crappie.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-WI", "US-OH", "US-NY"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-WI",
+      "US-OH",
+      "US-NY"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -359,8 +496,14 @@
     "introduced": false,
     "extirpated_from_ontario": false,
     "general_range": "Southern Ontario, Lake Erie and Lake Ontario drainages, Lake St. Clair. Ancient, air-breathing species.",
-    "habitat_notes": "Weedy, shallow, warm-water lakes and slow rivers with abundant vegetation. Can breathe air — tolerates low oxygen.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-NY", "US-PA"],
+    "habitat_notes": "Weedy, shallow, warm-water lakes and slow rivers with abundant vegetation. Can breathe air \u2014 tolerates low oxygen.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-NY",
+      "US-PA"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -374,13 +517,19 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Southern Ontario — Lake Erie, Lake Ontario, Lake St. Clair, Grand River, Thames River. Famous aggregations at Caledonia on the Grand.",
+    "general_range": "Southern Ontario \u2014 Lake Erie, Lake Ontario, Lake St. Clair, Grand River, Thames River. Famous aggregations at Caledonia on the Grand.",
     "habitat_notes": "Large rivers and lake shallows with surface-oriented ambush behaviour. Air-breather. Tolerates warm, weedy, low-oxygen conditions.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-NY", "US-PA"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-NY",
+      "US-PA"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Eggs are toxic to birds and mammals — do not eat roe. Catch and photograph, handle gently.",
+    "fishing_notes": "Eggs are toxic to birds and mammals \u2014 do not eat roe. Catch and photograph, handle gently.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -392,11 +541,16 @@
     "extirpated_from_ontario": false,
     "general_range": "Lake Erie and Lake St. Clair in Ontario; reaches the northeastern edge of its range here.",
     "habitat_notes": "Warm, shallow, weedy bays and river margins. Requires dense aquatic vegetation.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-IN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-IN"
+    ],
     "sara_status": "Special Concern",
     "ontario_status": "Special Concern",
     "cosewic_status": "Special Concern",
-    "fishing_notes": "Species at Risk — Special Concern. Catch and release only. Handle carefully and minimize air exposure. Do not target deliberately.",
+    "fishing_notes": "Species at Risk \u2014 Special Concern. Catch and release only. Handle carefully and minimize air exposure. Do not target deliberately.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -406,13 +560,21 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Province-wide — one of Ontario's most abundant fish. Found in nearly every river, lake, and stream system.",
+    "general_range": "Province-wide \u2014 one of Ontario's most abundant fish. Found in nearly every river, lake, and stream system.",
     "habitat_notes": "Highly adaptable. Gravel-substrate rivers for spawning (spectacular spring runs in many streams). Tolerates a wide range of conditions.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "CA-MB", "US-MI", "US-WI", "US-NY", "US-MN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "CA-MB",
+      "US-MI",
+      "US-WI",
+      "US-NY",
+      "US-MN"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Underrated angling target — strong fighters on light gear in spawning runs. Excellent for microfishing/bowfishing.",
+    "fishing_notes": "Underrated angling target \u2014 strong fighters on light gear in spawning runs. Excellent for microfishing/bowfishing.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -424,7 +586,14 @@
     "extirpated_from_ontario": false,
     "general_range": "Cold lakes and rivers across the Shield and northern Ontario. More northerly distribution than white sucker.",
     "habitat_notes": "Cold, clear rivers and lakes. Spawns in gravel-substrate streams.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "CA-MB", "US-MN", "US-WI", "US-MI"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "CA-MB",
+      "US-MN",
+      "US-WI",
+      "US-MI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -438,9 +607,15 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Large rivers in southern Ontario — St. Lawrence, Ottawa, Trent, Grand, Thames.",
+    "general_range": "Large rivers in southern Ontario \u2014 St. Lawrence, Ottawa, Trent, Grand, Thames.",
     "habitat_notes": "Large rivers with fast current and gravel/cobble substrate. Sensitive to siltation.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "US-NY", "US-OH", "US-MI"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "US-NY",
+      "US-OH",
+      "US-MI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -454,9 +629,15 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Southern Ontario rivers — Thames, Grand, Sydenham, Ausable, Maitland.",
+    "general_range": "Southern Ontario rivers \u2014 Thames, Grand, Sydenham, Ausable, Maitland.",
     "habitat_notes": "Medium to large rivers with gravel/cobble substrate and moderate current.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-MI", "US-IN", "US-KY"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-MI",
+      "US-IN",
+      "US-KY"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -470,13 +651,17 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Very restricted in Ontario — Grand River and its major tributaries (Speed, Conestogo), Trent River system. Globally rare.",
+    "general_range": "Very restricted in Ontario \u2014 Grand River and its major tributaries (Speed, Conestogo), Trent River system. Globally rare.",
     "habitat_notes": "Large, fast-flowing rivers with cobble/boulder substrate and high water quality. Among the most current-adapted suckers in Ontario.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "US-NY"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "US-NY"
+    ],
     "sara_status": "Threatened",
     "ontario_status": "Threatened",
     "cosewic_status": "Threatened",
-    "fishing_notes": "SPECIES AT RISK — Threatened (federal + Ontario). Release immediately if caught. Do not target deliberately. Report sightings with location to MNRF at 1-877-TIPS-MNR.",
+    "fishing_notes": "SPECIES AT RISK \u2014 Threatened (federal + Ontario). Release immediately if caught. Do not target deliberately. Report sightings with location to MNRF at 1-877-TIPS-MNR.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -486,13 +671,18 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Cold, small headwater streams in southern Ontario — primarily Lake Ontario tributaries (Rouge, Duffins, Humber, Credit, Sixteen Mile, and others).",
+    "general_range": "Cold, small headwater streams in southern Ontario \u2014 primarily Lake Ontario tributaries (Rouge, Duffins, Humber, Credit, Sixteen Mile, and others).",
     "habitat_notes": "Requires cold, clean, shaded, fast-flowing headwater streams with gravel substrate and intact riparian vegetation. Extremely sensitive to temperature and siltation.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-PA", "US-NY"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-PA",
+      "US-NY"
+    ],
     "sara_status": "Threatened",
     "ontario_status": "Endangered",
     "cosewic_status": "Endangered",
-    "fishing_notes": "SPECIES AT RISK — Endangered (Ontario) / Threatened (federal). Do not target. If encountered, release immediately. Report sightings to MNRF. Disturbing habitat is an offence under the Endangered Species Act.",
+    "fishing_notes": "SPECIES AT RISK \u2014 Endangered (Ontario) / Threatened (federal). Do not target. If encountered, release immediately. Report sightings to MNRF. Disturbing habitat is an offence under the Endangered Species Act.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -503,12 +693,17 @@
     "introduced": false,
     "extirpated_from_ontario": false,
     "general_range": "Sydenham River, Thames River, Grand River, and select Lake Erie tributaries in southwestern Ontario.",
-    "habitat_notes": "Sandy substrate in medium to large rivers with moderate current. Buries itself in fine sand — highly specialized microhabitat.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-PA", "US-NY"],
+    "habitat_notes": "Sandy substrate in medium to large rivers with moderate current. Buries itself in fine sand \u2014 highly specialized microhabitat.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-PA",
+      "US-NY"
+    ],
     "sara_status": "Threatened",
     "ontario_status": "Threatened",
     "cosewic_status": "Threatened",
-    "fishing_notes": "SPECIES AT RISK — Threatened (federal + Ontario). Release immediately if caught. Report sightings to MNRF. Disturbing sandy substrate habitat in known rivers should be avoided.",
+    "fishing_notes": "SPECIES AT RISK \u2014 Threatened (federal + Ontario). Release immediately if caught. Report sightings to MNRF. Disturbing sandy substrate habitat in known rivers should be avoided.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -520,11 +715,16 @@
     "extirpated_from_ontario": false,
     "general_range": "Isolated populations in Lake Simcoe tributaries (mainly Holland River and nearby lakes) and eastern Lake Ontario area.",
     "habitat_notes": "Clear, shallow, warmwater lakes and slow rivers with abundant aquatic vegetation (especially pondweed). Very site-specific.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-WI", "US-MN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-WI",
+      "US-MN"
+    ],
     "sara_status": "Endangered",
     "ontario_status": "Endangered",
     "cosewic_status": "Endangered",
-    "fishing_notes": "SPECIES AT RISK — Endangered (federal + Ontario). Do not target. Release immediately if encountered. Report sightings to MNRF. Extremely rare — this is one of Ontario's rarest fish.",
+    "fishing_notes": "SPECIES AT RISK \u2014 Endangered (federal + Ontario). Do not target. Release immediately if encountered. Report sightings to MNRF. Extremely rare \u2014 this is one of Ontario's rarest fish.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -534,13 +734,20 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Fragmented populations in larger Ontario rivers and lakes — Lake of the Woods, Lake Nipigon, French River, Rainy River, Albany River. Historically abundant, now reduced.",
+    "general_range": "Fragmented populations in larger Ontario rivers and lakes \u2014 Lake of the Woods, Lake Nipigon, French River, Rainy River, Albany River. Historically abundant, now reduced.",
     "habitat_notes": "Large rivers and deep lakes with sandy/gravel substrate. Spawns on rocky rapids in spring. Long-lived (up to 150 years), slow to mature.",
-    "jurisdictions_present": ["CA-ON", "CA-MB", "CA-QC", "US-MI", "US-WI", "US-MN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-MB",
+      "CA-QC",
+      "US-MI",
+      "US-WI",
+      "US-MN"
+    ],
     "sara_status": "Threatened",
     "ontario_status": "Threatened",
     "cosewic_status": "Threatened",
-    "fishing_notes": "SPECIES AT RISK — Threatened (Ontario). Catch and release only in most Ontario waters; closed season in many areas. Handle with extreme care — lift from water briefly, support body, no hooks in gills. Report captures with location to MNRF at 1-877-TIPS-MNR.",
+    "fishing_notes": "SPECIES AT RISK \u2014 Threatened (Ontario). Catch and release only in most Ontario waters; closed season in many areas. Handle with extreme care \u2014 lift from water briefly, support body, no hooks in gills. Report captures with location to MNRF at 1-877-TIPS-MNR.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -550,13 +757,19 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "St. Lawrence River and Lake Ontario drainage. Historically abundant, now severely reduced — populations above Niagara Falls extirpated by the falls, dams limit recolonization.",
-    "habitat_notes": "Rivers, lakes, and streams. Catadromous — spawns in the Sargasso Sea; juveniles (elvers) ascend rivers. Uses a wide variety of freshwater habitats.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "CA-NB", "US-NY", "US-PA"],
+    "general_range": "St. Lawrence River and Lake Ontario drainage. Historically abundant, now severely reduced \u2014 populations above Niagara Falls extirpated by the falls, dams limit recolonization.",
+    "habitat_notes": "Rivers, lakes, and streams. Catadromous \u2014 spawns in the Sargasso Sea; juveniles (elvers) ascend rivers. Uses a wide variety of freshwater habitats.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "CA-NB",
+      "US-NY",
+      "US-PA"
+    ],
     "sara_status": "Threatened",
     "ontario_status": "Threatened",
     "cosewic_status": "Threatened",
-    "fishing_notes": "SPECIES AT RISK — Threatened (federal). Closed to fishing in Ontario. Release immediately if caught accidentally. Report unusual captures to MNRF.",
+    "fishing_notes": "SPECIES AT RISK \u2014 Threatened (federal). Closed to fishing in Ontario. Release immediately if caught accidentally. Report unusual captures to MNRF.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -566,13 +779,15 @@
     "native_to_great_lakes": false,
     "introduced": false,
     "extirpated_from_ontario": true,
-    "general_range": "Lake Ontario population — functionally extirpated. Once used tributaries including Ganaraska, Credit, Humber, Salmon River. Active restoration program by Ontario and federal governments.",
+    "general_range": "Lake Ontario population \u2014 functionally extirpated. Once used tributaries including Ganaraska, Credit, Humber, Salmon River. Active restoration program by Ontario and federal governments.",
     "habitat_notes": "Cold, clean rivers with gravel substrate. Anadromous (ocean-run) in Atlantic range; Lake Ontario population was landlocked.",
-    "jurisdictions_present": ["CA-ON"],
+    "jurisdictions_present": [
+      "CA-ON"
+    ],
     "sara_status": "Endangered",
     "ontario_status": "Endangered",
     "cosewic_status": "Endangered",
-    "fishing_notes": "SPECIES AT RISK — Endangered (federal + Ontario). Lake Ontario population is extirpated/functionally extinct. Any captures are almost certainly Pacific Chinook or Coho salmon (introduced). Report any suspected Atlantic Salmon immediately to MNRF.",
+    "fishing_notes": "SPECIES AT RISK \u2014 Endangered (federal + Ontario). Lake Ontario population is extirpated/functionally extinct. Any captures are almost certainly Pacific Chinook or Coho salmon (introduced). Report any suspected Atlantic Salmon immediately to MNRF.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -582,13 +797,13 @@
     "native_to_great_lakes": false,
     "introduced": false,
     "extirpated_from_ontario": true,
-    "general_range": "Historically present in Lake Erie and connecting rivers. Extirpated from Ontario — no confirmed populations remain.",
+    "general_range": "Historically present in Lake Erie and connecting rivers. Extirpated from Ontario \u2014 no confirmed populations remain.",
     "habitat_notes": "Large, open, slow-moving rivers and lakes. Filter-feeder on zooplankton. Requires specific river conditions for spawning.",
     "jurisdictions_present": [],
     "sara_status": "Extirpated",
     "ontario_status": "Extirpated",
     "cosewic_status": "Extirpated",
-    "fishing_notes": "Extirpated from Ontario — no population exists. If somehow encountered, contact MNRF immediately — this would be an extraordinary scientific event.",
+    "fishing_notes": "Extirpated from Ontario \u2014 no population exists. If somehow encountered, contact MNRF immediately \u2014 this would be an extraordinary scientific event.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -600,11 +815,18 @@
     "extirpated_from_ontario": false,
     "general_range": "Widespread across southern and central Ontario rivers and streams with sand or fine gravel substrate.",
     "habitat_notes": "Sandy substrate in moderate-current streams and lake shallows. One of the most common darters in Ontario.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-WI", "US-OH", "US-NY", "US-MN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-WI",
+      "US-OH",
+      "US-NY",
+      "US-MN"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Common microfishing target. Use tiny hooks (#10–#14) with small live bait on ultralight or tenkara tackle.",
+    "fishing_notes": "Common microfishing target. Use tiny hooks (#10\u2013#14) with small live bait on ultralight or tenkara tackle.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -614,13 +836,19 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Southwestern Ontario streams draining to Lake Erie and Lake Huron — Sydenham, Thames, Grand, Ausable, Maitland, Saugeen.",
-    "habitat_notes": "Fast, clear, gravel-substrate riffles in small to medium rivers. Males are brilliantly colored in spring — one of Ontario's most striking fish.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-MI", "US-IN", "US-WI"],
+    "general_range": "Southwestern Ontario streams draining to Lake Erie and Lake Huron \u2014 Sydenham, Thames, Grand, Ausable, Maitland, Saugeen.",
+    "habitat_notes": "Fast, clear, gravel-substrate riffles in small to medium rivers. Males are brilliantly colored in spring \u2014 one of Ontario's most striking fish.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-MI",
+      "US-IN",
+      "US-WI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Excellent microfishing target in riffle habitat. Photograph and release — colors fade quickly after death.",
+    "fishing_notes": "Excellent microfishing target in riffle habitat. Photograph and release \u2014 colors fade quickly after death.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -631,12 +859,18 @@
     "introduced": false,
     "extirpated_from_ontario": false,
     "general_range": "Southern Ontario streams in the Lake Erie and Lake Ontario drainages. Saugeen, Grand, Thames, Humber, and others.",
-    "habitat_notes": "Rocky and cobble riffles in clear, cool streams. Nests under flat rocks — males guard eggs.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-MI", "US-PA", "US-NY"],
+    "habitat_notes": "Rocky and cobble riffles in clear, cool streams. Nests under flat rocks \u2014 males guard eggs.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-MI",
+      "US-PA",
+      "US-NY"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Microfishing target — found in riffle habitat under rocks. Tiny hooks, live waxworm or maggot.",
+    "fishing_notes": "Microfishing target \u2014 found in riffle habitat under rocks. Tiny hooks, live waxworm or maggot.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -648,7 +882,13 @@
     "extirpated_from_ontario": false,
     "general_range": "Scattered across central and northern Ontario in cool, weedy lakes and slow streams.",
     "habitat_notes": "Weedy, slow-moving water in lakes and stream margins. Often found in vegetation rather than riffles.",
-    "jurisdictions_present": ["CA-ON", "CA-MB", "US-MN", "US-WI", "US-ND"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-MB",
+      "US-MN",
+      "US-WI",
+      "US-ND"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -662,9 +902,14 @@
     "native_to_great_lakes": false,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Eastern Ontario — St. Lawrence River tributaries, eastern Lake Ontario drainages.",
+    "general_range": "Eastern Ontario \u2014 St. Lawrence River tributaries, eastern Lake Ontario drainages.",
     "habitat_notes": "Sandy to gravelly substrate in streams and rivers. More common in eastern Ontario than western.",
-    "jurisdictions_present": ["CA-ON", "US-NY", "US-PA", "US-VT"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-NY",
+      "US-PA",
+      "US-VT"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -680,7 +925,12 @@
     "extirpated_from_ontario": false,
     "general_range": "Scattered in southwestern Ontario in weedy, clear lakes and slow streams. One of the smallest fish in Ontario.",
     "habitat_notes": "Dense aquatic vegetation in clear, warm, shallow water. Difficult to find without targeted effort.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-MI", "US-IN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-MI",
+      "US-IN"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -696,11 +946,18 @@
     "extirpated_from_ontario": false,
     "general_range": "Ubiquitous in cool, clear, fast-flowing small streams across southern and central Ontario.",
     "habitat_notes": "Rocky and gravelly riffles in cold, clean headwater streams. Among the most common stream fish in Ontario.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-NY", "US-PA", "US-OH", "US-WI"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-NY",
+      "US-PA",
+      "US-OH",
+      "US-WI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Classic microfishing target — readily caught on tiny hooks with maggot or small worm. Often the first species encountered in any riffle.",
+    "fishing_notes": "Classic microfishing target \u2014 readily caught on tiny hooks with maggot or small worm. Often the first species encountered in any riffle.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -712,7 +969,15 @@
     "extirpated_from_ontario": false,
     "general_range": "Province-wide in fast, clear, rocky streams from southern Ontario to the north.",
     "habitat_notes": "Swift, rocky riffles in cold, well-oxygenated rivers. Common in larger rivers than blacknose dace.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "CA-MB", "US-MI", "US-WI", "US-MN", "US-NY"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "CA-MB",
+      "US-MI",
+      "US-WI",
+      "US-MN",
+      "US-NY"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -728,11 +993,19 @@
     "extirpated_from_ontario": false,
     "general_range": "Very common across southern and central Ontario in small to medium streams. Often the top predator in small streams.",
     "habitat_notes": "Adaptable to a wide range of stream conditions. Found in headwaters to larger rivers. Tolerates some degradation.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-WI", "US-OH", "US-NY", "US-PA", "US-MN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-WI",
+      "US-OH",
+      "US-NY",
+      "US-PA",
+      "US-MN"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Good microfishing/panfishing target — aggressive biters. Also used as bait for larger species in some jurisdictions (check regulations).",
+    "fishing_notes": "Good microfishing/panfishing target \u2014 aggressive biters. Also used as bait for larger species in some jurisdictions (check regulations).",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -742,13 +1015,19 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Southwestern Ontario rivers — Grand, Thames, Sydenham, and Lake Erie tributaries.",
-    "habitat_notes": "Medium to large rivers with gravel substrate and moderate current. Males build large gravel nests — a distinctive behavioral landmark.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-PA", "US-NY", "US-VA"],
+    "general_range": "Southwestern Ontario rivers \u2014 Grand, Thames, Sydenham, and Lake Erie tributaries.",
+    "habitat_notes": "Medium to large rivers with gravel substrate and moderate current. Males build large gravel nests \u2014 a distinctive behavioral landmark.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-PA",
+      "US-NY",
+      "US-VA"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Impressive microfishing target — larger than most chubs. Look for gravel mound nests in spring as a location cue.",
+    "fishing_notes": "Impressive microfishing target \u2014 larger than most chubs. Look for gravel mound nests in spring as a location cue.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -758,9 +1037,16 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Scattered in southern Ontario — Saugeen, Grand, Thames, and select Lake Ontario tributaries.",
+    "general_range": "Scattered in southern Ontario \u2014 Saugeen, Grand, Thames, and select Lake Ontario tributaries.",
     "habitat_notes": "Gravel and cobble riffles in clear, cool, medium streams. Males develop prominent tubercles (horns) during spring spawning.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-MI", "US-WI", "US-MN", "US-NY"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-MI",
+      "US-WI",
+      "US-MN",
+      "US-NY"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -776,11 +1062,18 @@
     "extirpated_from_ontario": false,
     "general_range": "Widespread in southern Ontario streams and small rivers. Often the most abundant shiner in many systems.",
     "habitat_notes": "Pools and runs in cool to warm, clear streams over sand and gravel. Schooling species.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-WI", "US-NY", "US-OH", "US-MN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-WI",
+      "US-NY",
+      "US-OH",
+      "US-MN"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Classic microfishing target — surface and mid-column feeder. Tiny dry fly or size #12 hook with bread.",
+    "fishing_notes": "Classic microfishing target \u2014 surface and mid-column feeder. Tiny dry fly or size #12 hook with bread.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -790,13 +1083,19 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Southern Ontario in larger streams and rivers — Grand, Thames, Sydenham, and Lake Erie tributaries.",
+    "general_range": "Southern Ontario in larger streams and rivers \u2014 Grand, Thames, Sydenham, and Lake Erie tributaries.",
     "habitat_notes": "Pools in medium to large rivers with moderate current and sandy/gravel substrate.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-MI", "US-IN", "US-WI"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-MI",
+      "US-IN",
+      "US-WI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Microfishing target — commonly found in pools below riffles.",
+    "fishing_notes": "Microfishing target \u2014 commonly found in pools below riffles.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -806,13 +1105,20 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Southern Ontario in clear, fast-flowing rivers — Saugeen, Grand, Thames, Humber, Credit.",
+    "general_range": "Southern Ontario in clear, fast-flowing rivers \u2014 Saugeen, Grand, Thames, Humber, Credit.",
     "habitat_notes": "Riffles and fast runs in cold, clear rivers with gravel substrate. More cold-adapted than most shiners.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-WI", "US-NY", "US-OH", "US-PA"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-WI",
+      "US-NY",
+      "US-OH",
+      "US-PA"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Striking microfishing target — bright pink-red head in breeding males. Found in fast riffle/run habitat.",
+    "fishing_notes": "Striking microfishing target \u2014 bright pink-red head in breeding males. Found in fast riffle/run habitat.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -823,8 +1129,15 @@
     "introduced": false,
     "extirpated_from_ontario": false,
     "general_range": "Open water of Great Lakes and large Ontario rivers. Pelagic, schooling, very abundant.",
-    "habitat_notes": "Open water in large lakes and rivers. Schooling species — forms massive aggregations, especially in fall.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-WI", "US-OH", "US-MN", "US-NY"],
+    "habitat_notes": "Open water in large lakes and rivers. Schooling species \u2014 forms massive aggregations, especially in fall.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-WI",
+      "US-OH",
+      "US-MN",
+      "US-NY"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -839,12 +1152,19 @@
     "introduced": false,
     "extirpated_from_ontario": false,
     "general_range": "Ubiquitous across southern Ontario streams, rivers, and lake shallows.",
-    "habitat_notes": "Highly adaptable — tolerates a wide range of temperatures, turbidity, and substrate. Found almost everywhere.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-WI", "US-OH", "US-MN", "US-NY"],
+    "habitat_notes": "Highly adaptable \u2014 tolerates a wide range of temperatures, turbidity, and substrate. Found almost everywhere.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-WI",
+      "US-OH",
+      "US-MN",
+      "US-NY"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Excellent microfishing target — one of the easiest Ontario minnows to catch. Tiny hook with bread or maggot.",
+    "fishing_notes": "Excellent microfishing target \u2014 one of the easiest Ontario minnows to catch. Tiny hook with bread or maggot.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -855,8 +1175,15 @@
     "introduced": false,
     "extirpated_from_ontario": false,
     "general_range": "Widely distributed in Ontario, especially in disturbed or degraded habitats that other species avoid.",
-    "habitat_notes": "Extremely tolerant — survives in warm, turbid, low-oxygen water. Often thrives where other cyprinids cannot.",
-    "jurisdictions_present": ["CA-ON", "CA-MB", "US-MN", "US-WI", "US-OH", "US-MI"],
+    "habitat_notes": "Extremely tolerant \u2014 survives in warm, turbid, low-oxygen water. Often thrives where other cyprinids cannot.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-MB",
+      "US-MN",
+      "US-WI",
+      "US-OH",
+      "US-MI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -871,12 +1198,19 @@
     "introduced": false,
     "extirpated_from_ontario": false,
     "general_range": "Province-wide in cold, weedy streams, bogs, beaver ponds, and lake margins across Ontario.",
-    "habitat_notes": "Dense aquatic vegetation in cold, clear to slightly tannin-stained water. Builds a nest — males guard eggs.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "CA-MB", "US-MN", "US-WI", "US-MI"],
+    "habitat_notes": "Dense aquatic vegetation in cold, clear to slightly tannin-stained water. Builds a nest \u2014 males guard eggs.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "CA-MB",
+      "US-MN",
+      "US-WI",
+      "US-MI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Charming microfishing target — extremely small hooks required (#16 or finer). Found in beaver ponds and cold, weedy areas.",
+    "fishing_notes": "Charming microfishing target \u2014 extremely small hooks required (#16 or finer). Found in beaver ponds and cold, weedy areas.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -886,13 +1220,18 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Circumpolar distribution — scattered across Ontario including northern Shield lakes and coastal Lake Superior areas.",
+    "general_range": "Circumpolar distribution \u2014 scattered across Ontario including northern Shield lakes and coastal Lake Superior areas.",
     "habitat_notes": "Weedy, shallow, cool to cold water. Found in lake margins, streams, and estuaries.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "US-MI", "US-MN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "US-MI",
+      "US-MN"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Tiny microfishing target — requires ultra-fine hooks. More northern distribution than brook stickleback in Ontario.",
+    "fishing_notes": "Tiny microfishing target \u2014 requires ultra-fine hooks. More northern distribution than brook stickleback in Ontario.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -902,13 +1241,19 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Southern Ontario in weedy, slow-moving streams and lake margins — Lake Erie and Lake Ontario drainages.",
+    "general_range": "Southern Ontario in weedy, slow-moving streams and lake margins \u2014 Lake Erie and Lake Ontario drainages.",
     "habitat_notes": "Soft-bottomed, weedy, slow-moving water with debris. Nocturnal. Hides under leaves, logs, and vegetation.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-MI", "US-WI", "US-NY"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-MI",
+      "US-WI",
+      "US-NY"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Secretive microfishing target — best caught at night with tiny hook near bottom debris. Has mildly venomous pectoral spines — handle carefully.",
+    "fishing_notes": "Secretive microfishing target \u2014 best caught at night with tiny hook near bottom debris. Has mildly venomous pectoral spines \u2014 handle carefully.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -918,13 +1263,19 @@
     "native_to_great_lakes": true,
     "introduced": false,
     "extirpated_from_ontario": false,
-    "general_range": "Southern Ontario rivers with rocky substrate — Grand, Thames, Sydenham, and larger Lake Erie and Lake Ontario tributaries.",
+    "general_range": "Southern Ontario rivers with rocky substrate \u2014 Grand, Thames, Sydenham, and larger Lake Erie and Lake Ontario tributaries.",
     "habitat_notes": "Rocky riffles and runs in medium to large rivers. Hides under flat rocks and cobble.",
-    "jurisdictions_present": ["CA-ON", "US-OH", "US-MI", "US-WI", "US-MN"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-MI",
+      "US-WI",
+      "US-MN"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Excellent microfishing target in rocky riffle habitats. Larger than tadpole madtom. Mildly venomous pectoral spines — handle with care.",
+    "fishing_notes": "Excellent microfishing target in rocky riffle habitats. Larger than tadpole madtom. Mildly venomous pectoral spines \u2014 handle with care.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -936,11 +1287,18 @@
     "extirpated_from_ontario": false,
     "general_range": "Widespread in Ontario in cold, tannin-stained, low-productivity headwater streams and bog ponds across the Shield.",
     "habitat_notes": "Cold, acidic, bog-influenced streams and ponds with low conductivity. Often associated with sphagnum and bog vegetation.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "CA-MB", "US-MN", "US-WI", "US-MI"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "CA-MB",
+      "US-MN",
+      "US-WI",
+      "US-MI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
-    "fishing_notes": "Beautiful microfishing target — breeding males have brilliant red bellies. Found in bog streams and cool, tannin-stained water.",
+    "fishing_notes": "Beautiful microfishing target \u2014 breeding males have brilliant red bellies. Found in bog streams and cool, tannin-stained water.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -952,7 +1310,13 @@
     "extirpated_from_ontario": false,
     "general_range": "Northern and central Ontario in cold, clear Shield streams and bog ponds. Often co-occurs with northern redbelly dace.",
     "habitat_notes": "Clear to slightly tannin-stained cold streams and bog-influenced lakes. More widespread in the north than redbelly dace.",
-    "jurisdictions_present": ["CA-ON", "CA-QC", "CA-MB", "US-MN", "US-WI"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "CA-MB",
+      "US-MN",
+      "US-WI"
+    ],
     "sara_status": "Not at Risk",
     "ontario_status": "Not at Risk",
     "cosewic_status": "Not at Risk",
@@ -967,12 +1331,20 @@
     "introduced": true,
     "extirpated_from_ontario": false,
     "general_range": "Invasive throughout the Great Lakes and spreading into connecting rivers. Originally from the Black and Caspian Seas.",
-    "habitat_notes": "Rocky substrate in nearshore and tributary habitats. Highly aggressive nest-guarder — displaces native sculpins and darters.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-NY", "US-WI", "US-MN", "US-PA"],
+    "habitat_notes": "Rocky substrate in nearshore and tributary habitats. Highly aggressive nest-guarder \u2014 displaces native sculpins and darters.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-NY",
+      "US-WI",
+      "US-MN",
+      "US-PA"
+    ],
     "sara_status": null,
     "ontario_status": null,
     "cosewic_status": null,
-    "fishing_notes": "Invasive species — do not release if caught. Encouraged to dispose of humanely. No bag limit. Eating is legal and some anglers target them as food fish.",
+    "fishing_notes": "Invasive species \u2014 do not release if caught. Encouraged to dispose of humanely. No bag limit. Eating is legal and some anglers target them as food fish.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -984,11 +1356,18 @@
     "extirpated_from_ontario": false,
     "general_range": "Abundant throughout southern Ontario in warm, nutrient-rich lakes and rivers. Introduced from Europe/Asia in the 1800s.",
     "habitat_notes": "Warm, turbid, weedy, soft-bottomed lakes and rivers. Extremely tolerant of degraded conditions. Disrupts aquatic vegetation through rooting.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-WI", "US-MN", "US-NY"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-WI",
+      "US-MN",
+      "US-NY"
+    ],
     "sara_status": null,
     "ontario_status": null,
     "cosewic_status": null,
-    "fishing_notes": "Introduced species. Popular angling target — powerful fighters on appropriate gear. Can be kept or released.",
+    "fishing_notes": "Introduced species. Popular angling target \u2014 powerful fighters on appropriate gear. Can be kept or released.",
     "last_updated": "2026-05-23T00:00:00"
   },
   {
@@ -999,8 +1378,14 @@
     "introduced": true,
     "extirpated_from_ontario": false,
     "general_range": "Introduced to Great Lakes in early 1900s; now abundant throughout Lake Ontario, Lake Erie, and connecting waters.",
-    "habitat_notes": "Open, cold, deep water of large lakes. Spring spawning runs into tributaries — historically massive runs now reduced.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-NY", "US-WI"],
+    "habitat_notes": "Open, cold, deep water of large lakes. Spring spawning runs into tributaries \u2014 historically massive runs now reduced.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-NY",
+      "US-WI"
+    ],
     "sara_status": null,
     "ontario_status": null,
     "cosewic_status": null,
@@ -1016,11 +1401,133 @@
     "extirpated_from_ontario": false,
     "general_range": "Very abundant throughout Lake Ontario and other Great Lakes. Landlocked population introduced to Great Lakes via canals; caused major ecosystem disruption before salmonid stocking.",
     "habitat_notes": "Open, pelagic water in large lakes. Massive schools. Important forage fish for introduced salmonids.",
-    "jurisdictions_present": ["CA-ON", "US-MI", "US-OH", "US-NY", "US-WI"],
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-NY",
+      "US-WI"
+    ],
     "sara_status": null,
     "ontario_status": null,
     "cosewic_status": null,
-    "fishing_notes": "Key forage species — where alewife schools are, salmonids follow. Periodic die-offs litter beaches in spring.",
+    "fishing_notes": "Key forage species \u2014 where alewife schools are, salmonids follow. Periodic die-offs litter beaches in spring.",
     "last_updated": "2026-05-23T00:00:00"
+  },
+  {
+    "species": "Western Blacknose Dace",
+    "scientific_name": "Rhinichthys obtusus",
+    "native_to_ontario": true,
+    "native_to_great_lakes": true,
+    "introduced": false,
+    "extirpated_from_ontario": false,
+    "general_range": "Southwestern Ontario streams in the Lake Erie and Lake Ontario drainages. Reaches the northeastern limit of its range in Ontario; distinct from Eastern Blacknose Dace (R. atratulus) which occupies more easterly systems.",
+    "habitat_notes": "Riffles and runs in clear, cool to cold streams with gravel or cobble substrate. Closely associated with fast-water habitat.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-OH",
+      "US-PA",
+      "US-WI",
+      "US-MN",
+      "US-MI"
+    ],
+    "sara_status": "Not at Risk",
+    "ontario_status": "Not at Risk",
+    "cosewic_status": "Not at Risk",
+    "fishing_notes": "Microfishing target in fast riffle habitat. Tiny hook with maggot or bread. Often overlooked \u2014 frequently misidentified as Eastern Blacknose Dace in the field.",
+    "last_updated": "2026-05-27T00:00:00"
+  },
+  {
+    "species": "Central Mudminnow",
+    "scientific_name": "Umbra limi",
+    "native_to_ontario": true,
+    "native_to_great_lakes": true,
+    "introduced": false,
+    "extirpated_from_ontario": false,
+    "general_range": "Southern and central Ontario in weedy, slow-moving streams, beaver ponds, marshes, and lake margins. Widespread but overlooked due to cryptic habitat preference.",
+    "habitat_notes": "Dense aquatic vegetation in slow or standing water. Can tolerate extremely low dissolved oxygen by gulping air. Survives drought by burrowing into mud. Prefers soft, mucky substrate with heavy weed cover.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "CA-QC",
+      "US-MI",
+      "US-WI",
+      "US-MN",
+      "US-OH",
+      "US-NY"
+    ],
+    "sara_status": "Not at Risk",
+    "ontario_status": "Not at Risk",
+    "cosewic_status": "Not at Risk",
+    "fishing_notes": "Excellent microfishing target \u2014 found in beaver ponds, roadside ditches, and weedy backwaters that other anglers ignore. Tiny hook with worm. Rewarding exploration species.",
+    "last_updated": "2026-05-27T00:00:00"
+  },
+  {
+    "species": "Gizzard Shad",
+    "scientific_name": "Dorosoma cepedianum",
+    "native_to_ontario": true,
+    "native_to_great_lakes": true,
+    "introduced": false,
+    "extirpated_from_ontario": false,
+    "general_range": "Lake Erie, Lake Ontario, Lake St. Clair, and their major tributaries in southwestern Ontario. Has expanded its range northward in the Great Lakes over recent decades.",
+    "habitat_notes": "Open water of large lakes and large rivers. Highly schooling, pelagic filter feeder. Can dominate forage fish communities in warm, productive systems.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-IN",
+      "US-IL",
+      "US-WI"
+    ],
+    "sara_status": "Not at Risk",
+    "ontario_status": "Not at Risk",
+    "cosewic_status": "Not at Risk",
+    "fishing_notes": "Not typically targeted directly. Important forage for walleye, bass, and Lake Erie predators. Can be dip-netted. Range expanding \u2014 increasingly documented in Ontario waters.",
+    "last_updated": "2026-05-27T00:00:00"
+  },
+  {
+    "species": "Goldfish",
+    "scientific_name": "Carassius auratus",
+    "native_to_ontario": false,
+    "native_to_great_lakes": false,
+    "introduced": true,
+    "extirpated_from_ontario": false,
+    "general_range": "Established in ponds, slow rivers, and lake bays across southern Ontario following pet releases. Particularly abundant in some Lake Ontario tributaries and warm, eutrophic ponds.",
+    "habitat_notes": "Warm, turbid, weedy, slow-moving or standing water. Extremely tolerant of low oxygen and high temperature. Competes with native cyprinids and disturbs substrate through bottom-feeding.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-NY",
+      "US-IL"
+    ],
+    "sara_status": null,
+    "ontario_status": null,
+    "cosewic_status": null,
+    "fishing_notes": "Introduced \u2014 do not release if caught. Often hybridizes with Common Carp in Ontario waters. Can grow surprisingly large in the wild. No harvest restrictions.",
+    "last_updated": "2026-05-27T00:00:00"
+  },
+  {
+    "species": "Northern Largemouth Bass",
+    "scientific_name": "Micropterus nigricans",
+    "native_to_ontario": true,
+    "native_to_great_lakes": true,
+    "introduced": false,
+    "extirpated_from_ontario": false,
+    "general_range": "Southern Ontario \u2014 same range as Largemouth Bass (M. salmoides). iNaturalist and some taxonomic authorities recognize M. nigricans as the northern species and M. salmoides as the Florida species. All Ontario Largemouth Bass are effectively M. nigricans under this split.",
+    "habitat_notes": "Identical to Largemouth Bass: warm, weedy, shallow water with soft substrate. Less tolerant of current than Smallmouth Bass. Prefers aquatic vegetation in lakes and slow rivers.",
+    "jurisdictions_present": [
+      "CA-ON",
+      "US-MI",
+      "US-OH",
+      "US-PA",
+      "US-NY",
+      "US-MN",
+      "US-WI"
+    ],
+    "sara_status": "Not at Risk",
+    "ontario_status": "Not at Risk",
+    "cosewic_status": "Not at Risk",
+    "fishing_notes": "Taxonomic note: iNaturalist uses M. nigricans for northern Largemouth Bass. For SDM purposes, observations of M. nigricans and M. salmoides should be pooled \u2014 they represent the same ecological niche in Ontario waters.",
+    "last_updated": "2026-05-27T00:00:00"
   }
 ]
