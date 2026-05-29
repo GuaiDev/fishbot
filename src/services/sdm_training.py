@@ -34,6 +34,20 @@ MODEL_VERSION = "2c-v1"
 # M. nigricans and M. salmoides are treated as one SDM target (pooled)
 _BASS_POOL = frozenset(["Micropterus nigricans", "Micropterus salmoides"])
 
+# Species for which stocking is a genuine training-data confound.
+# Stocked fish are planted at accessible put-and-take sites, not selected for
+# habitat suitability — training on those presences models stocking logistics,
+# not habitat. Non-salmonid species are never stocked at scale in Ontario and
+# do not need this filter.
+STOCKING_CONFOUND_SPECIES = frozenset([
+    "Oncorhynchus mykiss",       # Rainbow Trout — 3.67M stocked, 187 ON sites (2021-25)
+    "Salvelinus fontinalis",     # Brook Trout
+    "Salmo trutta",              # Brown Trout
+    "Oncorhynchus tshawytscha",  # Chinook Salmon
+    "Oncorhynchus kisutch",      # Coho Salmon
+    "Salvelinus namaycush",      # Lake Trout
+])
+
 _CATEGORICAL_FEATURES = ["substrate_category", "thermal_regime", "ept_quality"]
 _NUMERIC_FEATURES = [
     "stream_order",
@@ -81,7 +95,11 @@ def prepare_species_data(
     y is a Series of 1.0 presence labels indexed by ogf_id.
 
     For Micropterus salmoides/nigricans, pools records from both names.
-    If stocking_exclusion=True, drops segments flagged is_stocked_within_5yr.
+
+    Stocking exclusion: only applied when stocking_exclusion=True AND the
+    species is in STOCKING_CONFOUND_SPECIES (salmonids with large-scale
+    put-and-take stocking programs). For all other species the parameter is
+    ignored — stocked sites are valid habitat observations for non-salmonids.
     """
     query_names = list(_BASS_POOL) if species_name in _BASS_POOL else [species_name]
 
@@ -120,7 +138,7 @@ def prepare_species_data(
     if not snapped:
         return empty
 
-    if stocking_exclusion:
+    if stocking_exclusion and species_name in STOCKING_CONFOUND_SPECIES:
         stocked = set(feature_matrix.loc[feature_matrix["is_stocked_within_5yr"], "ogf_id"])
         snapped -= stocked
 

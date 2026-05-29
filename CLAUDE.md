@@ -38,9 +38,19 @@ Obscured iNaturalist observations are not discarded and not treated as precise. 
 
 The `observations` table stores three fields to support this: `geoprivacy` ("open"/"obscured"/"private"), `is_obscured` (bool), and `obscuration_radius_km` (22.0 for obscured, None for open). The soft-label pipeline in the SDM feature matrix uses `get_obscured_observations()` from `src/storage/observations.py` to retrieve these records for distributing presence weights across candidate segments.
 
-## Data quality principle: Rainbow Trout stocking confound
+## Data quality principle: salmonid stocking confound
 
-Rainbow Trout SDM requires a stocking-site exclusion layer during training. 3.67 million fish were stocked at 187 Ontario sites between 2021–2025. Training on raw occurrence data will model put-and-take stream accessibility, not habitat suitability. Use the `is_stocked_within_5yr` flag from the SDM feature matrix to exclude stocked-site records from training data for this species. Rainbow Trout is the most severely affected species in our dataset; Bluegill has minor stocking (34k fish, 3 sites) that should not materially bias a province-wide model.
+Stocked salmonids are planted at accessible put-and-take sites selected for logistics (road access, parking, stocking truck routes), not habitat suitability. Training on those presences teaches the model "where MNRF trucks can reach", not "what habitat supports this species". The `is_stocked_within_5yr` flag in the SDM feature matrix is used to exclude stocked-site records during training — but **only for the species where this bias is material**.
+
+Species requiring stocking exclusion (`STOCKING_CONFOUND_SPECIES` in `src/services/sdm_training.py`):
+- **Oncorhynchus mykiss** (Rainbow Trout) — most severe: 3.67M fish, 187 ON sites, 2021–2025
+- **Salvelinus fontinalis** (Brook Trout)
+- **Salmo trutta** (Brown Trout)
+- **Oncorhynchus tshawytscha** (Chinook Salmon)
+- **Oncorhynchus kisutch** (Coho Salmon)
+- **Salvelinus namaycush** (Lake Trout)
+
+Non-salmonid species (Creek Chub, Yellow Perch, Rainbow Darter, etc.) are never stocked at scale in Ontario. Applying stocking exclusion to them incorrectly removes valid habitat observations at stocked sites (which are also real stream habitat). The `stocking_exclusion` parameter in `prepare_species_data()` is ignored for species outside this list.
 
 ## Core principle: presence vs. pressure
 
