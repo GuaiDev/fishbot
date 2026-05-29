@@ -333,6 +333,94 @@ def build_features() -> None:
     )
 
 
+@app.command(name="train-sdm")
+def train_sdm() -> None:
+    """Train Random Forest SDMs for 9 species and store predictions in the database.
+
+    Loads the feature matrix from data/processed/sdm_feature_matrix.parquet,
+    trains one calibrated RF model per species, stores predictions in the DB,
+    and saves model joblibs to data/processed/sdm_models/.
+
+    Expected runtime: 5–15 minutes. Do NOT re-run train-sdm if predictions
+    are already current — it overwrites the sdm_predictions table.
+    """
+    import time
+    from pathlib import Path as _Path
+
+    import pandas as pd
+    from rich.table import Table
+
+    from src.services.sdm_training import (
+        MODEL_VERSION,
+        SPECIES_TO_TRAIN,
+        predict_all_segments,
+        save_model,
+        train_species_model,
+    )
+    from src.storage.sdm_predictions import upsert_predictions
+
+    parquet = _Path("data/processed/sdm_feature_matrix.parquet")
+    if not parquet.exists():
+        console.print(
+            "[red]Feature matrix not found. Run `make build-features` first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    db = get_db()
+    console.print("[dim]Loading feature matrix…[/dim]")
+    feature_matrix = pd.read_parquet("data/processed/sdm_feature_matrix.parquet")
+    n_feat = len(feature_matrix.columns) - 3
+    console.print(f"[dim]  {len(feature_matrix):,} segments, {n_feat} features[/dim]")
+
+    results_table = Table(title="SDM Training Results")
+    results_table.add_column("Species")
+    results_table.add_column("n_presence", justify="right")
+    results_table.add_column("n_absence", justify="right")
+    results_table.add_column("CV AUC", justify="right")
+    results_table.add_column("Status")
+
+    total_t0 = time.time()
+    trained = 0
+
+    for species in SPECIES_TO_TRAIN:
+        console.print(f"[dim]Training {species}…[/dim]")
+        t0 = time.time()
+        try:
+            result = train_species_model(species, db, feature_matrix)
+            save_model(result)
+
+            predictions = predict_all_segments(result, feature_matrix)
+            upsert_predictions(db, species, predictions, model_version=MODEL_VERSION)
+
+            elapsed = time.time() - t0
+            auc_str = f"{result['spatial_cv_auc']:.3f}"
+            results_table.add_row(
+                species,
+                str(result["n_presence"]),
+                str(result["n_pseudo_absence"]),
+                auc_str,
+                f"[green]OK[/green] ({elapsed:.0f}s)",
+            )
+            trained += 1
+        except ValueError as exc:
+            elapsed = time.time() - t0
+            results_table.add_row(
+                species, "—", "—", "—", f"[yellow]Skipped: {exc}[/yellow]"
+            )
+        except Exception as exc:
+            elapsed = time.time() - t0
+            results_table.add_row(
+                species, "—", "—", "—", f"[red]Error: {exc}[/red]"
+            )
+
+    total_elapsed = time.time() - total_t0
+    console.print(results_table)
+    console.print(
+        f"[green]Trained {trained}/{len(SPECIES_TO_TRAIN)} models "
+        f"in {total_elapsed:.0f}s — predictions stored in DB[/green]"
+    )
+
+
 def _print_profile(p: UserProfile) -> None:
     home = p.home_location
     home_str = f"{home.name} ({home.lat}, {home.lng})" if home else "(not set)"

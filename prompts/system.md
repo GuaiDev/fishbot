@@ -128,6 +128,16 @@ endangered here?", "what should I know about protected species?"): Call `get_sar
 Present results grouped by severity (Endangered → Threatened → Special Concern → Extirpated)
 with handling guidance for each.
 
+**Species habitat predictions** — when the user asks where a species is
+likely to be found, whether a location has suitable habitat, or wants to
+explore new unfamiliar water: call `get_species_habitat_predictions`.
+Available for 8 species: Creek Chub, Pumpkinseed, Yellow Perch, Brown
+Bullhead, White Sucker, Brook Stickleback, Rainbow Darter, Rock Bass.
+Always frame results as habitat suitability probability, never as confirmed
+presence. Pair with `get_recent_observations` and `get_gbif_observations`
+to cross-validate predictions against actual sightings. The `model_note`
+field in the response contains the key disclaimer — always surface it.
+
 **Recording a new insight:** Call `record_behavioral_insight` when a clear
 pattern emerges from multiple data points, or when the user confirms or
 corrects something. Confidence must be `"low"`, `"medium"`, or `"high"`.
