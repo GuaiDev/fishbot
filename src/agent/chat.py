@@ -362,6 +362,19 @@ def _execute_tool(name: str, inputs: dict) -> str:
             min_stream_order=inputs.get("min_stream_order", 3),
             limit=inputs.get("limit", 10),
         )
+    if name == "find_exploration_targets":
+        from src.services.untapped_potential import find_exploration_targets
+
+        return find_exploration_targets(
+            db=get_db(),
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 50),
+            species=inputs.get("species"),
+            mode=inputs.get("mode", "balanced"),
+            min_stream_order=inputs.get("min_stream_order", 2),
+            limit=inputs.get("limit", 5),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -1351,6 +1364,68 @@ def _tools(profile: Any) -> list[dict]:
                     "limit": {
                         "type": "integer",
                         "description": "Number of top segments to return. Default 10.",
+                    },
+                },
+                "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "find_exploration_targets",
+            "description": (
+                "Primary exploration tool. Returns stream segments ranked by untapped potential "
+                "with three modes: "
+                "'easy_access' prioritizes road-accessible spots (high access = high score); "
+                "'adventure' prioritizes remote spots requiring effort (low access = high score — "
+                "rewards places hard to reach because they hold less pressure); "
+                "'balanced' (default) ranks purely by habitat quality and low angler pressure "
+                "regardless of access — best for general exploration. "
+                "Min stream order defaults to 2 — includes small unnamed tributaries connected "
+                "to larger systems (the 'connected ditch' archetype). "
+                "Each result includes: nearby confirmed species (iNat + GBIF within 5km), "
+                "connectivity note if the tributary connects to a productive named system, "
+                "one-sentence habitat summary (thermal regime, substrate, EPT quality), "
+                "and regulation zone (FMZ). "
+                "Mode guidance: when user mentions driving, parking, easy access, day trip — "
+                "use mode='easy_access'. When user mentions adventure, remote, off the beaten "
+                "path, trekking, nobody fishes there — use mode='adventure'. "
+                "Default to 'balanced' for general exploration queries. "
+                "Requires `make compute-untapped` to have been run first."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {"type": "number", "description": lat_desc},
+                    "lng": {"type": "number", "description": lng_desc},
+                    "radius_km": {
+                        "type": "number",
+                        "description": "Search radius in kilometres. Default 50.",
+                    },
+                    "species": {
+                        "type": "string",
+                        "description": (
+                            "Optional: filter habitat score to a specific species. "
+                            "Accepts common name (e.g. 'Rainbow Darter') or scientific name."
+                        ),
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["easy_access", "adventure", "balanced"],
+                        "description": (
+                            "Scoring mode. 'easy_access': rewards accessible spots. "
+                            "'adventure': rewards remote spots (low access = high score). "
+                            "'balanced' (default): habitat quality × low pressure, ignores access."
+                        ),
+                    },
+                    "min_stream_order": {
+                        "type": "integer",
+                        "description": (
+                            "Minimum Strahler stream order. Default 2 — includes small unnamed "
+                            "tributaries. Use 1 for microfishing in ditches; 3+ for larger water."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of top segments to return. Default 5.",
                     },
                 },
                 "required": ["lat", "lng"],

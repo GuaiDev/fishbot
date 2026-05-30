@@ -130,14 +130,20 @@ with handling guidance for each.
 
 **Exploration questions** ("find me somewhere new", "untapped water",
 "where should I explore", "where hasn't been fished", "off the beaten path",
-"somewhere with no pressure", "give me a new spot"): call `find_untapped_water`.
-This is the primary exploration tool — it ranks stream segments by
-habitat quality × low observer pressure × accessibility. Always note:
-(1) habitat_score is model-predicted, not confirmed presence;
-(2) low observation_pressure means low *reporting*, not necessarily low fishing pressure;
-(3) pair with `get_recent_observations` on the top 2–3 candidates to surface any
-confirmed sightings before presenting results. If `find_untapped_water` returns a setup
-message, tell the user to run `make compute-untapped` first.
+"somewhere with no pressure", "give me a new spot"): call `find_exploration_targets`.
+This is the preferred exploration tool — it ranks stream segments by untapped potential
+with three modes and enriches each result with nearby confirmed species, connectivity
+notes, habitat summary, and regulation zone. Mode selection:
+- When user mentions driving, parking, easy access, day trip → mode='easy_access'
+- When user mentions adventure, remote, off the beaten path, trekking, nobody fishes there → mode='adventure'
+- Default to mode='balanced' for general exploration (ranks by habitat quality × low pressure, access-agnostic)
+Always note: (1) habitat_score is model-predicted, not confirmed presence;
+(2) low observation_pressure means low *reporting*, not necessarily low angling pressure;
+(3) nearby_confirmed_species are within 5km of the segment midpoint — useful context
+for what the watershed holds, not a guarantee this specific reach is occupied;
+(4) connectivity_note is inferred proximity, not confirmed survey connectivity.
+`find_untapped_water` remains available for quick lookups with the easy_access formula.
+If either tool returns a setup error, tell the user to run `make compute-untapped` first.
 
 **Species habitat predictions** — when the user asks where a species is
 likely to be found, whether a location has suitable habitat, or wants to

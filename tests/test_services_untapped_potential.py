@@ -8,10 +8,13 @@ import pandas as pd
 import pytest
 
 from src.services.untapped_potential import (
+    _build_connectivity_note,
+    _compute_mode_score,
     _compute_pressure,
     _load_habitat_scores,
     _resolve_species,
     compute_untapped_potential,
+    find_exploration_targets,
     find_untapped_water_for_agent,
 )
 from src.storage.database import get_db
@@ -289,3 +292,117 @@ def test_find_untapped_water_model_note_present(tmp_path: Path, monkeypatch):
 
     result = json.loads(find_untapped_water_for_agent(db, 43.75, -79.75, radius_km=200))
     assert "model_note" in result
+
+
+# ── Phase 2e: find_exploration_targets ───────────────────────────────────────
+
+
+def test_scoring_modes_produce_different_rankings():
+    """_compute_mode_score ranks high-access vs low-access segments differently per mode."""
+    df = pd.DataFrame(
+        {
+            "ogf_id": [1, 2],
+            "habitat_score": [0.8, 0.8],
+            "observation_pressure": [0.1, 0.1],
+            "access_score": [0.9, 0.1],  # seg1=road-accessible, seg2=remote
+        }
+    )
+    easy = _compute_mode_score(df, "easy_access")
+    adv = _compute_mode_score(df, "adventure")
+    bal = _compute_mode_score(df, "balanced")
+
+    # easy_access: high access wins
+    assert float(easy.iloc[0]) > float(easy.iloc[1])
+    # adventure: low access (remote) wins
+    assert float(adv.iloc[1]) > float(adv.iloc[0])
+    # balanced: access ignored → equal scores
+    assert float(bal.iloc[0]) == pytest.approx(float(bal.iloc[1]))
+
+
+def test_adventure_mode_rewards_low_access():
+    """access_score=0.1 outranks access_score=0.9 in adventure mode."""
+    df = pd.DataFrame(
+        {
+            "ogf_id": [1, 2],
+            "habitat_score": [0.7, 0.7],
+            "observation_pressure": [0.2, 0.2],
+            "access_score": [0.9, 0.1],
+        }
+    )
+    scores = _compute_mode_score(df, "adventure")
+    # seg2 (low access) should score higher in adventure mode
+    assert float(scores.iloc[1]) > float(scores.iloc[0])
+
+
+def test_connectivity_note_generated_when_stream_and_species_present():
+    """_build_connectivity_note returns a note when stream within 3km and species confirmed."""
+    note = _build_connectivity_note(
+        seg_name=None,
+        named_stream_3km="Humber River (1.2km)",
+        nearby_species=["Creek Chub", "Pumpkinseed"],
+    )
+    assert note is not None
+    assert "Humber River" in note
+    assert "Creek Chub" in note
+    assert "dispersal" in note
+
+
+def test_connectivity_note_none_without_named_stream():
+    """No connectivity note when there is no named stream within 3km."""
+    assert _build_connectivity_note(None, None, ["Creek Chub"]) is None
+
+
+def test_connectivity_note_none_without_nearby_species():
+    """No connectivity note when no confirmed species were found nearby."""
+    assert _build_connectivity_note(None, "Humber River (1.2km)", []) is None
+
+
+def test_regulation_zone_toronto():
+    """_estimate_fmz returns a valid FMZ integer for Toronto coordinates."""
+    from src.services.regulations import _estimate_fmz
+
+    fmz = _estimate_fmz(43.65, -79.38)
+    assert fmz is not None
+    assert isinstance(fmz, int)
+    assert 1 <= fmz <= 20
+
+
+def test_find_exploration_targets_no_cache(tmp_path: Path, monkeypatch):
+    """Returns error JSON when untapped parquet not yet computed."""
+    import src.services.untapped_potential as up_mod
+
+    monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "missing.parquet")
+
+    db = get_db(tmp_path / "test.db")
+    result = json.loads(find_exploration_targets(db, 43.65, -79.38))
+    assert "error" in result
+
+
+def test_find_exploration_targets_balanced_mode(tmp_path: Path, monkeypatch):
+    """find_exploration_targets returns segments with enrichment fields in balanced mode."""
+    import src.services.accessibility as acc_mod
+    import src.services.untapped_potential as up_mod
+
+    monkeypatch.setattr(acc_mod, "_PARQUET_PATH", tmp_path / "a.parquet")
+    monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "u.parquet")
+    monkeypatch.setattr(up_mod, "_FEATURE_MATRIX_PATH", tmp_path / "fm.parquet")
+
+    db = get_db(tmp_path / "test.db")
+    fm = _make_feature_matrix(5)
+    fm["observation_density_25km"] = 0.0
+    fm["stream_order"] = [2, 2, 3, 3, 4]
+    _insert_predictions(db, "Sp", {i: 0.6 for i in range(1, 6)})
+    _insert_access_scores(tmp_path, {i: 0.7 for i in range(1, 6)})
+    compute_untapped_potential(db, fm)
+
+    result = json.loads(find_exploration_targets(db, 43.75, -79.75, radius_km=200, mode="balanced"))
+
+    assert "segments" in result
+    assert result.get("mode") == "balanced"
+    if result["segments"]:
+        seg = result["segments"][0]
+        assert "nearby_confirmed_species" in seg
+        assert "connectivity_note" in seg
+        assert "habitat_summary" in seg
+        assert "regulation_zone" in seg
+        assert "maps_urls" in seg

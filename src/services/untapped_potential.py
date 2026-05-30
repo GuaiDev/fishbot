@@ -32,8 +32,14 @@ def compute_untapped_potential(
     feature_matrix: pd.DataFrame | None = None,
     species: str | None = None,
     force_recompute_access: bool = False,
+    mode: str = "easy_access",
 ) -> pd.DataFrame:
     """Compute untapped potential for all segments.
+
+    mode options:
+      "easy_access"  — habitat × (1-pressure) × access  (road-accessible spots)
+      "adventure"    — habitat × (1-pressure) × (1-access+0.1)  (remote spots)
+      "balanced"     — habitat × (1-pressure)  (pure habitat quality, access-agnostic)
 
     Returns DataFrame sorted descending by untapped_score with columns:
       ogf_id, centroid_lat, centroid_lng, watercourse_name, stream_order,
@@ -100,9 +106,18 @@ def compute_untapped_potential(
     base["access_score"] = access_scores.reindex(base.index).fillna(0.5)
     base["observation_pressure"] = pressure.reindex(base.index).fillna(0.0)
 
-    base["untapped_score"] = (
-        base["habitat_score"] * (1.0 - base["observation_pressure"]) * base["access_score"]
-    )
+    if mode == "adventure":
+        base["untapped_score"] = (
+            base["habitat_score"]
+            * (1.0 - base["observation_pressure"])
+            * (1.0 - base["access_score"] + 0.1)
+        )
+    elif mode == "balanced":
+        base["untapped_score"] = base["habitat_score"] * (1.0 - base["observation_pressure"])
+    else:  # easy_access (default)
+        base["untapped_score"] = (
+            base["habitat_score"] * (1.0 - base["observation_pressure"]) * base["access_score"]
+        )
 
     result = base.reset_index().sort_values("untapped_score", ascending=False)
 
@@ -194,8 +209,12 @@ def find_untapped_water_for_agent(
             }
         )
 
-    # Preload spatial data once for all enrichment queries
+    # Preload spatial data and env once
     named_seg_cache = _load_named_segments(db)
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    mapbox_token = os.getenv("MAPBOX_TOKEN")
 
     # Build enriched segment records
     segments = []
@@ -204,45 +223,13 @@ def find_untapped_water_for_agent(
         seg_lng = float(row["centroid_lng"])
         seg_name = str(row["watercourse_name"]) if row.get("watercourse_name") else None
 
-        named_stream = _nearest_named_stream_from_cache(  # noqa: E501
+        named_stream = _nearest_named_stream_from_cache(
             named_seg_cache, seg_lat, seg_lng, radius_km=10.0
         )
         road_access = _nearest_road_access(db, seg_lat, seg_lng, radius_km=2.0)
         osm_access = _nearest_osm_access(db, seg_lat, seg_lng, radius_km=1.0)
         top_species = _top_species_at(db, int(row["ogf_id"]))
-
-        from dotenv import load_dotenv
-
-        load_dotenv()
-        mapbox_token = os.getenv("MAPBOX_TOKEN")
-
-        _maps_urls: dict[str, str | None] = {
-            "mapbox_satellite": (
-                f"https://api.mapbox.com/styles/v1/"
-                f"mapbox/satellite-v9/static/"
-                f"pin-s+ff0000({seg_lng:.5f},{seg_lat:.5f})/"
-                f"{seg_lng:.5f},{seg_lat:.5f},16,0/800x500"
-                f"?access_token={mapbox_token}"
-            )
-            if mapbox_token
-            else None,
-            "google_satellite": (
-                f"https://maps.google.com/?q={seg_lat:.5f},{seg_lng:.5f}&t=k&z=18"
-            ),
-            "bing_satellite": (
-                f"https://www.bing.com/maps?cp={seg_lat:.5f}~{seg_lng:.5f}&lvl=18&style=a"
-            ),
-            "swoop_2025": (
-                f"https://geohub.lio.gov.on.ca/datasets/"
-                f"lio::south-western-ontario-"
-                f"orthophotography-project-swoop-"
-                f"2025-1km-index/"
-                f"explore?location={seg_lat:.5f},{seg_lng:.5f},16"
-            )
-            if (-83 < seg_lng < -76 and 42 < seg_lat < 46)
-            else None,
-        }
-        maps_urls = {k: v for k, v in _maps_urls.items() if v is not None}
+        maps_urls = _build_maps_urls(seg_lat, seg_lng, mapbox_token)
 
         seg_type = str(row["watercourse_type"]) if row.get("watercourse_type") else None
 
@@ -306,6 +293,172 @@ def find_untapped_water_for_agent(
             "Set min_stream_order=2 to include them."
         )
     return json.dumps(output, indent=2)
+
+
+def find_exploration_targets(
+    db,
+    lat: float,
+    lng: float,
+    radius_km: float = 50.0,
+    species: str | None = None,
+    mode: str = "balanced",
+    min_stream_order: int = 2,
+    limit: int = 5,
+) -> str:
+    """Agent-facing exploration tool with mode-based scoring and rich enrichment.
+
+    Returns top stream segments with nearby confirmed species, connectivity notes,
+    habitat summary, and regulation zone.
+    """
+    import json
+
+    df = load_cached_untapped()
+    if df is None:
+        return json.dumps(
+            {
+                "error": "Untapped potential not computed.",
+                "setup": "Run `make compute-untapped` to generate scores.",
+            }
+        )
+
+    # Species filter: recompute habitat scores on-the-fly
+    if species:
+        habitat = _load_habitat_scores(db, species)
+        if len(habitat) == 0:
+            return json.dumps(
+                {
+                    "error": f"No SDM predictions found for species '{species}'.",
+                    "note": "Run `make train-sdm` to train models, then `make compute-untapped`.",
+                }
+            )
+        df = df.copy()
+        df["habitat_score"] = df["ogf_id"].map(habitat).fillna(0.0)
+
+    # Recompute score from stored components based on mode
+    df = df.copy()
+    df["score"] = _compute_mode_score(df, mode)
+    df = df.sort_values("score", ascending=False)
+
+    # Spatial filter
+    deg = radius_km / _KM_PER_DEGREE
+    df = df[
+        (df["centroid_lat"].between(lat - deg, lat + deg))
+        & (df["centroid_lng"].between(lng - deg, lng + deg))
+    ]
+
+    # Stream order filter
+    if "stream_order" in df.columns:
+        df = df[df["stream_order"] >= min_stream_order]
+
+    df = df[df["score"] > 0.0]
+
+    top = _deduplicate_by_distance(df, limit=limit, min_dist_km=0.5)
+
+    if top.empty:
+        return json.dumps(
+            {
+                "result": (
+                    f"No targets found within {radius_km}km with mode='{mode}'. "
+                    "Try a larger radius or different mode."
+                )
+            }
+        )
+
+    named_seg_cache = _load_named_segments(db)
+    habitat_features = _load_habitat_features(top["ogf_id"].tolist())
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    mapbox_token = os.getenv("MAPBOX_TOKEN")
+
+    from src.services.regulations import _estimate_fmz
+
+    segments = []
+    for _, row in top.iterrows():
+        seg_lat = float(row["centroid_lat"])
+        seg_lng = float(row["centroid_lng"])
+        seg_name = str(row["watercourse_name"]) if row.get("watercourse_name") else None
+
+        named_stream_10km = _nearest_named_stream_from_cache(
+            named_seg_cache, seg_lat, seg_lng, radius_km=10.0
+        )
+        named_stream_3km = _nearest_named_stream_from_cache(
+            named_seg_cache, seg_lat, seg_lng, radius_km=3.0
+        )
+        road_access = _nearest_road_access(db, seg_lat, seg_lng, radius_km=2.0)
+        osm_access = _nearest_osm_access(db, seg_lat, seg_lng, radius_km=1.0)
+        top_sp = _top_species_at(db, int(row["ogf_id"]))
+
+        nearby_species = _nearby_confirmed_species(db, seg_lat, seg_lng, radius_km=5.0)
+        connectivity_note = _build_connectivity_note(seg_name, named_stream_3km, nearby_species)
+        hab_feat = habitat_features.get(int(row["ogf_id"]), {})
+        habitat_summary = _habitat_summary(hab_feat)
+
+        fmz = _estimate_fmz(seg_lat, seg_lng)
+        regulation_zone = (
+            f"FMZ {fmz} — check regulations before keeping fish." if fmz else None
+        )
+        maps_urls = _build_maps_urls(seg_lat, seg_lng, mapbox_token)
+        seg_type = str(row["watercourse_type"]) if row.get("watercourse_type") else None
+
+        segments.append(
+            {
+                "ogf_id": int(row["ogf_id"]),
+                "watercourse_name": seg_name or None,
+                "watercourse_type": seg_type,
+                "centroid_lat": round(seg_lat, 5),
+                "centroid_lng": round(seg_lng, 5),
+                "stream_order": int(row["stream_order"])
+                if not pd.isna(row["stream_order"])
+                else None,
+                "habitat_score": round(float(row["habitat_score"]), 3),
+                "access_score": round(float(row["access_score"]), 3),
+                "observation_pressure": round(float(row["observation_pressure"]), 3),
+                "score": round(float(row["score"]), 4),
+                "mode": mode,
+                "nearby_confirmed_species": nearby_species,
+                "connectivity_note": connectivity_note,
+                "habitat_summary": habitat_summary,
+                "regulation_zone": regulation_zone,
+                "nearest_named_stream": named_stream_10km,
+                "nearest_road_access": road_access,
+                "nearest_osm_access": osm_access,
+                "maps_urls": maps_urls,
+                "exploration_note": _exploration_note(
+                    seg_name,
+                    named_stream_10km,
+                    road_access,
+                    osm_access,
+                    float(row["habitat_score"]),
+                    float(row["observation_pressure"]),
+                    top_sp,
+                    species,
+                ),
+            }
+        )
+
+    return json.dumps(
+        {
+            "mode": mode,
+            "segments": segments,
+            "search_params": {
+                "lat": lat,
+                "lng": lng,
+                "radius_km": radius_km,
+                "species": species,
+                "min_stream_order": min_stream_order,
+            },
+            "model_note": (
+                "habitat_score is RF model-predicted habitat suitability — not confirmed presence. "
+                "nearby_confirmed_species comes from iNaturalist + GBIF within 5km — "
+                "not necessarily from this specific stream reach. "
+                "connectivity_note is inferred from stream proximity, not confirmed by survey data."
+            ),
+            "count": len(segments),
+        },
+        indent=2,
+    )
 
 
 # ── selection helpers ─────────────────────────────────────────────────────────
@@ -550,6 +703,116 @@ def _exploration_note(
 
 
 # ── internal ──────────────────────────────────────────────────────────────────
+
+
+def _compute_mode_score(df: pd.DataFrame, mode: str) -> pd.Series:
+    """Return untapped scores for each row based on the requested mode."""
+    h = df["habitat_score"]
+    p = df["observation_pressure"]
+    a = df["access_score"]
+    if mode == "adventure":
+        return h * (1.0 - p) * (1.0 - a + 0.1)
+    elif mode == "balanced":
+        return h * (1.0 - p)
+    else:  # easy_access
+        return h * (1.0 - p) * a
+
+
+def _nearby_confirmed_species(db, lat: float, lng: float, radius_km: float = 5.0) -> list[str]:
+    """Return top 5 species (by record count) from iNat + GBIF within radius_km."""
+    from collections import Counter
+
+    deg = radius_km / _KM_PER_DEGREE
+    counter: Counter = Counter()
+    for table in ("observations", "gbif_observations"):
+        if table not in db.table_names():
+            continue
+        rows = list(
+            db[table].rows_where(
+                "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?",
+                [lat - deg, lat + deg, lng - deg, lng + deg],
+            )
+        )
+        for r in rows:
+            name = r.get("common_name") or r.get("species")
+            if name:
+                counter[name] += 1
+    return [sp for sp, _ in counter.most_common(5)]
+
+
+def _build_connectivity_note(
+    seg_name: str | None,
+    named_stream_3km: str | None,
+    nearby_species: list[str],
+) -> str | None:
+    """Generate a note when a named stream within 3km has confirmed nearby species."""
+    if named_stream_3km is None or not nearby_species:
+        return None
+    stream_label = named_stream_3km.split("(")[0].strip()
+    sp_str = ", ".join(nearby_species[:3])
+    return (
+        f"Connected to {stream_label} where {sp_str} have been confirmed — "
+        "tributary may hold the same species via natural dispersal."
+    )
+
+
+def _load_habitat_features(ogf_ids: list[int]) -> dict[int, dict]:
+    """Load thermal_regime, substrate_category, ept_quality from the feature matrix."""
+    if not _FEATURE_MATRIX_PATH.exists():
+        return {}
+    try:
+        fm = pd.read_parquet(
+            _FEATURE_MATRIX_PATH,
+            columns=["ogf_id", "thermal_regime", "substrate_category", "ept_quality"],
+        )
+        fm = fm[fm["ogf_id"].isin(set(ogf_ids))]
+        return {int(r["ogf_id"]): r.to_dict() for _, r in fm.iterrows()}
+    except Exception:
+        return {}
+
+
+def _habitat_summary(feat: dict) -> str:
+    """One-sentence habitat description from thermal regime, substrate, and EPT quality."""
+    thermal = feat.get("thermal_regime") or ""
+    substrate = feat.get("substrate_category") or ""
+    ept = feat.get("ept_quality") or ""
+    parts = []
+    if thermal and thermal not in ("unknown", ""):
+        parts.append(f"{thermal} thermal regime")
+    if substrate and substrate not in ("unknown", ""):
+        parts.append(f"{substrate} substrate")
+    if ept and ept not in ("unknown", ""):
+        parts.append(f"{ept} EPT quality")
+    if not parts:
+        return "Habitat features not measured at this location — field verification needed."
+    return " · ".join(parts) + "."
+
+
+def _build_maps_urls(lat: float, lng: float, mapbox_token: str | None) -> dict[str, str]:
+    """Return a dict of satellite map links for a coordinate pair."""
+    raw: dict[str, str | None] = {
+        "mapbox_satellite": (
+            f"https://api.mapbox.com/styles/v1/"
+            f"mapbox/satellite-v9/static/"
+            f"pin-s+ff0000({lng:.5f},{lat:.5f})/"
+            f"{lng:.5f},{lat:.5f},16,0/800x500"
+            f"?access_token={mapbox_token}"
+        )
+        if mapbox_token
+        else None,
+        "google_satellite": f"https://maps.google.com/?q={lat:.5f},{lng:.5f}&t=k&z=18",
+        "bing_satellite": f"https://www.bing.com/maps?cp={lat:.5f}~{lng:.5f}&lvl=18&style=a",
+        "swoop_2025": (
+            f"https://geohub.lio.gov.on.ca/datasets/"
+            f"lio::south-western-ontario-"
+            f"orthophotography-project-swoop-"
+            f"2025-1km-index/"
+            f"explore?location={lat:.5f},{lng:.5f},16"
+        )
+        if (-83 < lng < -76 and 42 < lat < 46)
+        else None,
+    }
+    return {k: v for k, v in raw.items() if v is not None}
 
 
 def _load_habitat_scores(db, species: str | None) -> pd.Series:
