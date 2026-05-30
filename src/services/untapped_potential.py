@@ -18,7 +18,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.services.accessibility import compute_access_scores, load_cached_scores
+from src.services.accessibility import (
+    compute_access_scores,
+    load_cached_crown_flags,
+    load_cached_scores,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +215,7 @@ def find_untapped_water_for_agent(
 
     # Preload spatial data and env once
     named_seg_cache = _load_named_segments(db)
+    crown_dict = _load_crown_dict()
     from dotenv import load_dotenv
 
     load_dotenv()
@@ -232,6 +237,8 @@ def find_untapped_water_for_agent(
         maps_urls = _build_maps_urls(seg_lat, seg_lng, mapbox_token)
 
         seg_type = str(row["watercourse_type"]) if row.get("watercourse_type") else None
+        is_crown = bool(crown_dict.get(int(row["ogf_id"]), False))
+        access_score_val = float(row["access_score"])
 
         segments.append(
             {
@@ -244,9 +251,11 @@ def find_untapped_water_for_agent(
                 if not pd.isna(row["stream_order"])
                 else None,
                 "habitat_score": round(float(row["habitat_score"]), 3),
-                "access_score": round(float(row["access_score"]), 3),
+                "access_score": round(access_score_val, 3),
                 "observation_pressure": round(float(row["observation_pressure"]), 3),
                 "untapped_score": round(float(row["untapped_score"]), 4),
+                "is_crown_land": is_crown,
+                "access_note": _access_note(is_crown, access_score_val),
                 "nearest_named_stream": named_stream,
                 "nearest_road_access": road_access,
                 "nearest_osm_access": osm_access,
@@ -366,6 +375,7 @@ def find_exploration_targets(
 
     named_seg_cache = _load_named_segments(db)
     habitat_features = _load_habitat_features(top["ogf_id"].tolist())
+    crown_dict = _load_crown_dict()
 
     from dotenv import load_dotenv
 
@@ -401,6 +411,8 @@ def find_exploration_targets(
         )
         maps_urls = _build_maps_urls(seg_lat, seg_lng, mapbox_token)
         seg_type = str(row["watercourse_type"]) if row.get("watercourse_type") else None
+        is_crown = bool(crown_dict.get(int(row["ogf_id"]), False))
+        access_score_val = float(row["access_score"])
 
         segments.append(
             {
@@ -413,10 +425,12 @@ def find_exploration_targets(
                 if not pd.isna(row["stream_order"])
                 else None,
                 "habitat_score": round(float(row["habitat_score"]), 3),
-                "access_score": round(float(row["access_score"]), 3),
+                "access_score": round(access_score_val, 3),
                 "observation_pressure": round(float(row["observation_pressure"]), 3),
                 "score": round(float(row["score"]), 4),
                 "mode": mode,
+                "is_crown_land": is_crown,
+                "access_note": _access_note(is_crown, access_score_val),
                 "nearby_confirmed_species": nearby_species,
                 "connectivity_note": connectivity_note,
                 "habitat_summary": habitat_summary,
@@ -703,6 +717,30 @@ def _exploration_note(
 
 
 # ── internal ──────────────────────────────────────────────────────────────────
+
+
+def _load_crown_dict() -> dict[int, bool]:
+    """Load is_crown_land flags as a plain dict for O(1) per-segment lookup."""
+    flags = load_cached_crown_flags()
+    if flags is None:
+        return {}
+    return {int(k): bool(v) for k, v in flags.items()}
+
+
+def _access_note(is_crown_land: bool, access_score: float) -> str:
+    """Generate a human-readable access note based on crown land status and access score."""
+    if is_crown_land:
+        return (
+            "Crown land — public access generally permitted for fishing. "
+            "Verify no specific restrictions."
+        )
+    if access_score < 0.3:
+        return (
+            "⚠️ Access not verified — segment may cross private land. "
+            "Check Ontario Crown Land map at geohub.lio.gov.on.ca before visiting. "
+            "Low road access + private land = trespassing risk."
+        )
+    return "Road or park access nearby — verify public right of way."
 
 
 def _compute_mode_score(df: pd.DataFrame, mode: str) -> pd.Series:

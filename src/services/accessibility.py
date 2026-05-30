@@ -33,6 +33,7 @@ import pandas as pd
 from scipy.spatial import cKDTree
 from shapely.geometry import Point, Polygon
 from shapely.strtree import STRtree
+from shapely.wkt import loads as wkt_loads
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +54,11 @@ def compute_access_scores(db: Any, feature_matrix: pd.DataFrame) -> pd.Series:
     """Compute normalised access score [0, 1] for each segment.
 
     Returns pd.Series indexed by ogf_id.
-    Result is also cached to data/processed/access_scores.parquet.
+    Result is cached to data/processed/access_scores.parquet with is_crown_land column.
     """
     logger.info("Loading spatial data for access scoring...")
     park_tree, park_data = _build_park_index(db)
+    crown_tree, crown_geoms = _build_crown_index(db)
     access_by_type = _load_access_points(db)
 
     coords = feature_matrix[["centroid_lat", "centroid_lng"]].values
@@ -64,6 +66,10 @@ def compute_access_scores(db: Any, feature_matrix: pd.DataFrame) -> pd.Series:
 
     logger.info("Computing park containment for %d segments...", len(coords))
     park_modifiers = _vectorized_park_modifier(park_tree, park_data, coords)
+
+    logger.info("Computing crown land containment...")
+    crown_flags = _vectorized_crown_flag(crown_tree, crown_geoms, coords)
+    crown_mod = np.where(crown_flags, 0.3, 0.0).astype(np.float32)
 
     logger.info("Computing proximity modifiers...")
     road_mod = _road_proximity_modifier(access_by_type, coords)
@@ -83,6 +89,7 @@ def compute_access_scores(db: Any, feature_matrix: pd.DataFrame) -> pd.Series:
     raw = (
         1.0
         + park_modifiers
+        + crown_mod
         + road_mod
         + building_mod
         + boat_mod
@@ -99,13 +106,14 @@ def compute_access_scores(db: Any, feature_matrix: pd.DataFrame) -> pd.Series:
     else:
         normalized = np.full_like(raw, 0.5)
 
-    result = pd.Series(normalized.astype(np.float32), index=ogf_ids, name="access_score")
+    scores = pd.Series(normalized.astype(np.float32), index=ogf_ids, name="access_score")
+    flags = pd.Series(crown_flags, index=ogf_ids, name="is_crown_land")
 
     _PARQUET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    result.to_frame().to_parquet(_PARQUET_PATH)
+    pd.DataFrame({"access_score": scores, "is_crown_land": flags}).to_parquet(_PARQUET_PATH)
     logger.info("Access scores written to %s", _PARQUET_PATH)
 
-    return result
+    return scores
 
 
 def load_cached_scores() -> pd.Series | None:
@@ -114,6 +122,16 @@ def load_cached_scores() -> pd.Series | None:
         return None
     df = pd.read_parquet(_PARQUET_PATH)
     return df["access_score"]
+
+
+def load_cached_crown_flags() -> pd.Series | None:
+    """Load is_crown_land boolean flags from parquet, or None if not available."""
+    if not _PARQUET_PATH.exists():
+        return None
+    df = pd.read_parquet(_PARQUET_PATH)
+    if "is_crown_land" not in df.columns:
+        return None
+    return df["is_crown_land"]
 
 
 # ── spatial helpers ───────────────────────────────────────────────────────────
@@ -180,6 +198,53 @@ def _vectorized_park_modifier(
     for pt_idx, park_idx in zip(hits[0], hits[1]):
         park_type = park_data[park_idx]["park_type"]
         result[pt_idx] = _PARK_MODIFIERS.get(park_type, 0.0)
+
+    return result
+
+
+def _build_crown_index(db: Any) -> tuple[STRtree | None, list]:
+    """Build Shapely STRtree over crown land polygons (from geom_wkt column)."""
+    if "crown_land" not in db.table_names():
+        return None, []
+
+    rows = list(db["crown_land"].rows)
+    if not rows:
+        return None, []
+
+    geoms = []
+    for row in rows:
+        try:
+            geom = wkt_loads(row["geom_wkt"])
+            if not geom.is_valid:
+                geom = geom.buffer(0)
+            geoms.append(geom)
+        except Exception:
+            continue
+
+    if not geoms:
+        return None, []
+
+    tree = STRtree(geoms)
+    return tree, geoms
+
+
+def _vectorized_crown_flag(
+    tree: STRtree | None,
+    geoms: list,
+    coords: np.ndarray,
+) -> np.ndarray:
+    """Return boolean array: True if segment centroid falls within any crown land polygon."""
+    result = np.zeros(len(coords), dtype=bool)
+    if tree is None or not geoms:
+        return result
+
+    points = np.array(
+        [Point(float(lng), float(lat)) for lat, lng in coords],
+        dtype=object,
+    )
+    hits = tree.query(points, predicate="within")
+    if hits.size > 0:
+        result[hits[0]] = True
 
     return result
 

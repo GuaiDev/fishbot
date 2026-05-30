@@ -9,12 +9,15 @@ import pytest
 
 from src.services.accessibility import (
     _PARK_MODIFIERS,
+    _build_crown_index,
     _build_park_index,
     _distance_modifier,
     _road_proximity_modifier,
+    _vectorized_crown_flag,
     _vectorized_park_modifier,
     compute_access_scores,
 )
+from src.services.untapped_potential import _access_note
 from src.storage.database import get_db
 
 # ── synthetic helpers ─────────────────────────────────────────────────────────
@@ -276,3 +279,85 @@ def test_compute_access_scores_writes_parquet(tmp_path: Path, monkeypatch):
     fm = _make_feature_matrix(5)
     compute_access_scores(db, fm)
     assert (tmp_path / "access_scores.parquet").exists()
+
+
+# ── Phase 2f: Crown land tests ────────────────────────────────────────────────
+
+
+def _insert_crown_land(db, crown_id: str, lat: float, lng: float) -> None:
+    """Insert a crown land polygon that contains the given point."""
+    from shapely.geometry import Polygon
+    from shapely.wkt import dumps as wkt_dumps
+
+    d = 0.01  # ~1km square
+    poly = Polygon([
+        (lng - d, lat - d), (lng + d, lat - d),
+        (lng + d, lat + d), (lng - d, lat + d),
+        (lng - d, lat - d),
+    ])
+    bounds = poly.bounds
+    centroid = poly.centroid
+    if "crown_land" not in db.table_names():
+        db["crown_land"].create(
+            {
+                "crown_id": str, "land_use_type": str, "geom_wkt": str,
+                "centroid_lat": float, "centroid_lng": float,
+                "bbox_minx": float, "bbox_miny": float,
+                "bbox_maxx": float, "bbox_maxy": float,
+                "fetched_at": str,
+            },
+            pk="crown_id",
+        )
+    db["crown_land"].insert(
+        {
+            "crown_id": crown_id,
+            "land_use_type": "Crown Land",
+            "geom_wkt": wkt_dumps(poly),
+            "centroid_lat": centroid.y,
+            "centroid_lng": centroid.x,
+            "bbox_minx": bounds[0], "bbox_miny": bounds[1],
+            "bbox_maxx": bounds[2], "bbox_maxy": bounds[3],
+            "fetched_at": "2026-01-01T00:00:00",
+        },
+        replace=True,
+    )
+
+
+def test_crown_land_pip(tmp_path: Path):
+    """Segment centroid inside a crown land polygon gets is_crown_land=True."""
+    db = get_db(tmp_path / "test.db")
+    inside_lat, inside_lng = 43.75, -79.75
+    outside_lat, outside_lng = 43.50, -79.50
+    _insert_crown_land(db, "cl_1", inside_lat, inside_lng)
+
+    tree, geoms = _build_crown_index(db)
+    assert tree is not None
+
+    coords = np.array([
+        [inside_lat, inside_lng],
+        [outside_lat, outside_lng],
+    ])
+    flags = _vectorized_crown_flag(tree, geoms, coords)
+    assert flags[0] is True or flags[0] == 1   # inside → True
+    assert not flags[1]                          # outside → False
+
+
+def test_access_note_crown_land():
+    """Crown land segment gets positive access note."""
+    note = _access_note(True, 0.1)
+    assert "Crown land" in note
+    assert "public access" in note
+
+
+def test_access_note_private_warning():
+    """Low access + not crown land produces trespassing warning."""
+    note = _access_note(False, 0.2)
+    assert "⚠️" in note
+    assert "private land" in note or "trespassing" in note
+
+
+def test_access_note_road_nearby():
+    """Moderate access + not crown land gives neutral road note."""
+    note = _access_note(False, 0.5)
+    assert "Road" in note or "park" in note
+    assert "⚠️" not in note

@@ -283,6 +283,12 @@ def ingest(
     _ca_mod = _importlib.import_module("src.ingest.global.ca_boundaries")
     ca_count = _ca_mod.fetch_and_store(get_db(), loc.lat, loc.lng, radius_km=200.0)
 
+    console.print(
+        f"[dim]Fetching Ontario Crown Land boundaries within 100km of {loc.name}…[/dim]"
+    )
+    _crown_mod = _importlib.import_module("src.ingest.global.crown_land")
+    crown_count = _crown_mod.fetch_and_store(get_db(), loc.lat, loc.lng, radius_km=100.0)
+
     from src.storage.database import get_db as _get_db
     from src.storage.stream_temperature import is_data_loaded as _temp_loaded
 
@@ -311,6 +317,7 @@ def ingest(
         f"| eBird: {ebird_count} piscivore observations "
         f"| Provincial parks: {parks_count} "
         f"| CA boundaries: {ca_count} "
+        f"| Crown land: {crown_count} parcels "
         f"{temp_line}[/green]"
     )
 

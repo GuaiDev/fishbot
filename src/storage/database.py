@@ -384,6 +384,23 @@ def ensure_schema(db: Database) -> None:
             pk="station_id",
         )
 
+    if "crown_land" not in db.table_names():
+        db["crown_land"].create(
+            {
+                "crown_id": str,
+                "land_use_type": str,
+                "geom_wkt": str,
+                "centroid_lat": float,
+                "centroid_lng": float,
+                "bbox_minx": float,
+                "bbox_miny": float,
+                "bbox_maxx": float,
+                "bbox_maxy": float,
+                "fetched_at": str,
+            },
+            pk="crown_id",
+        )
+
     if "sdm_predictions" not in db.table_names():
         db["sdm_predictions"].create(
             {
