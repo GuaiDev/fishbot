@@ -87,6 +87,13 @@ def compute_untapped_potential(
     else:
         base["watercourse_type"] = ""
 
+    if "observation_density_25km" in feature_matrix.columns:
+        base["observation_density_25km"] = (
+            feature_matrix["observation_density_25km"].fillna(0).astype(int)
+        )
+    else:
+        base["observation_density_25km"] = 0
+
     base = base.set_index("ogf_id")
 
     base["habitat_score"] = habitat_scores.reindex(base.index).fillna(0.0)
@@ -119,8 +126,9 @@ def find_untapped_water_for_agent(
     lng: float,
     radius_km: float = 50.0,
     species: str | None = None,
-    min_stream_order: int = 2,
+    min_stream_order: int = 3,
     limit: int = 10,
+    exclude_likely_culverted: bool = True,
 ) -> str:
     """Agent-facing function. Returns top untapped segments near lat/lng as JSON."""
     import json
@@ -150,6 +158,14 @@ def find_untapped_water_for_agent(
             df["habitat_score"] * (1.0 - df["observation_pressure"]) * df["access_score"]
         )
         df = df.sort_values("untapped_score", ascending=False)
+
+    # Culverted stream heuristic: exclude small streams in high-density urban areas
+    culverted_filtered = False
+    if exclude_likely_culverted and "observation_density_25km" in df.columns:
+        mask = (df["stream_order"] <= 2) & (df["observation_density_25km"] > 100)
+        if mask.any():
+            df = df[~mask].copy()
+            culverted_filtered = True
 
     # Spatial filter
     deg = radius_km / _KM_PER_DEGREE
@@ -261,32 +277,35 @@ def find_untapped_water_for_agent(
             }
         )
 
-    return json.dumps(
-        {
-            "maps_note": (
-                "Coordinates are stream segment midpoints. "
-                "Open maps_urls.mapbox_satellite for a pre-rendered satellite image with pin — "
-                "verify access and stream character before visiting."
-            ),
-            "segments": segments,
-            "search_params": {
-                "lat": lat,
-                "lng": lng,
-                "radius_km": radius_km,
-                "species": species,
-                "min_stream_order": min_stream_order,
-            },
-            "model_note": (
-                "habitat_score is RF model-predicted habitat suitability — "
-                "not confirmed presence. "
-                "observation_pressure reflects iNaturalist + GBIF report density "
-                "— high pressure may mean popular water, not high fish abundance. "
-                "access_score reflects road proximity, park type, and tagged access points."
-            ),
-            "count": len(segments),
+    output: dict = {
+        "maps_note": (
+            "Coordinates are stream segment midpoints. "
+            "Open maps_urls.mapbox_satellite for a pre-rendered satellite image with pin — "
+            "verify access and stream character before visiting."
+        ),
+        "segments": segments,
+        "search_params": {
+            "lat": lat,
+            "lng": lng,
+            "radius_km": radius_km,
+            "species": species,
+            "min_stream_order": min_stream_order,
         },
-        indent=2,
-    )
+        "model_note": (
+            "habitat_score is RF model-predicted habitat suitability — "
+            "not confirmed presence. "
+            "observation_pressure reflects iNaturalist + GBIF report density "
+            "— high pressure may mean popular water, not high fish abundance. "
+            "access_score reflects road proximity, park type, and tagged access points."
+        ),
+        "count": len(segments),
+    }
+    if culverted_filtered:
+        output["filter_note"] = (
+            "Small order-1/2 streams in high-density urban areas filtered out — likely culverted. "
+            "Set min_stream_order=2 to include them."
+        )
+    return json.dumps(output, indent=2)
 
 
 # ── selection helpers ─────────────────────────────────────────────────────────

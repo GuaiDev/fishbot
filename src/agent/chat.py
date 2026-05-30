@@ -359,7 +359,7 @@ def _execute_tool(name: str, inputs: dict) -> str:
             lng=inputs["lng"],
             radius_km=inputs.get("radius_km", 50),
             species=inputs.get("species"),
-            min_stream_order=inputs.get("min_stream_order", 2),
+            min_stream_order=inputs.get("min_stream_order", 3),
             limit=inputs.get("limit", 10),
         )
     return json.dumps({"error": f"Unknown tool: {name}"})
@@ -1341,8 +1341,11 @@ def _tools(profile: Any) -> list[dict]:
                     "min_stream_order": {
                         "type": "integer",
                         "description": (
-                            "Minimum Strahler stream order to include. Default 2 "
-                            "(filters out first-order trickles). Use 1 for microfishing targets."
+                            "Minimum Strahler stream order to include. "
+                            "Default minimum stream order is 3 to exclude small urban tributaries "
+                            "that may be culverted. "
+                            "Set min_stream_order=2 to include smaller streams. "
+                            "Use 1 only for microfishing targets where small ditches are intentional."  # noqa: E501
                         ),
                     },
                     "limit": {

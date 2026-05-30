@@ -58,6 +58,12 @@ Access scores (`src/services/accessibility.py`) are only meaningful within the O
 
 `find_untapped_water` results are most reliable when filtered to the home-area radius. For exploration targets beyond 55km, the untapped score is dominated by habitat quality × observation pressure — access score adds no signal.
 
+## Data quality principle: culverted urban streams
+
+Small order-1 and order-2 streams in high-density urban areas are frequently culverted in southern Ontario. OHN maps these hydrologically but they may not be fishable on the ground. Default `min_stream_order=3` in `find_untapped_water` excludes most culverted reaches. The culverted heuristic filter (`exclude_likely_culverted=True`) additionally removes order-1/2 segments where `observation_density_25km > 100` — the combination of small stream + very dense urban reporting is a strong signal for piped infrastructure.
+
+TRCA-managed streams with SAR habitat designations are exceptions — they may be legitimate targets even if hard to find on consumer maps. Eckardt Creek (Rouge tributary, Markham) is a documented example: actively managed for Redside Dace, partially channelized but fishable via the Rouge River trail system.
+
 ## Core principle: presence vs. pressure
 
 Crowdsourced catch and observation data measures angler activity as much as fish presence. The bot must not confuse the two:
