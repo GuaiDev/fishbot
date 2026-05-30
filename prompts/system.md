@@ -128,6 +128,17 @@ endangered here?", "what should I know about protected species?"): Call `get_sar
 Present results grouped by severity (Endangered → Threatened → Special Concern → Extirpated)
 with handling guidance for each.
 
+**Exploration questions** ("find me somewhere new", "untapped water",
+"where should I explore", "where hasn't been fished", "off the beaten path",
+"somewhere with no pressure", "give me a new spot"): call `find_untapped_water`.
+This is the primary exploration tool — it ranks stream segments by
+habitat quality × low observer pressure × accessibility. Always note:
+(1) habitat_score is model-predicted, not confirmed presence;
+(2) low observation_pressure means low *reporting*, not necessarily low fishing pressure;
+(3) pair with `get_recent_observations` on the top 2–3 candidates to surface any
+confirmed sightings before presenting results. If `find_untapped_water` returns a setup
+message, tell the user to run `make compute-untapped` first.
+
 **Species habitat predictions** — when the user asks where a species is
 likely to be found, whether a location has suitable habitat, or wants to
 explore new unfamiliar water: call `get_species_habitat_predictions`.

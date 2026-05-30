@@ -26,7 +26,7 @@ _MODELS_DIR = Path("data/models")
 _MIN_PRESENCE = 5
 _PSEUDO_ABSENCE_RATIO = 10
 _PSEUDO_ABSENCE_CAP = 10_000
-_SNAP_RADIUS_DEG = 0.09       # ~10 km — max snap distance for precise obs
+_SNAP_RADIUS_DEG = 0.09  # ~10 km — max snap distance for precise obs
 _OBSCURED_RADIUS_DEG = 0.198  # ~22 km — iNat obscuration radius
 _EXCLUSION_RADIUS_DEG = 0.045  # ~5 km — pseudo-absence buffer around presences
 _MAX_GBIF_UNCERTAINTY_M = 5_000  # skip GBIF records with uncertainty > 5 km
@@ -223,9 +223,7 @@ def _all_qualifying_species(db, min_presence: int) -> list[tuple[str, int]]:
     return [(canonical[k], n) for k, n in counts.items() if n >= min_presence]
 
 
-def _get_presence_points(
-    species: str, db
-) -> list[tuple[float, float, bool]]:
+def _get_presence_points(species: str, db) -> list[tuple[float, float, bool]]:
     """Return (lat, lng, is_obscured) for all presence records of this species."""
     s_lower = species.lower()
     points: list[tuple[float, float, bool]] = []
@@ -312,13 +310,18 @@ def _build_preprocessor() -> ColumnTransformer:
         [
             (
                 "cat",
-                Pipeline([
-                    ("impute", SimpleImputer(strategy="constant", fill_value="missing")),
-                    ("encode", OrdinalEncoder(
-                        handle_unknown="use_encoded_value",
-                        unknown_value=-1,
-                    )),
-                ]),
+                Pipeline(
+                    [
+                        ("impute", SimpleImputer(strategy="constant", fill_value="missing")),
+                        (
+                            "encode",
+                            OrdinalEncoder(
+                                handle_unknown="use_encoded_value",
+                                unknown_value=-1,
+                            ),
+                        ),
+                    ]
+                ),
                 _CATEGORICAL_COLS,
             ),
             ("num", SimpleImputer(strategy="median"), _NUMERICAL_COLS),

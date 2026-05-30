@@ -32,29 +32,31 @@ def _make_features(n: int = _N, seed: int = 0) -> pd.DataFrame:
     summer_temp = np.full(n, np.nan)
     summer_temp[:10] = rng.uniform(10, 22, 10)
 
-    df = pd.DataFrame({
-        "ogf_id": list(range(1, n + 1)),
-        "centroid_lat": lats,
-        "centroid_lng": lngs,
-        "stream_order": rng.integers(1, 5, n),
-        "length_m": rng.uniform(300, 8000, n),
-        "flow_verified": rng.integers(0, 2, n).astype(bool),
-        "substrate_category": rng.choice(["coarse", "fine", "bedrock", "organic"], n),
-        "thermal_regime": np.where(np.arange(n) < 10, "coldwater", "unknown"),
-        "summer_mean_temp_c": summer_temp,
-        "do_median_mgl": np.where(np.arange(n) < 10, rng.uniform(6, 10, n), np.nan),
-        "ph_median": np.where(np.arange(n) < 10, rng.uniform(6.5, 8.0, n), np.nan),
-        "conductivity_median_us_cm": np.where(
-            np.arange(n) < 10, rng.uniform(80, 200, n), np.nan
-        ),
-        "ept_quality": np.where(np.arange(n) < 10, "high", "unknown"),
-        "ept_proportion": np.where(np.arange(n) < 10, rng.uniform(0.3, 0.8, n), np.nan),
-        "barrier_count_upstream": rng.integers(0, 5, n),
-        "distance_to_nearest_observation_km": rng.uniform(0.5, 30, n),
-        "observation_density_25km": rng.integers(0, 20, n),
-        "is_stocked_within_5yr": np.zeros(n, dtype=bool),
-        "pwqmn_coverage": np.zeros(n, dtype=bool),
-    })
+    df = pd.DataFrame(
+        {
+            "ogf_id": list(range(1, n + 1)),
+            "centroid_lat": lats,
+            "centroid_lng": lngs,
+            "stream_order": rng.integers(1, 5, n),
+            "length_m": rng.uniform(300, 8000, n),
+            "flow_verified": rng.integers(0, 2, n).astype(bool),
+            "substrate_category": rng.choice(["coarse", "fine", "bedrock", "organic"], n),
+            "thermal_regime": np.where(np.arange(n) < 10, "coldwater", "unknown"),
+            "summer_mean_temp_c": summer_temp,
+            "do_median_mgl": np.where(np.arange(n) < 10, rng.uniform(6, 10, n), np.nan),
+            "ph_median": np.where(np.arange(n) < 10, rng.uniform(6.5, 8.0, n), np.nan),
+            "conductivity_median_us_cm": np.where(
+                np.arange(n) < 10, rng.uniform(80, 200, n), np.nan
+            ),
+            "ept_quality": np.where(np.arange(n) < 10, "high", "unknown"),
+            "ept_proportion": np.where(np.arange(n) < 10, rng.uniform(0.3, 0.8, n), np.nan),
+            "barrier_count_upstream": rng.integers(0, 5, n),
+            "distance_to_nearest_observation_km": rng.uniform(0.5, 30, n),
+            "observation_density_25km": rng.integers(0, 20, n),
+            "is_stocked_within_5yr": np.zeros(n, dtype=bool),
+            "pwqmn_coverage": np.zeros(n, dtype=bool),
+        }
+    )
     return df
 
 
@@ -135,7 +137,7 @@ def test_prepare_species_data_loads_presence_records(tmp_path: Path):
 def test_prepare_species_data_combines_inat_and_gbif(tmp_path: Path):
     df = _make_features()
     db = get_db(tmp_path / "test.db")
-    _add_obs(db, "Perca flavescens", _coords_at(df, range(5, 10)))   # 5 iNat
+    _add_obs(db, "Perca flavescens", _coords_at(df, range(5, 10)))  # 5 iNat
     _add_gbif(db, "Perca flavescens", _coords_at(df, range(20, 25)))  # 5 GBIF
 
     X, y = prepare_species_data("Perca flavescens", db, df)

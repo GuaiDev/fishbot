@@ -32,24 +32,28 @@ def _make_features(n: int = _N, seed: int = 0) -> pd.DataFrame:
     summer_temp = np.full(n, np.nan)
     summer_temp[:5] = rng.uniform(10, 20, 5)
 
-    return pd.DataFrame({
-        "ogf_id": list(range(1, n + 1)),
-        "centroid_lat": lats,
-        "centroid_lng": lngs,
-        "stream_order": rng.integers(1, 5, n),
-        "length_m": rng.uniform(500, 5000, n),
-        "flow_verified": rng.integers(0, 2, n),
-        "substrate_category": rng.choice(["coarse", "fine", "bedrock"], n),
-        "thermal_regime": np.where(np.arange(n) < 5, "coldwater", "unknown"),
-        "summer_mean_temp_c": summer_temp,
-        "do_median_mgl": np.where(np.arange(n) < 5, rng.uniform(6, 10, n), np.nan),
-        "ph_median": np.where(np.arange(n) < 5, rng.uniform(6.5, 8.0, n), np.nan),
-        "conductivity_median_us_cm": np.where(np.arange(n) < 5, rng.uniform(80, 200, n), np.nan),
-        "ept_quality": np.where(np.arange(n) < 5, "high", "unknown"),
-        "ept_proportion": np.where(np.arange(n) < 5, rng.uniform(0.3, 0.8, n), np.nan),
-        "barrier_count_upstream": rng.integers(0, 5, n),
-        "is_stocked_within_5yr": np.zeros(n, dtype=bool),
-    })
+    return pd.DataFrame(
+        {
+            "ogf_id": list(range(1, n + 1)),
+            "centroid_lat": lats,
+            "centroid_lng": lngs,
+            "stream_order": rng.integers(1, 5, n),
+            "length_m": rng.uniform(500, 5000, n),
+            "flow_verified": rng.integers(0, 2, n),
+            "substrate_category": rng.choice(["coarse", "fine", "bedrock"], n),
+            "thermal_regime": np.where(np.arange(n) < 5, "coldwater", "unknown"),
+            "summer_mean_temp_c": summer_temp,
+            "do_median_mgl": np.where(np.arange(n) < 5, rng.uniform(6, 10, n), np.nan),
+            "ph_median": np.where(np.arange(n) < 5, rng.uniform(6.5, 8.0, n), np.nan),
+            "conductivity_median_us_cm": np.where(
+                np.arange(n) < 5, rng.uniform(80, 200, n), np.nan
+            ),
+            "ept_quality": np.where(np.arange(n) < 5, "high", "unknown"),
+            "ept_proportion": np.where(np.arange(n) < 5, rng.uniform(0.3, 0.8, n), np.nan),
+            "barrier_count_upstream": rng.integers(0, 5, n),
+            "is_stocked_within_5yr": np.zeros(n, dtype=bool),
+        }
+    )
 
 
 _obs_id_counter = 0
@@ -316,10 +320,7 @@ def test_train_species_model_obscured_obs_contribute(tmp_path: Path):
     df = _make_features(_N)
     db = get_db(tmp_path / "test.db")
     # 6 obscured obs — each distributes across many segments
-    mid_coords = [
-        (df.iloc[i]["centroid_lat"], df.iloc[i]["centroid_lng"])
-        for i in range(20, 26)
-    ]
+    mid_coords = [(df.iloc[i]["centroid_lat"], df.iloc[i]["centroid_lng"]) for i in range(20, 26)]
     _add_obs(db, "Cottus cognatus", mid_coords, obscured=True)
 
     meta = train_species_model(
@@ -338,8 +339,7 @@ def test_train_all_models_runs_multiple(tmp_path: Path):
     for i, species in enumerate(["Lepomis macrochirus", "Perca flavescens", "Esox lucius"]):
         base = i * 10
         coords = [
-            (df.iloc[j]["centroid_lat"], df.iloc[j]["centroid_lng"])
-            for j in range(base, base + 7)
+            (df.iloc[j]["centroid_lat"], df.iloc[j]["centroid_lng"]) for j in range(base, base + 7)
         ]
         _add_obs(db, species, coords)
 

@@ -93,6 +93,8 @@ class TestAccessPoint:
             "public_land",
             "conservation_area",
             "park",
+            "road",
+            "building",
         ]
         for at in all_types:
             p = AccessPoint(**{**_BASE_POINT, "access_type": at})

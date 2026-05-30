@@ -94,6 +94,11 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
 
     segments = list(db["stream_segments"].rows)
     logger.info("Segments: %d total", len(segments))
+    # Build name and type lookups for feature matrix columns
+    seg_name_map: dict[int, str] = {r["ogf_id"]: (r.get("name") or "") for r in segments}
+    seg_type_map: dict[int, str] = {
+        r["ogf_id"]: (r.get("watercourse_type") or "") for r in segments
+    }
 
     t = time.time()
     logger.info("Computing centroids and Strahler order...")
@@ -109,9 +114,7 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
 
     thermal_rows = list(db["stream_temperature_summaries"].rows)
     thermal_src_pts = [
-        (float(r["lat"]), float(r["lng"]))
-        for r in thermal_rows
-        if r.get("lat") and r.get("lng")
+        (float(r["lat"]), float(r["lng"])) for r in thermal_rows if r.get("lat") and r.get("lng")
     ]
     G_thermal = _subgraph_near_sources(
         G, nodes_list, node_lats, node_lngs, thermal_src_pts, _THERMAL_MAX_KM
@@ -119,44 +122,40 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
     t = time.time()
     logger.info(
         "Computing thermal features... (%d stations, %d/%d graph nodes)",
-        len(thermal_rows), G_thermal.number_of_nodes(), G.number_of_nodes(),
+        len(thermal_rows),
+        G_thermal.number_of_nodes(),
+        G.number_of_nodes(),
     )
-    thermal_map = _assign_from_upstream_stations(
-        G_thermal, snap_fn, thermal_rows, _THERMAL_MAX_KM
-    )
+    thermal_map = _assign_from_upstream_stations(G_thermal, snap_fn, thermal_rows, _THERMAL_MAX_KM)
     logger.info("  thermal: %.1fs", time.time() - t)
 
     wq_rows = list(db["water_quality_readings"].rows)
     wq_agg = _aggregate_wq_by_station(wq_rows)
     wq_src_pts = [
-        (float(r["lat"]), float(r["lng"]))
-        for r in wq_agg
-        if r.get("lat") and r.get("lng")
+        (float(r["lat"]), float(r["lng"])) for r in wq_agg if r.get("lat") and r.get("lng")
     ]
-    G_wq = _subgraph_near_sources(
-        G, nodes_list, node_lats, node_lngs, wq_src_pts, _WQ_MAX_KM
-    )
+    G_wq = _subgraph_near_sources(G, nodes_list, node_lats, node_lngs, wq_src_pts, _WQ_MAX_KM)
     t = time.time()
     logger.info(
         "Computing water quality features... (%d stations, %d/%d graph nodes)",
-        len(wq_agg), G_wq.number_of_nodes(), G.number_of_nodes(),
+        len(wq_agg),
+        G_wq.number_of_nodes(),
+        G.number_of_nodes(),
     )
     wq_map = _assign_from_upstream_stations(G_wq, snap_fn, wq_agg, _WQ_MAX_KM)
     logger.info("  WQ: %.1fs", time.time() - t)
 
     benthic_rows = list(db["benthic_samples"].rows)
     ept_src_pts = [
-        (float(r["lat"]), float(r["lng"]))
-        for r in benthic_rows
-        if r.get("lat") and r.get("lng")
+        (float(r["lat"]), float(r["lng"])) for r in benthic_rows if r.get("lat") and r.get("lng")
     ]
-    G_ept = _subgraph_near_sources(
-        G, nodes_list, node_lats, node_lngs, ept_src_pts, _EPT_MAX_KM
-    )
+    G_ept = _subgraph_near_sources(G, nodes_list, node_lats, node_lngs, ept_src_pts, _EPT_MAX_KM)
     t = time.time()
     logger.info(
         "Computing EPT/benthic features... (%d sites, %d/%d graph nodes)",
-        len(benthic_rows), G_ept.number_of_nodes(), G.number_of_nodes(),
+        len(benthic_rows),
+        G_ept.number_of_nodes(),
+        G.number_of_nodes(),
     )
     ept_map = _assign_from_upstream_stations(G_ept, snap_fn, benthic_rows, _EPT_MAX_KM)
     logger.info("  EPT: %.1fs", time.time() - t)
@@ -176,18 +175,19 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
     t = time.time()
     logger.info(
         "Counting upstream barriers... (%d/%d barriers snapped, %d/%d graph nodes)",
-        len(snapped_barriers), len(barrier_rows),
-        G_barriers.number_of_nodes(), G.number_of_nodes(),
+        len(snapped_barriers),
+        len(barrier_rows),
+        G_barriers.number_of_nodes(),
+        G.number_of_nodes(),
     )
     barrier_counts = _count_upstream_barriers(G_barriers, snap_fn, snapped_barriers)
     logger.info("  barriers: %.1fs", time.time() - t)
 
     obs_rows = list(db["observations"].rows)
     gbif_rows = list(db["gbif_observations"].rows)
-    all_obs_pts: list[tuple[float, float]] = (
-        [(r["lat"], r["lng"]) for r in obs_rows if r.get("lat") and r.get("lng")]
-        + [(r["lat"], r["lng"]) for r in gbif_rows if r.get("lat") and r.get("lng")]
-    )
+    all_obs_pts: list[tuple[float, float]] = [
+        (r["lat"], r["lng"]) for r in obs_rows if r.get("lat") and r.get("lng")
+    ] + [(r["lat"], r["lng"]) for r in gbif_rows if r.get("lat") and r.get("lng")]
     t = time.time()
     logger.info("Computing observation distances... (%d obs)", len(all_obs_pts))
     obs_distances = _nearest_observation_distance(centroids, all_obs_pts)
@@ -214,6 +214,8 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
                 "ogf_id": oid,
                 "centroid_lat": lat,
                 "centroid_lng": lng,
+                "watercourse_name": seg_name_map.get(oid, ""),
+                "watercourse_type": seg_type_map.get(oid, ""),
                 "stream_order": strahler.get(oid),
                 "length_m": seg.get("length_m"),
                 "flow_verified": bool(seg.get("flow_verified", 0)),
@@ -329,23 +331,36 @@ def _subgraph_near_sources(
 
 
 def _segment_centroids(segments: list[dict]) -> dict[int, tuple[float, float]]:
-    """Average of all coordinate pairs in each segment's LINESTRING WKT."""
+    """True midpoint of each LINESTRING WKT via Shapely; fallback to average for POINTs."""
+    from shapely.wkt import loads as wkt_loads
+
     result: dict[int, tuple[float, float]] = {}
     for seg in segments:
-        coords = _COORD_RE.findall(seg.get("geom_wkt", ""))
-        if not coords:
+        geom_wkt = seg.get("geom_wkt", "")
+        if not geom_wkt:
             continue
-        lngs = [float(c[0]) for c in coords]
-        lats = [float(c[1]) for c in coords]
-        result[seg["ogf_id"]] = (sum(lats) / len(lats), sum(lngs) / len(lngs))
+        try:
+            geom = wkt_loads(geom_wkt)
+            if geom.geom_type == "Point":
+                result[seg["ogf_id"]] = (geom.y, geom.x)
+            else:
+                mid = geom.interpolate(0.5, normalized=True)
+                result[seg["ogf_id"]] = (mid.y, mid.x)
+        except Exception:
+            coords = _COORD_RE.findall(geom_wkt)
+            if coords:
+                lngs = [float(c[0]) for c in coords]
+                lats = [float(c[1]) for c in coords]
+                result[seg["ogf_id"]] = (sum(lats) / len(lats), sum(lngs) / len(lngs))
     return result
 
 
 def _compute_strahler_order(G: nx.DiGraph) -> dict[int, int]:
     """Strahler stream order per segment (ogf_id).
 
-    Deduplicates bidirectional edges from unverified-flow segments before
-    computing topological order. Falls back to order=1 on cycles.
+    Deduplicates bidirectional edges from unverified-flow segments, then uses
+    nx.condensation to break cycles (braided channels / OHN data errors) before
+    computing topological order.  Nodes in cycles are treated as order-1 headwaters.
     """
     seen_ogf: set[int] = set()
     dag = nx.DiGraph()
@@ -356,25 +371,35 @@ def _compute_strahler_order(G: nx.DiGraph) -> dict[int, int]:
         seen_ogf.add(ogf_id)
         dag.add_edge(u, v, **data)
 
-    try:
-        topo = list(nx.topological_sort(dag))
-    except nx.NetworkXUnfeasible:
-        return {data["ogf_id"]: 1 for _, _, data in dag.edges(data=True) if "ogf_id" in data}
+    # Map each ogf_id to its upstream node so we can look up order later
+    ogf_upstream: dict[int, str] = {
+        data["ogf_id"]: u for u, v, data in dag.edges(data=True) if "ogf_id" in data
+    }
 
-    node_order: dict[str, int] = {}
-    for node in topo:
-        preds = list(dag.predecessors(node))
+    # Condense SCCs → guaranteed DAG even when OHN has topological cycles
+    cond = nx.condensation(dag)
+
+    # Build original-node → condensed-node mapping from 'members' attribute
+    node_to_cond: dict[str, int] = {}
+    for cond_id in cond.nodes():
+        for orig in cond.nodes[cond_id]["members"]:
+            node_to_cond[orig] = cond_id
+
+    # Compute Strahler on the condensed DAG (guaranteed cycle-free)
+    topo = list(nx.topological_sort(cond))
+    cond_order: dict[int, int] = {}
+    for cond_node in topo:
+        preds = list(cond.predecessors(cond_node))
         if not preds:
-            node_order[node] = 1
+            cond_order[cond_node] = 1
         else:
-            incoming = [node_order.get(p, 1) for p in preds]
+            incoming = [cond_order.get(p, 1) for p in preds]
             max_o = max(incoming)
-            node_order[node] = max_o + 1 if incoming.count(max_o) >= 2 else max_o
+            cond_order[cond_node] = max_o + 1 if incoming.count(max_o) >= 2 else max_o
 
     return {
-        data["ogf_id"]: node_order.get(u, 1)
-        for u, v, data in dag.edges(data=True)
-        if "ogf_id" in data
+        ogf_id: cond_order.get(node_to_cond.get(u_node, -1), 1)
+        for ogf_id, u_node in ogf_upstream.items()
     }
 
 
@@ -390,21 +415,16 @@ def _assign_geology(
 
     classes = [r["substrate_class"] for r in geology_rows]
     # Scale to km before building tree so lat/lng axes are comparable
-    geo_coords = np.array([
-        [r["centroid_lat"] * 111.0, r["centroid_lng"] * 80.5]
-        for r in geology_rows
-    ])
+    geo_coords = np.array(
+        [[r["centroid_lat"] * 111.0, r["centroid_lng"] * 80.5] for r in geology_rows]
+    )
     tree = cKDTree(geo_coords)
 
     ogf_ids = list(centroids.keys())
-    seg_coords = np.array([
-        [centroids[k][0] * 111.0, centroids[k][1] * 80.5]
-        for k in ogf_ids
-    ])
+    seg_coords = np.array([[centroids[k][0] * 111.0, centroids[k][1] * 80.5] for k in ogf_ids])
     _, indices = tree.query(seg_coords)
 
     return {ogf_ids[i]: classes[indices[i]] for i in range(len(ogf_ids))}
-
 
 
 def _aggregate_wq_by_station(wq_rows: list[dict]) -> list[dict]:
@@ -529,10 +549,7 @@ def _nearest_observation_distance(
     tree = cKDTree(obs_arr)
 
     ogf_ids = list(centroids.keys())
-    seg_arr = np.array([
-        [centroids[k][0] * 111.0, centroids[k][1] * 80.5]
-        for k in ogf_ids
-    ])
+    seg_arr = np.array([[centroids[k][0] * 111.0, centroids[k][1] * 80.5] for k in ogf_ids])
     dists_km, _ = tree.query(seg_arr)
 
     return {

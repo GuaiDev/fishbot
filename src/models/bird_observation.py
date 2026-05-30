@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field
 
 
 class BirdObservation(BaseModel):
-    obs_id: str            # f"{subId}_{speciesCode}" — unique across species
-    species_code: str      # eBird species code, e.g. "grbher3"
+    obs_id: str  # f"{subId}_{speciesCode}" — unique across species
+    species_code: str  # eBird species code, e.g. "grbher3"
     common_name: str
     scientific_name: str | None = None
     lat: float

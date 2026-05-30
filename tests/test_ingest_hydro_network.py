@@ -267,8 +267,8 @@ def test_tiling_triggered_on_exact_page_size(cache_dir):
     def counting_side_effect(*args, **kwargs):
         call_log.append(1)
         if len(call_log) == 1:
-            return _mock_response(fixture)   # first call: full page (triggers tiling)
-        return empty_response                 # all subsequent calls: empty
+            return _mock_response(fixture)  # first call: full page (triggers tiling)
+        return empty_response  # all subsequent calls: empty
 
     with (
         patch(_HYDRO_HTTPX, side_effect=counting_side_effect),

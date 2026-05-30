@@ -35,53 +35,65 @@ def _insert_pwqmn_rows(db: Database) -> None:
     # PWQMN001: 6 summer readings (3 Jul + 3 Aug), mean=14°C → coldwater
     for year in range(2020, 2023):
         for month in (7, 8):
-            rows.append({
-                "record_id": f"001_{year}_{month}",
-                "station_id": "PWQMN001",
-                "station_name": "Cold Creek",
-                "lat": 43.805, "lng": -79.420,
-                "jurisdiction": "CA-ON",
-                "sampled_at": f"{year}-{month:02d}-15",
-                "temp_c": 14.0,
-            })
+            rows.append(
+                {
+                    "record_id": f"001_{year}_{month}",
+                    "station_id": "PWQMN001",
+                    "station_name": "Cold Creek",
+                    "lat": 43.805,
+                    "lng": -79.420,
+                    "jurisdiction": "CA-ON",
+                    "sampled_at": f"{year}-{month:02d}-15",
+                    "temp_c": 14.0,
+                }
+            )
 
     # PWQMN002: 6 summer readings, mean=21°C → coolwater
     for year in range(2020, 2023):
         for month in (7, 8):
-            rows.append({
-                "record_id": f"002_{year}_{month}",
-                "station_id": "PWQMN002",
-                "station_name": "Cool River",
-                "lat": 43.700, "lng": -79.515,
-                "jurisdiction": "CA-ON",
-                "sampled_at": f"{year}-{month:02d}-15",
-                "temp_c": 21.0,
-            })
+            rows.append(
+                {
+                    "record_id": f"002_{year}_{month}",
+                    "station_id": "PWQMN002",
+                    "station_name": "Cool River",
+                    "lat": 43.700,
+                    "lng": -79.515,
+                    "jurisdiction": "CA-ON",
+                    "sampled_at": f"{year}-{month:02d}-15",
+                    "temp_c": 21.0,
+                }
+            )
 
     # PWQMN003: 6 summer readings, mean=25°C → warmwater
     for year in range(2020, 2023):
         for month in (7, 8):
-            rows.append({
-                "record_id": f"003_{year}_{month}",
-                "station_id": "PWQMN003",
-                "station_name": "Warm Creek",
-                "lat": 43.877, "lng": -79.260,
-                "jurisdiction": "CA-ON",
-                "sampled_at": f"{year}-{month:02d}-15",
-                "temp_c": 25.0,
-            })
+            rows.append(
+                {
+                    "record_id": f"003_{year}_{month}",
+                    "station_id": "PWQMN003",
+                    "station_name": "Warm Creek",
+                    "lat": 43.877,
+                    "lng": -79.260,
+                    "jurisdiction": "CA-ON",
+                    "sampled_at": f"{year}-{month:02d}-15",
+                    "temp_c": 25.0,
+                }
+            )
 
     # PWQMN004: only 2 summer readings → insufficient, must be excluded
     for month in (7, 8):
-        rows.append({
-            "record_id": f"004_2022_{month}",
-            "station_id": "PWQMN004",
-            "station_name": "Sparse Creek",
-            "lat": 43.600, "lng": -79.300,
-            "jurisdiction": "CA-ON",
-            "sampled_at": f"2022-{month:02d}-15",
-            "temp_c": 20.0,
-        })
+        rows.append(
+            {
+                "record_id": f"004_2022_{month}",
+                "station_id": "PWQMN004",
+                "station_name": "Sparse Creek",
+                "lat": 43.600,
+                "lng": -79.300,
+                "jurisdiction": "CA-ON",
+                "sampled_at": f"2022-{month:02d}-15",
+                "temp_c": 20.0,
+            }
+        )
 
     db["water_quality_readings"].insert_all(rows)
 
@@ -102,6 +114,7 @@ def populated_db(tmp_path: Path):
 # ---------------------------------------------------------------------------
 # Unit: _classify_regime
 # ---------------------------------------------------------------------------
+
 
 def test_classify_regime_coldwater():
     assert _classify_regime(14.0) == "coldwater"
@@ -131,6 +144,7 @@ def test_classify_regime_unknown_when_none():
 # Unit: _species_notes
 # ---------------------------------------------------------------------------
 
+
 def test_species_notes_coldwater_mentions_salmonids():
     notes = _species_notes("coldwater")
     assert "salmonid" in notes.lower() or "trout" in notes.lower()
@@ -159,6 +173,7 @@ def test_species_notes_unknown_returns_string():
 # ---------------------------------------------------------------------------
 # Unit: derive_from_pwqmn — return values and filtering
 # ---------------------------------------------------------------------------
+
 
 def test_derive_returns_three_qualifying_stations(tmp_path):
     db = get_db(path=tmp_path / "t.db")
@@ -196,6 +211,7 @@ def test_derive_is_idempotent(tmp_path):
 # ---------------------------------------------------------------------------
 # Unit: derive_from_pwqmn — classification correctness
 # ---------------------------------------------------------------------------
+
 
 def test_derive_classifies_coldwater(populated_db):
     row = populated_db.execute(
@@ -259,6 +275,7 @@ def test_derive_species_notes_populated(populated_db):
 # ---------------------------------------------------------------------------
 # Integration: storage / query
 # ---------------------------------------------------------------------------
+
 
 def test_is_data_loaded_false_when_empty(app_db):
     assert is_data_loaded(app_db) is False

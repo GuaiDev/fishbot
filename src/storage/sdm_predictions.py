@@ -31,15 +31,17 @@ def upsert_predictions(
     for ogf_id, prob in predictions.items():
         if ogf_id not in centroids.index:
             continue
-        rows.append({
-            "ogf_id": int(ogf_id),
-            "species": species,
-            "presence_probability": float(prob),
-            "model_version": model_version,
-            "predicted_at": now,
-            "centroid_lat": float(centroids.loc[ogf_id, "centroid_lat"]),
-            "centroid_lng": float(centroids.loc[ogf_id, "centroid_lng"]),
-        })
+        rows.append(
+            {
+                "ogf_id": int(ogf_id),
+                "species": species,
+                "presence_probability": float(prob),
+                "model_version": model_version,
+                "predicted_at": now,
+                "centroid_lat": float(centroids.loc[ogf_id, "centroid_lat"]),
+                "centroid_lng": float(centroids.loc[ogf_id, "centroid_lng"]),
+            }
+        )
 
     # Batch upsert to avoid per-row overhead
     _ensure_table(db)

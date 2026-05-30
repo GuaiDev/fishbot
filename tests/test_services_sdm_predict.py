@@ -21,24 +21,28 @@ def _make_features(n: int = _N, seed: int = 0) -> pd.DataFrame:
     lngs = np.linspace(-80.0, -79.0, n)
     summer_temp = np.full(n, np.nan)
     summer_temp[:5] = rng.uniform(10, 20, 5)
-    return pd.DataFrame({
-        "ogf_id": list(range(1, n + 1)),
-        "centroid_lat": lats,
-        "centroid_lng": lngs,
-        "stream_order": rng.integers(1, 5, n),
-        "length_m": rng.uniform(500, 5000, n),
-        "flow_verified": rng.integers(0, 2, n),
-        "substrate_category": rng.choice(["coarse", "fine", "bedrock"], n),
-        "thermal_regime": np.where(np.arange(n) < 5, "coldwater", "unknown"),
-        "summer_mean_temp_c": summer_temp,
-        "do_median_mgl": np.where(np.arange(n) < 5, rng.uniform(6, 10, n), np.nan),
-        "ph_median": np.where(np.arange(n) < 5, rng.uniform(6.5, 8.0, n), np.nan),
-        "conductivity_median_us_cm": np.where(np.arange(n) < 5, rng.uniform(80, 200, n), np.nan),
-        "ept_quality": np.where(np.arange(n) < 5, "high", "unknown"),
-        "ept_proportion": np.where(np.arange(n) < 5, rng.uniform(0.3, 0.8, n), np.nan),
-        "barrier_count_upstream": rng.integers(0, 5, n),
-        "is_stocked_within_5yr": np.zeros(n, dtype=bool),
-    })
+    return pd.DataFrame(
+        {
+            "ogf_id": list(range(1, n + 1)),
+            "centroid_lat": lats,
+            "centroid_lng": lngs,
+            "stream_order": rng.integers(1, 5, n),
+            "length_m": rng.uniform(500, 5000, n),
+            "flow_verified": rng.integers(0, 2, n),
+            "substrate_category": rng.choice(["coarse", "fine", "bedrock"], n),
+            "thermal_regime": np.where(np.arange(n) < 5, "coldwater", "unknown"),
+            "summer_mean_temp_c": summer_temp,
+            "do_median_mgl": np.where(np.arange(n) < 5, rng.uniform(6, 10, n), np.nan),
+            "ph_median": np.where(np.arange(n) < 5, rng.uniform(6.5, 8.0, n), np.nan),
+            "conductivity_median_us_cm": np.where(
+                np.arange(n) < 5, rng.uniform(80, 200, n), np.nan
+            ),
+            "ept_quality": np.where(np.arange(n) < 5, "high", "unknown"),
+            "ept_proportion": np.where(np.arange(n) < 5, rng.uniform(0.3, 0.8, n), np.nan),
+            "barrier_count_upstream": rng.integers(0, 5, n),
+            "is_stocked_within_5yr": np.zeros(n, dtype=bool),
+        }
+    )
 
 
 def _train_test_model(species: str, df: pd.DataFrame, tmp_path: Path) -> None:
@@ -89,8 +93,12 @@ def test_predict_species_returns_dataframe(tmp_path: Path):
     assert isinstance(result, pd.DataFrame)
     assert len(result) == _N
     assert set(result.columns) >= {
-        "ogf_id", "species", "presence_probability", "confidence_tier",
-        "model_version", "predicted_at",
+        "ogf_id",
+        "species",
+        "presence_probability",
+        "confidence_tier",
+        "model_version",
+        "predicted_at",
     }
 
 

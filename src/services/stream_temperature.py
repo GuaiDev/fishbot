@@ -17,9 +17,7 @@ _NOT_LOADED = json.dumps(
 )
 
 
-def get_stream_temperature_for_agent(
-    lat: float, lng: float, radius_km: float = 50
-) -> str:
+def get_stream_temperature_for_agent(lat: float, lng: float, radius_km: float = 50) -> str:
     """Return JSON with thermal regime summary for streams near lat/lng."""
     db = get_db()
 

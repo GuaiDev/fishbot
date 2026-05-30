@@ -328,7 +328,6 @@ def ensure_schema(db: Database) -> None:
         db["water_quality_readings"].create_index(["station_id"], if_not_exists=True)
         db["water_quality_readings"].create_index(["sampled_at"], if_not_exists=True)
 
-
     if "bird_observations" not in db.table_names():
         db["bird_observations"].create(
             {
@@ -384,7 +383,6 @@ def ensure_schema(db: Database) -> None:
             },
             pk="station_id",
         )
-
 
     if "sdm_predictions" not in db.table_names():
         db["sdm_predictions"].create(

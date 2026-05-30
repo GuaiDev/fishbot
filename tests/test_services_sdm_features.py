@@ -87,6 +87,31 @@ def test_strahler_order_linear():
     assert orders[12] == 1
 
 
+def test_strahler_order_cycle_does_not_crash():
+    # Cycle A→B→A (braided channel / data error) — should not raise, all order >= 1
+    A, B, C = _node(-79, 45), _node(-79, 44.9), _node(-79, 44.8)
+    G = _make_graph((A, B, 20, 500), (B, A, 21, 500), (B, C, 22, 500))
+    orders = _compute_strahler_order(G)
+    assert all(v >= 1 for v in orders.values())
+
+
+def test_strahler_order_cycle_downstream_still_increments():
+    # Chain with a side cycle: X→Y→X (cycle, both order 1), Z→Y (another tributary)
+    # Y has two predecessors (X and Z) at some order — downstream of Y should be > 1
+    A, B, C, D = _node(-79, 45), _node(-79, 44.9), _node(-79.1, 45), _node(-79, 44.8)
+    G = _make_graph(
+        (A, B, 30, 500),  # A→B
+        (B, A, 31, 500),  # B→A  (creates cycle A↔B)
+        (C, B, 32, 500),  # C→B  (C is another headwater into B)
+        (B, D, 33, 500),  # B→D  (downstream of confluence)
+    )
+    orders = _compute_strahler_order(G)
+    # All orders must be >= 1 and no crash
+    assert all(v >= 1 for v in orders.values())
+    # Segment 33 (downstream of B which had two tributaries) should be >= 1
+    assert 33 in orders
+
+
 def test_assign_geology_nearest():
     centroids = {1: (44.0, -79.0), 2: (44.5, -79.5)}
     geo = [
@@ -105,12 +130,11 @@ def test_assign_geology_empty_returns_empty():
     assert _assign_geology({}, geo) == {}
 
 
-
 def test_subgraph_near_sources_excludes_distant_nodes():
     """Nodes outside bbox + buffer are excluded from the returned subgraph."""
     A = _node(-79.0, 44.5)
     B = _node(-79.0, 44.4)
-    C = _node(-85.0, 44.0)   # far away in western Ontario
+    C = _node(-85.0, 44.0)  # far away in western Ontario
     G = _make_graph((A, B, 1, 5000), (B, C, 2, 5000))
 
     nodes_list = list(G.nodes())
@@ -137,12 +161,30 @@ def test_subgraph_near_sources_empty_returns_full_graph():
 
 def test_aggregate_wq_by_station():
     rows = [
-        {"station_id": "A", "lat": 44.0, "lng": -79.0,
-         "do_mgl": 8.0, "ph": 7.0, "conductivity_us_cm": 100.0},
-        {"station_id": "A", "lat": 44.0, "lng": -79.0,
-         "do_mgl": 10.0, "ph": 7.4, "conductivity_us_cm": 120.0},
-        {"station_id": "B", "lat": 44.5, "lng": -79.5,
-         "do_mgl": 6.0, "ph": 6.8, "conductivity_us_cm": 90.0},
+        {
+            "station_id": "A",
+            "lat": 44.0,
+            "lng": -79.0,
+            "do_mgl": 8.0,
+            "ph": 7.0,
+            "conductivity_us_cm": 100.0,
+        },
+        {
+            "station_id": "A",
+            "lat": 44.0,
+            "lng": -79.0,
+            "do_mgl": 10.0,
+            "ph": 7.4,
+            "conductivity_us_cm": 120.0,
+        },
+        {
+            "station_id": "B",
+            "lat": 44.5,
+            "lng": -79.5,
+            "do_mgl": 6.0,
+            "ph": 6.8,
+            "conductivity_us_cm": 90.0,
+        },
     ]
     agg = _aggregate_wq_by_station(rows)
     by_station = {r["station_id"]: r for r in agg}
@@ -183,8 +225,8 @@ def test_assign_from_upstream_stations_respects_distance():
     station_row = {"lat": 44.5, "lng": -79.0, "thermal_regime": "coldwater"}
     result = _assign_from_upstream_stations(G, snap_fn, [station_row], max_km=20.0)
 
-    assert 1 in result   # 2km — within 20km
-    assert 2 in result   # 20km — within limit
+    assert 1 in result  # 2km — within 20km
+    assert 2 in result  # 20km — within limit
     assert 3 not in result  # 25km — beyond 20km
 
 
@@ -288,7 +330,7 @@ def _y_network():
     M2 = "-79.1,44.2"
     M3 = "-79.1,44.1"
     return [
-        (H1, J, 1, 12000.0, 44.45, -79.05),   # (start, end, ogf_id, len, clat, clng)
+        (H1, J, 1, 12000.0, 44.45, -79.05),  # (start, end, ogf_id, len, clat, clng)
         (H2, J, 2, 12000.0, 44.45, -79.15),
         (J, M1, 3, 11000.0, 44.35, -79.1),
         (M1, M2, 4, 11000.0, 44.25, -79.1),
@@ -451,15 +493,23 @@ def test_build_feature_matrix_integration(tmp_path: Path):
     # Shape check
     assert len(df) == 5
     expected_cols = {
-        "ogf_id", "stream_order", "length_m", "flow_verified",
+        "ogf_id",
+        "stream_order",
+        "length_m",
+        "flow_verified",
         "substrate_category",
-        "thermal_regime", "summer_mean_temp_c",
-        "do_median_mgl", "ph_median", "conductivity_median_us_cm",
-        "ept_quality", "ept_proportion",
+        "thermal_regime",
+        "summer_mean_temp_c",
+        "do_median_mgl",
+        "ph_median",
+        "conductivity_median_us_cm",
+        "ept_quality",
+        "ept_proportion",
         "barrier_count_upstream",
         "distance_to_nearest_observation_km",
         "observation_density_25km",
-        "is_stocked_within_5yr", "nearest_stocked_species",
+        "is_stocked_within_5yr",
+        "nearest_stocked_species",
         "pwqmn_coverage",
     }
     assert expected_cols.issubset(set(df.columns))

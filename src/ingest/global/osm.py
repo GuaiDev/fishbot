@@ -56,7 +56,7 @@ def fetch_access_points(lat: float, lng: float, radius_km: float = 25) -> list[A
     """Fetch access points near lat/lng within radius_km. Cached 30 days."""
     radius_m = int(radius_km * 1000)
     query = (
-        f"[out:json][timeout:60];\n"
+        f"[out:json][timeout:90];\n"
         f"(\n"
         f'  node["leisure"="fishing"](around:{radius_m},{lat},{lng});\n'
         f'  way["leisure"="fishing"](around:{radius_m},{lat},{lng});\n'
@@ -74,6 +74,9 @@ def fetch_access_points(lat: float, lng: float, radius_km: float = 25) -> list[A
         f'  way["highway"="layby"](around:{radius_m},{lat},{lng});\n'
         f'  node["amenity"="parking"](around:{radius_m},{lat},{lng});\n'
         f'  way["amenity"="parking"](around:{radius_m},{lat},{lng});\n'
+        f'  way["highway"~"^(primary|secondary|tertiary|unclassified)$"](around:{radius_m},{lat},{lng});\n'  # noqa: E501
+        f'  node["building"~"^(yes|house|residential|commercial|industrial|garage|shed)$"](around:{radius_m},{lat},{lng});\n'  # noqa: E501
+        f'  way["building"~"^(yes|house|residential|commercial|industrial|garage|shed)$"](around:{radius_m},{lat},{lng});\n'  # noqa: E501
         f");\n"
         f"out geom;"
     )
@@ -218,6 +221,10 @@ def _access_type_from_tags(tags: dict) -> str | None:
         return "parking"
     if tags.get("amenity") == "parking":
         return "parking"
+    if tags.get("highway") in ("primary", "secondary", "tertiary", "unclassified"):
+        return "road"
+    if tags.get("building"):
+        return "building"
     return None
 
 

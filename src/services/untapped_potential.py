@@ -1,0 +1,588 @@
+"""Untapped potential scoring — combines habitat, pressure, and access.
+
+Formula per segment:
+  untapped_score = habitat_score × (1 - observation_pressure) × access_score
+
+Where:
+  habitat_score        = mean SDM presence probability across species (0–1)
+                         filtered to one species if species= is given
+  observation_pressure = normalised observation_density_25km from feature matrix (0–1)
+  access_score         = normalised accessibility score from services/accessibility.py
+
+Result cached to data/processed/untapped_potential.parquet.
+"""
+
+import logging
+import os
+from pathlib import Path
+
+import pandas as pd
+
+from src.services.accessibility import compute_access_scores, load_cached_scores
+
+logger = logging.getLogger(__name__)
+
+_PARQUET_PATH = Path("data/processed/untapped_potential.parquet")
+_FEATURE_MATRIX_PATH = Path("data/processed/sdm_feature_matrix.parquet")
+_KM_PER_DEGREE = 111.0
+
+
+def compute_untapped_potential(
+    db,
+    feature_matrix: pd.DataFrame | None = None,
+    species: str | None = None,
+    force_recompute_access: bool = False,
+) -> pd.DataFrame:
+    """Compute untapped potential for all segments.
+
+    Returns DataFrame sorted descending by untapped_score with columns:
+      ogf_id, centroid_lat, centroid_lng, watercourse_name, stream_order,
+      habitat_score, access_score, observation_pressure, untapped_score
+
+    Caches result to data/processed/untapped_potential.parquet.
+    """
+    if feature_matrix is None:
+        if not _FEATURE_MATRIX_PATH.exists():
+            raise FileNotFoundError("Feature matrix not found. Run `make build-features` first.")
+        feature_matrix = pd.read_parquet(_FEATURE_MATRIX_PATH)
+
+    # Exclude Virtual Flow segments — OHN connectivity segments through lakes,
+    # not fishable stream reaches.
+    if "watercourse_type" in feature_matrix.columns:
+        feature_matrix = feature_matrix[
+            feature_matrix["watercourse_type"] != "Virtual Flow"
+        ].copy()
+    elif "stream_segments" in db.table_names():
+        vf_ids = {
+            r["ogf_id"]
+            for r in db["stream_segments"].rows_where("watercourse_type = 'Virtual Flow'")
+        }
+        feature_matrix = feature_matrix[~feature_matrix["ogf_id"].isin(vf_ids)].copy()
+
+    # --- access scores ---
+    access_scores = None
+    if not force_recompute_access:
+        access_scores = load_cached_scores()
+
+    if access_scores is None:
+        logger.info("Computing access scores (not cached)...")
+        access_scores = compute_access_scores(db, feature_matrix)
+
+    # --- habitat scores ---
+    habitat_scores = _load_habitat_scores(db, species)
+
+    # --- observation pressure ---
+    pressure = _compute_pressure(feature_matrix)
+
+    # --- merge onto feature matrix ---
+    base = feature_matrix[["ogf_id", "centroid_lat", "centroid_lng", "stream_order"]].copy()
+
+    if "watercourse_name" in feature_matrix.columns:
+        base["watercourse_name"] = feature_matrix["watercourse_name"].fillna("")
+    else:
+        base["watercourse_name"] = ""
+
+    if "watercourse_type" in feature_matrix.columns:
+        base["watercourse_type"] = feature_matrix["watercourse_type"].fillna("")
+    else:
+        base["watercourse_type"] = ""
+
+    base = base.set_index("ogf_id")
+
+    base["habitat_score"] = habitat_scores.reindex(base.index).fillna(0.0)
+    base["access_score"] = access_scores.reindex(base.index).fillna(0.5)
+    base["observation_pressure"] = pressure.reindex(base.index).fillna(0.0)
+
+    base["untapped_score"] = (
+        base["habitat_score"] * (1.0 - base["observation_pressure"]) * base["access_score"]
+    )
+
+    result = base.reset_index().sort_values("untapped_score", ascending=False)
+
+    _PARQUET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    result.to_parquet(_PARQUET_PATH, index=False)
+    logger.info("Untapped potential written to %s", _PARQUET_PATH)
+
+    return result
+
+
+def load_cached_untapped() -> pd.DataFrame | None:
+    """Load cached untapped potential parquet, or None if not computed."""
+    if not _PARQUET_PATH.exists():
+        return None
+    return pd.read_parquet(_PARQUET_PATH)
+
+
+def find_untapped_water_for_agent(
+    db,
+    lat: float,
+    lng: float,
+    radius_km: float = 50.0,
+    species: str | None = None,
+    min_stream_order: int = 2,
+    limit: int = 10,
+) -> str:
+    """Agent-facing function. Returns top untapped segments near lat/lng as JSON."""
+    import json
+
+    df = load_cached_untapped()
+    if df is None:
+        return json.dumps(
+            {
+                "error": "Untapped potential not computed yet.",
+                "setup": "Run `make compute-untapped` to generate scores.",
+            }
+        )
+
+    # Species filter: recompute habitat scores on-the-fly
+    if species:
+        habitat = _load_habitat_scores(db, species)
+        if len(habitat) == 0:
+            return json.dumps(
+                {
+                    "error": f"No SDM predictions found for species '{species}'.",
+                    "note": "Run `make train-sdm` to train models, then `make compute-untapped`.",
+                }
+            )
+        df = df.copy()
+        df["habitat_score"] = df["ogf_id"].map(habitat).fillna(0.0)
+        df["untapped_score"] = (
+            df["habitat_score"] * (1.0 - df["observation_pressure"]) * df["access_score"]
+        )
+        df = df.sort_values("untapped_score", ascending=False)
+
+    # Spatial filter
+    deg = radius_km / _KM_PER_DEGREE
+    df = df[
+        (df["centroid_lat"].between(lat - deg, lat + deg))
+        & (df["centroid_lng"].between(lng - deg, lng + deg))
+    ]
+
+    # Stream order filter
+    if "stream_order" in df.columns:
+        df = df[df["stream_order"] >= min_stream_order]
+
+    df = df[df["untapped_score"] > 0.0]
+
+    # 500m deduplication: skip segments whose centroid is within 500m of an
+    # already-selected result.  Fetch extra candidates to fill the limit.
+    top = _deduplicate_by_distance(df, limit=limit, min_dist_km=0.5)
+
+    if top.empty:
+        return json.dumps(
+            {
+                "result": (
+                    f"No untapped water found within {radius_km}km with sufficient data. "
+                    "Try a larger radius or run `make compute-untapped` to refresh scores."
+                ),
+            }
+        )
+
+    # Preload spatial data once for all enrichment queries
+    named_seg_cache = _load_named_segments(db)
+
+    # Build enriched segment records
+    segments = []
+    for _, row in top.iterrows():
+        seg_lat = float(row["centroid_lat"])
+        seg_lng = float(row["centroid_lng"])
+        seg_name = str(row["watercourse_name"]) if row.get("watercourse_name") else None
+
+        named_stream = _nearest_named_stream_from_cache(  # noqa: E501
+            named_seg_cache, seg_lat, seg_lng, radius_km=10.0
+        )
+        road_access = _nearest_road_access(db, seg_lat, seg_lng, radius_km=2.0)
+        osm_access = _nearest_osm_access(db, seg_lat, seg_lng, radius_km=1.0)
+        top_species = _top_species_at(db, int(row["ogf_id"]))
+
+        from dotenv import load_dotenv
+
+        load_dotenv()
+        mapbox_token = os.getenv("MAPBOX_TOKEN")
+
+        _maps_urls: dict[str, str | None] = {
+            "mapbox_satellite": (
+                f"https://api.mapbox.com/styles/v1/"
+                f"mapbox/satellite-v9/static/"
+                f"pin-s+ff0000({seg_lng:.5f},{seg_lat:.5f})/"
+                f"{seg_lng:.5f},{seg_lat:.5f},16,0/800x500"
+                f"?access_token={mapbox_token}"
+            )
+            if mapbox_token
+            else None,
+            "google_satellite": (
+                f"https://maps.google.com/?q={seg_lat:.5f},{seg_lng:.5f}&t=k&z=18"
+            ),
+            "bing_satellite": (
+                f"https://www.bing.com/maps?cp={seg_lat:.5f}~{seg_lng:.5f}&lvl=18&style=a"
+            ),
+            "swoop_2025": (
+                f"https://geohub.lio.gov.on.ca/datasets/"
+                f"lio::south-western-ontario-"
+                f"orthophotography-project-swoop-"
+                f"2025-1km-index/"
+                f"explore?location={seg_lat:.5f},{seg_lng:.5f},16"
+            )
+            if (-83 < seg_lng < -76 and 42 < seg_lat < 46)
+            else None,
+        }
+        maps_urls = {k: v for k, v in _maps_urls.items() if v is not None}
+
+        seg_type = str(row["watercourse_type"]) if row.get("watercourse_type") else None
+
+        segments.append(
+            {
+                "ogf_id": int(row["ogf_id"]),
+                "watercourse_name": seg_name or None,
+                "watercourse_type": seg_type,
+                "centroid_lat": round(seg_lat, 5),
+                "centroid_lng": round(seg_lng, 5),
+                "stream_order": int(row["stream_order"])
+                if not pd.isna(row["stream_order"])
+                else None,
+                "habitat_score": round(float(row["habitat_score"]), 3),
+                "access_score": round(float(row["access_score"]), 3),
+                "observation_pressure": round(float(row["observation_pressure"]), 3),
+                "untapped_score": round(float(row["untapped_score"]), 4),
+                "nearest_named_stream": named_stream,
+                "nearest_road_access": road_access,
+                "nearest_osm_access": osm_access,
+                "maps_urls": maps_urls,
+                "exploration_note": _exploration_note(
+                    seg_name,
+                    named_stream,
+                    road_access,
+                    osm_access,
+                    float(row["habitat_score"]),
+                    float(row["observation_pressure"]),
+                    top_species,
+                    species,
+                ),
+            }
+        )
+
+    return json.dumps(
+        {
+            "maps_note": (
+                "Coordinates are stream segment midpoints. "
+                "Open maps_urls.mapbox_satellite for a pre-rendered satellite image with pin — "
+                "verify access and stream character before visiting."
+            ),
+            "segments": segments,
+            "search_params": {
+                "lat": lat,
+                "lng": lng,
+                "radius_km": radius_km,
+                "species": species,
+                "min_stream_order": min_stream_order,
+            },
+            "model_note": (
+                "habitat_score is RF model-predicted habitat suitability — "
+                "not confirmed presence. "
+                "observation_pressure reflects iNaturalist + GBIF report density "
+                "— high pressure may mean popular water, not high fish abundance. "
+                "access_score reflects road proximity, park type, and tagged access points."
+            ),
+            "count": len(segments),
+        },
+        indent=2,
+    )
+
+
+# ── selection helpers ─────────────────────────────────────────────────────────
+
+
+def _deduplicate_by_distance(
+    df: pd.DataFrame, limit: int, min_dist_km: float
+) -> pd.DataFrame:
+    """Return up to `limit` rows from df (already sorted best-first) such that
+    no two selected centroids are within min_dist_km of each other."""
+    selected_rows = []
+    selected_coords: list[tuple[float, float]] = []
+
+    # Pull enough candidates from the sorted frame to fill the limit
+    candidates = df.head(limit * 20)
+
+    for _, row in candidates.iterrows():
+        lat = float(row["centroid_lat"])
+        lng = float(row["centroid_lng"])
+        # Euclidean degree distance as fast pre-filter (1 deg ≈ 111km)
+        threshold_deg = min_dist_km / _KM_PER_DEGREE
+        too_close = any(
+            abs(lat - s_lat) < threshold_deg and abs(lng - s_lng) < threshold_deg
+            and _haversine_km(lat, lng, s_lat, s_lng) < min_dist_km
+            for s_lat, s_lng in selected_coords
+        )
+        if not too_close:
+            selected_rows.append(row)
+            selected_coords.append((lat, lng))
+            if len(selected_rows) == limit:
+                break
+
+    if not selected_rows:
+        return pd.DataFrame(columns=df.columns)
+    return pd.DataFrame(selected_rows)
+
+
+# ── enrichment helpers ────────────────────────────────────────────────────────
+
+_BEARING_LABELS = [
+    "north",
+    "northeast",
+    "east",
+    "southeast",
+    "south",
+    "southwest",
+    "west",
+    "northwest",
+]
+
+
+def _bearing_label(from_lat: float, from_lng: float, to_lat: float, to_lng: float) -> str:
+    import math
+
+    dlat = to_lat - from_lat
+    dlng = to_lng - from_lng
+    angle = math.degrees(math.atan2(dlng, dlat)) % 360
+    idx = int((angle + 22.5) / 45) % 8
+    return _BEARING_LABELS[idx]
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    import math
+
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = (
+        math.sin(dlat / 2) ** 2  # noqa: E501
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2
+    )
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+_POINT_RE = __import__("re").compile(r"POINT \((-?\d+\.?\d*) (-?\d+\.?\d*)\)")
+
+
+def _parse_point(geom_wkt: str) -> tuple[float, float] | None:
+    """Parse 'POINT (lng lat)' → (lat, lng) or None."""
+    m = _POINT_RE.match(geom_wkt or "")
+    if m:
+        return float(m.group(2)), float(m.group(1))
+    return None
+
+
+def _load_named_segments(db) -> list[tuple[str, float, float]]:
+    """Load all named OHN segments as (name, lat, lng) tuples."""
+    if "stream_segments" not in db.table_names():
+        return []
+    rows = list(db["stream_segments"].rows_where("name IS NOT NULL AND name != ''"))
+    result = []
+    for r in rows:
+        coords = _parse_point(r.get("geom_wkt", ""))
+        if coords:
+            result.append((r["name"], coords[0], coords[1]))
+    return result
+
+
+def _nearest_named_stream_from_cache(
+    cache: list[tuple[str, float, float]], lat: float, lng: float, radius_km: float
+) -> str | None:
+    """Return 'StreamName (Xkm)' for nearest named segment within radius_km."""
+    if not cache:
+        return None
+    deg = radius_km / _KM_PER_DEGREE
+    best_dist = float("inf")
+    best_name = None
+    for name, r_lat, r_lng in cache:
+        if abs(r_lat - lat) > deg or abs(r_lng - lng) > deg:
+            continue
+        d = _haversine_km(lat, lng, r_lat, r_lng)
+        if d < best_dist:
+            best_dist = d
+            best_name = name
+    if best_name is None:
+        return None
+    return f"{best_name} ({best_dist:.1f}km)"
+
+
+def _nearest_road_access(db, lat: float, lng: float, radius_km: float) -> str | None:
+    """Return 'Road Xm bearing' for nearest road/parking within radius_km."""
+    if "access_points" not in db.table_names():
+        return None
+    deg = radius_km / _KM_PER_DEGREE
+    rows = list(
+        db["access_points"].rows_where(
+            "access_type IN ('road', 'parking') AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?",
+            [lat - deg, lat + deg, lng - deg, lng + deg],
+        )
+    )
+    if not rows:
+        return None
+    best = min(rows, key=lambda r: _haversine_km(lat, lng, r["lat"], r["lng"]))
+    dist_km = _haversine_km(lat, lng, best["lat"], best["lng"])
+    bearing = _bearing_label(lat, lng, best["lat"], best["lng"])
+    label = "Parking area" if best["access_type"] == "parking" else "Road"
+    if dist_km < 1.0:
+        return f"{label} {int(dist_km * 1000)}m {bearing}"
+    return f"{label} {dist_km:.1f}km {bearing}"
+
+
+def _nearest_osm_access(db, lat: float, lng: float, radius_km: float) -> str | None:
+    """Return description of nearest fishing spot / boat launch / conservation area."""
+    if "access_points" not in db.table_names():
+        return None
+    deg = radius_km / _KM_PER_DEGREE
+    rows = list(
+        db["access_points"].rows_where(
+            "access_type IN ('fishing_spot', 'boat_launch', 'conservation_area', 'park') "
+            "AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?",
+            [lat - deg, lat + deg, lng - deg, lng + deg],
+        )
+    )
+    if not rows:
+        return None
+    best = min(rows, key=lambda r: _haversine_km(lat, lng, r["lat"], r["lng"]))
+    dist_km = _haversine_km(lat, lng, best["lat"], best["lng"])
+    labels = {
+        "fishing_spot": "Fishing spot",
+        "boat_launch": "Boat launch",
+        "conservation_area": "Conservation area",
+        "park": "Park",
+    }
+    label = labels.get(best["access_type"], best["access_type"].replace("_", " ").title())
+    if dist_km < 1.0:
+        return f"{label} {int(dist_km * 1000)}m"
+    return f"{label} {dist_km:.1f}km"
+
+
+def _top_species_at(db, ogf_id: int) -> list[str]:
+    """Return top 2 species by predicted probability for this segment."""
+    if "sdm_predictions" not in db.table_names():
+        return []
+    rows = list(
+        db["sdm_predictions"].rows_where(
+            "ogf_id = ? ORDER BY presence_probability DESC LIMIT 2", [ogf_id]
+        )
+    )
+    return [_COMMON_NAMES.get(r["species"], r["species"]) for r in rows]
+
+
+def _exploration_note(
+    seg_name: str | None,
+    named_stream: str | None,
+    road_access: str | None,
+    osm_access: str | None,
+    habitat_score: float,
+    pressure: float,
+    top_species: list[str],
+    filter_species: str | None,
+) -> str:
+    parts = []
+
+    # Water identity
+    if seg_name:
+        parts.append(f"{seg_name}.")
+    elif named_stream:
+        parts.append(f"Unnamed tributary near {named_stream.split('(')[0].strip()}.")
+    else:
+        parts.append("Unnamed stream segment.")
+
+    # Habitat signal
+    if filter_species:
+        if habitat_score >= 0.6:
+            parts.append(f"Strong predicted habitat for {filter_species}.")
+        elif habitat_score >= 0.35:
+            parts.append(f"Moderate predicted habitat for {filter_species}.")
+        else:
+            parts.append(f"Low predicted habitat for {filter_species}.")
+    elif top_species:
+        sp_str = " and ".join(top_species[:2])
+        if habitat_score >= 0.6:
+            parts.append(f"Strong predicted habitat ({sp_str}).")
+        elif habitat_score >= 0.35:
+            parts.append(f"Moderate predicted habitat ({sp_str}).")
+        else:
+            parts.append(f"Low predicted habitat ({sp_str}).")
+
+    # Access
+    if road_access:
+        parts.append(f"{road_access}.")
+    if osm_access:
+        parts.append(f"{osm_access} nearby.")
+
+    # Pressure
+    if pressure < 0.15:
+        parts.append("Very low observation pressure — likely underexplored.")
+    elif pressure < 0.35:
+        parts.append("Low fishing pressure.")
+    elif pressure < 0.6:
+        parts.append("Moderate observation pressure.")
+    else:
+        parts.append("High observation density in this area — popular water.")
+
+    parts.append(
+        "Verify before visiting: open mapbox_satellite for a pre-rendered satellite image "
+        "with pin, google or bing to explore the surroundings. "
+        "In Ontario: swoop_2025 shows 16cm leaf-off aerial imagery — best for confirming "
+        "stream channel and bank access."
+    )
+    return " ".join(parts)
+
+
+# ── internal ──────────────────────────────────────────────────────────────────
+
+
+def _load_habitat_scores(db, species: str | None) -> pd.Series:
+    """Load SDM predictions from DB, averaged per segment across species (or one species)."""
+    if "sdm_predictions" not in db.table_names():
+        return pd.Series(dtype=float)
+
+    if species:
+        # Resolve common → scientific name
+        sci = _resolve_species(species)
+        rows = list(
+            db["sdm_predictions"].rows_where(
+                "LOWER(species) = ?", [sci.lower() if sci else species.lower()]
+            )
+        )
+    else:
+        rows = list(db["sdm_predictions"].rows)
+
+    if not rows:
+        return pd.Series(dtype=float)
+
+    df = pd.DataFrame(rows)
+    # Average presence probability across species per segment
+    habitat = df.groupby("ogf_id")["presence_probability"].mean()
+    return habitat
+
+
+def _compute_pressure(feature_matrix: pd.DataFrame) -> pd.Series:
+    """Normalise observation_density_25km to [0, 1]."""
+    col = feature_matrix.set_index("ogf_id")["observation_density_25km"].fillna(0.0)
+    lo, hi = col.min(), col.max()
+    if hi > lo:
+        return ((col - lo) / (hi - lo)).rename("observation_pressure")
+    return col.clip(0.0, 1.0).rename("observation_pressure")
+
+
+# Species name resolution (mirrors sdm_predictions.py)
+_COMMON_NAMES = {
+    "Semotilus atromaculatus": "Creek Chub",
+    "Lepomis gibbosus": "Pumpkinseed",
+    "Perca flavescens": "Yellow Perch",
+    "Ameiurus nebulosus": "Brown Bullhead",
+    "Catostomus commersonii": "White Sucker",
+    "Culaea inconstans": "Brook Stickleback",
+    "Etheostoma caeruleum": "Rainbow Darter",
+    "Ambloplites rupestris": "Rock Bass",
+    "Micropterus nigricans": "Smallmouth / Largemouth Bass (pooled)",
+}
+_COMMON_TO_SCI = {v.lower(): k for k, v in _COMMON_NAMES.items()}
+for _k in list(_COMMON_NAMES.keys()):
+    _COMMON_TO_SCI[_k.lower()] = _k
+
+
+def _resolve_species(name: str) -> str:
+    return _COMMON_TO_SCI.get(name.lower(), name)

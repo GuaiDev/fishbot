@@ -88,7 +88,9 @@ def fetch_watercourses(lat: float, lon: float, radius_km: float = 300.0) -> list
         if i % 50 == 0:
             logger.info(
                 "OHN watercourse: processed %d/%d tiles (%d features so far)",
-                i, len(tiles), len(seen),
+                i,
+                len(tiles),
+                len(seen),
             )
 
     segments: list[StreamSegment] = []
@@ -189,7 +191,11 @@ def _fetch_tile(
     if depth > _MAX_TILE_DEPTH:
         logger.warning(
             "OHN: max tiling depth %d reached for bbox %.3f,%.3f,%.3f,%.3f — may be incomplete",
-            _MAX_TILE_DEPTH, min_lon, min_lat, max_lon, max_lat,
+            _MAX_TILE_DEPTH,
+            min_lon,
+            min_lat,
+            max_lon,
+            max_lat,
         )
         return []
 
@@ -212,7 +218,8 @@ def _fetch_tile(
     if features and len(features) % _PAGE_SIZE == 0:
         logger.info(
             "OHN: possible record cap at %d features (depth=%d) — splitting into quadrants",
-            len(features), depth,
+            len(features),
+            depth,
         )
         mid_lon = (min_lon + max_lon) / 2
         mid_lat = (min_lat + max_lat) / 2
@@ -371,6 +378,7 @@ def _snap_to_nearest_segment(
         return None, None
 
     from shapely.wkt import loads as wkt_loads
+
     geom = wkt_loads(segments[idx].geom_wkt)
     min_dist = point.distance(geom)
 

@@ -350,6 +350,18 @@ def _execute_tool(name: str, inputs: dict) -> str:
             species=inputs.get("species"),
             min_probability=inputs.get("min_probability", 0.5),
         )
+    if name == "find_untapped_water":
+        from src.services.untapped_potential import find_untapped_water_for_agent
+
+        return find_untapped_water_for_agent(
+            db=get_db(),
+            lat=inputs["lat"],
+            lng=inputs["lng"],
+            radius_km=inputs.get("radius_km", 50),
+            species=inputs.get("species"),
+            min_stream_order=inputs.get("min_stream_order", 2),
+            limit=inputs.get("limit", 10),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -1283,6 +1295,59 @@ def _tools(profile: Any) -> list[dict]:
                     "radius_km": {
                         "type": "number",
                         "description": "Search radius in kilometres. Default 50.",
+                    },
+                },
+                "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "find_untapped_water",
+            "description": (
+                "Returns stream segments ranked by untapped potential: "
+                "high predicted habitat suitability × low angler observation pressure × good access. "  # noqa: E501
+                "This is the primary exploration tool — use it when the user asks for new water to explore, "  # noqa: E501
+                "untapped spots, places that haven't been fished, or where to find solitude. "
+                "Each result includes habitat_score (RF model prediction — NOT confirmed presence), "  # noqa: E501
+                "observation_pressure (iNat+GBIF report density — high = popular, not necessarily better), "  # noqa: E501
+                "and access_score (road proximity, park type, tagged access points). "
+                "IMPORTANT: Always note that habitat_score is model-predicted suitability, not confirmed presence. "  # noqa: E501
+                "After returning results, pair with get_recent_observations on the top 2-3 candidates "  # noqa: E501
+                "to check if any confirmed sightings exist nearby. "
+                "Requires `make compute-untapped` to have been run first."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "description": lat_desc,
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": lng_desc,
+                    },
+                    "radius_km": {
+                        "type": "number",
+                        "description": "Search radius in kilometres. Default 50.",
+                    },
+                    "species": {
+                        "type": "string",
+                        "description": (
+                            "Optional: filter habitat score to a specific species. "
+                            "Accepts common name (e.g. 'Creek Chub') or scientific name. "
+                            "Omit to use average across all modelled species."
+                        ),
+                    },
+                    "min_stream_order": {
+                        "type": "integer",
+                        "description": (
+                            "Minimum Strahler stream order to include. Default 2 "
+                            "(filters out first-order trickles). Use 1 for microfishing targets."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of top segments to return. Default 10.",
                     },
                 },
                 "required": ["lat", "lng"],

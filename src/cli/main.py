@@ -271,14 +271,24 @@ def ingest(
 
     seed_dispersal_insights()
 
+    console.print(f"[dim]Fetching Ontario Provincial Parks within 200km of {loc.name}…[/dim]")
+    import importlib as _importlib
+
+    _parks_mod = _importlib.import_module("src.ingest.global.provincial_parks")
+    parks_count = _parks_mod.fetch_and_store(get_db(), loc.lat, loc.lng, radius_km=200.0)
+
+    console.print(
+        f"[dim]Fetching Conservation Authority boundaries within 200km of {loc.name}…[/dim]"
+    )
+    _ca_mod = _importlib.import_module("src.ingest.global.ca_boundaries")
+    ca_count = _ca_mod.fetch_and_store(get_db(), loc.lat, loc.lng, radius_km=200.0)
+
     from src.storage.database import get_db as _get_db
     from src.storage.stream_temperature import is_data_loaded as _temp_loaded
 
     _db = _get_db()
     if _temp_loaded(_db):
-        temp_count = _db.execute(
-            "SELECT COUNT(*) FROM stream_temperature_summaries"
-        ).fetchone()[0]
+        temp_count = _db.execute("SELECT COUNT(*) FROM stream_temperature_summaries").fetchone()[0]
         temp_line = f"| Stream temp: {temp_count} stations "
     else:
         console.print(
@@ -299,6 +309,8 @@ def ingest(
         f"| Benthic samples: {benthic_count} "
         f"| Geology units: {geology_count} "
         f"| eBird: {ebird_count} piscivore observations "
+        f"| Provincial parks: {parks_count} "
+        f"| CA boundaries: {ca_count} "
         f"{temp_line}[/green]"
     )
 
@@ -328,8 +340,7 @@ def build_features() -> None:
     elapsed = time.time() - t0
     pct = coverage_fraction(df) * 100
     console.print(
-        f"Feature matrix: {len(df):,} segments, 16 features, {pct:.1f}% coverage"
-        f" ({elapsed:.1f}s)"
+        f"Feature matrix: {len(df):,} segments, 16 features, {pct:.1f}% coverage ({elapsed:.1f}s)"
     )
 
 
@@ -361,9 +372,7 @@ def train_sdm() -> None:
 
     parquet = _Path("data/processed/sdm_feature_matrix.parquet")
     if not parquet.exists():
-        console.print(
-            "[red]Feature matrix not found. Run `make build-features` first.[/red]"
-        )
+        console.print("[red]Feature matrix not found. Run `make build-features` first.[/red]")
         raise typer.Exit(1)
 
     db = get_db()
@@ -404,14 +413,10 @@ def train_sdm() -> None:
             trained += 1
         except ValueError as exc:
             elapsed = time.time() - t0
-            results_table.add_row(
-                species, "—", "—", "—", f"[yellow]Skipped: {exc}[/yellow]"
-            )
+            results_table.add_row(species, "—", "—", "—", f"[yellow]Skipped: {exc}[/yellow]")
         except Exception as exc:
             elapsed = time.time() - t0
-            results_table.add_row(
-                species, "—", "—", "—", f"[red]Error: {exc}[/red]"
-            )
+            results_table.add_row(species, "—", "—", "—", f"[red]Error: {exc}[/red]")
 
     total_elapsed = time.time() - total_t0
     console.print(results_table)
@@ -419,6 +424,117 @@ def train_sdm() -> None:
         f"[green]Trained {trained}/{len(SPECIES_TO_TRAIN)} models "
         f"in {total_elapsed:.0f}s — predictions stored in DB[/green]"
     )
+
+
+@app.command(name="compute-access")
+def compute_access() -> None:
+    """Compute access scores for all OHN stream segments.
+
+    Requires the feature matrix (make build-features) and provincial parks ingest.
+    Scores are cached to data/processed/access_scores.parquet.
+    """
+    import time
+    from pathlib import Path as _Path
+
+    import numpy as np
+    import pandas as pd
+
+    from src.services.accessibility import compute_access_scores
+
+    parquet = _Path("data/processed/sdm_feature_matrix.parquet")
+    if not parquet.exists():
+        console.print("[red]Feature matrix not found. Run `make build-features` first.[/red]")
+        raise typer.Exit(1)
+
+    db = get_db()
+    console.print("[dim]Loading feature matrix…[/dim]")
+    feature_matrix = pd.read_parquet(parquet)
+
+    t0 = time.time()
+    console.print(f"[dim]Scoring {len(feature_matrix):,} segments…[/dim]")
+    scores = compute_access_scores(db, feature_matrix)
+    elapsed = time.time() - t0
+
+    q = np.quantile(scores.values, [0.25, 0.5, 0.75])
+    park_count = 0
+    if "provincial_parks" in db.table_names():
+        park_count = db.execute("SELECT COUNT(*) FROM provincial_parks").fetchone()[0]
+
+    console.print(
+        f"[green]Access scores computed for {len(scores):,} segments in {elapsed:.1f}s[/green]"
+    )
+    console.print(f"Score distribution — Q1: {q[0]:.3f} | median: {q[1]:.3f} | Q3: {q[2]:.3f}")
+    console.print(
+        f"Parks loaded: {park_count} | Scores cached to data/processed/access_scores.parquet"  # noqa: E501
+    )
+
+
+@app.command(name="compute-untapped")
+def compute_untapped(
+    species: str = typer.Option(None, "--species", "-s", help="Filter to a specific species"),
+) -> None:
+    """Compute untapped potential scores: habitat × (1 - pressure) × access.
+
+    Requires SDM predictions (make train-sdm) and access scores (make compute-access).
+    Shows top 5 results sorted by untapped_score.
+    """
+    import time
+    from pathlib import Path as _Path
+
+    import pandas as pd
+    from rich.table import Table
+
+    from src.services.untapped_potential import compute_untapped_potential
+
+    parquet = _Path("data/processed/sdm_feature_matrix.parquet")
+    if not parquet.exists():
+        console.print("[red]Feature matrix not found. Run `make build-features` first.[/red]")
+        raise typer.Exit(1)
+
+    db = get_db()
+    console.print("[dim]Loading feature matrix…[/dim]")
+    feature_matrix = pd.read_parquet(parquet)
+
+    t0 = time.time()
+    console.print("[dim]Computing untapped potential…[/dim]")
+    try:
+        df = compute_untapped_potential(db, feature_matrix, species=species)
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    elapsed = time.time() - t0
+
+    console.print(
+        f"[green]Untapped potential computed for {len(df):,} segments in {elapsed:.1f}s[/green]"
+    )
+
+    top = df[df["untapped_score"] > 0].head(5)
+    if top.empty:
+        console.print("[yellow]No segments with non-zero untapped score found.[/yellow]")
+        return
+
+    table = Table(title="Top 5 Untapped Water")
+    table.add_column("Name", overflow="fold")
+    table.add_column("Order", justify="right")
+    table.add_column("Habitat", justify="right")
+    table.add_column("Access", justify="right")
+    table.add_column("Pressure", justify="right")
+    table.add_column("Untapped", justify="right")
+    table.add_column("Lat/Lng")
+
+    for _, row in top.iterrows():
+        name = str(row["watercourse_name"]) if row["watercourse_name"] else "(unnamed)"
+        table.add_row(
+            name,
+            str(int(row["stream_order"])) if not pd.isna(row["stream_order"]) else "—",
+            f"{row['habitat_score']:.3f}",
+            f"{row['access_score']:.3f}",
+            f"{row['observation_pressure']:.3f}",
+            f"{row['untapped_score']:.4f}",
+            f"{row['centroid_lat']:.4f}, {row['centroid_lng']:.4f}",
+        )
+
+    console.print(table)
 
 
 def _print_profile(p: UserProfile) -> None:

@@ -42,10 +42,12 @@ def get_species_predictions_for_agent(
         db = get_db()
 
     if "sdm_predictions" not in db.table_names():
-        return json.dumps({
-            "error": "SDM predictions not generated yet.",
-            "setup": "Run `make train-sdm` to train models and generate predictions.",
-        })
+        return json.dumps(
+            {
+                "error": "SDM predictions not generated yet.",
+                "setup": "Run `make train-sdm` to train models and generate predictions.",
+            }
+        )
 
     # Resolve species name — accept both scientific and common names
     sci_name = _resolve_species(species) if species else None
@@ -56,8 +58,7 @@ def get_species_predictions_for_agent(
 
     if not rows:
         no_data_msg = (
-            f"No predictions found within {radius_km}km "
-            f"at probability >= {min_probability}."
+            f"No predictions found within {radius_km}km at probability >= {min_probability}."
         )
         if species:
             no_data_msg += (
@@ -90,15 +91,17 @@ def get_species_predictions_for_agent(
         # Best-effort feature drivers from first row (model_version carries info)
         mv = segs[0].get("model_version", MODEL_VERSION)
 
-        predictions_out.append({
-            "species": common,
-            "scientific_name": sci,
-            "segments_above_threshold": n_above,
-            "max_probability": round(max_p, 3),
-            "mean_probability": round(mean_p, 3),
-            "confidence_tier": tier,
-            "model_version": mv,
-        })
+        predictions_out.append(
+            {
+                "species": common,
+                "scientific_name": sci,
+                "segments_above_threshold": n_above,
+                "max_probability": round(max_p, 3),
+                "mean_probability": round(mean_p, 3),
+                "confidence_tier": tier,
+                "model_version": mv,
+            }
+        )
 
     # Retrieve per-species metadata (AUC, data basis) from a single representative row
     model_notes: dict[str, str] = {}

@@ -24,7 +24,7 @@ class StreamTemperatureSummary(BaseModel):
     lng: float | None
     jurisdiction: str
     summer_mean_c: float | None  # mean of July+August means across all available years
-    summer_max_c: float | None   # mean of July+August maxima across all available years
+    summer_max_c: float | None  # mean of July+August maxima across all available years
     thermal_regime: Literal["coldwater", "coolwater", "warmwater", "unknown"]
     years_of_data: int
     species_notes: str

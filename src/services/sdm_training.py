@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 _MODELS_DIR = Path("data/processed/sdm_models")
 _PARQUET_PATH = Path("data/processed/sdm_feature_matrix.parquet")
-_SNAP_RADIUS_DEG = 0.09   # ~10 km — max snap distance for occurrence records
+_SNAP_RADIUS_DEG = 0.09  # ~10 km — max snap distance for occurrence records
 _KM_PER_DEGREE = 111.0
 _MAX_GBIF_UNCERTAINTY_M = 5_000
 MODEL_VERSION = "2c-v1"
@@ -39,14 +39,16 @@ _BASS_POOL = frozenset(["Micropterus nigricans", "Micropterus salmoides"])
 # habitat suitability — training on those presences models stocking logistics,
 # not habitat. Non-salmonid species are never stocked at scale in Ontario and
 # do not need this filter.
-STOCKING_CONFOUND_SPECIES = frozenset([
-    "Oncorhynchus mykiss",       # Rainbow Trout — 3.67M stocked, 187 ON sites (2021-25)
-    "Salvelinus fontinalis",     # Brook Trout
-    "Salmo trutta",              # Brown Trout
-    "Oncorhynchus tshawytscha",  # Chinook Salmon
-    "Oncorhynchus kisutch",      # Coho Salmon
-    "Salvelinus namaycush",      # Lake Trout
-])
+STOCKING_CONFOUND_SPECIES = frozenset(
+    [
+        "Oncorhynchus mykiss",  # Rainbow Trout — 3.67M stocked, 187 ON sites (2021-25)
+        "Salvelinus fontinalis",  # Brook Trout
+        "Salmo trutta",  # Brown Trout
+        "Oncorhynchus tshawytscha",  # Chinook Salmon
+        "Oncorhynchus kisutch",  # Coho Salmon
+        "Salvelinus namaycush",  # Lake Trout
+    ]
+)
 
 _CATEGORICAL_FEATURES = ["substrate_category", "thermal_regime", "ept_quality"]
 _NUMERIC_FEATURES = [
@@ -69,14 +71,14 @@ _ALL_FEATURES = _NUMERIC_FEATURES + _CATEGORICAL_FEATURES
 # Eight clean-signal species + pooled Micropterus
 SPECIES_TO_TRAIN = [
     "Semotilus atromaculatus",  # Creek Chub
-    "Lepomis gibbosus",         # Pumpkinseed
-    "Perca flavescens",         # Yellow Perch
-    "Ameiurus nebulosus",       # Brown Bullhead
-    "Catostomus commersonii",   # White Sucker
-    "Culaea inconstans",        # Brook Stickleback
-    "Etheostoma caeruleum",     # Rainbow Darter
-    "Ambloplites rupestris",    # Rock Bass
-    "Micropterus nigricans",    # Smallmouth + Largemouth bass (pooled via _BASS_POOL)
+    "Lepomis gibbosus",  # Pumpkinseed
+    "Perca flavescens",  # Yellow Perch
+    "Ameiurus nebulosus",  # Brown Bullhead
+    "Catostomus commersonii",  # White Sucker
+    "Culaea inconstans",  # Brook Stickleback
+    "Etheostoma caeruleum",  # Rainbow Darter
+    "Ambloplites rupestris",  # Rock Bass
+    "Micropterus nigricans",  # Smallmouth + Largemouth bass (pooled via _BASS_POOL)
 ]
 
 
@@ -106,9 +108,7 @@ def prepare_species_data(
     coords: list[tuple[float, float]] = []
     for name in query_names:
         s_lower = name.lower()
-        for r in db["observations"].rows_where(
-            "LOWER(species) = ?", [s_lower], select="lat, lng"
-        ):
+        for r in db["observations"].rows_where("LOWER(species) = ?", [s_lower], select="lat, lng"):
             if r["lat"] is not None and r["lng"] is not None:
                 coords.append((float(r["lat"]), float(r["lng"])))
         for r in db["gbif_observations"].rows_where(
@@ -204,9 +204,7 @@ def generate_pseudo_absences(
         cand_mask = feature_matrix["ogf_id"].isin(candidates)
         cand_df = feature_matrix.loc[cand_mask, ["ogf_id", "centroid_lat", "centroid_lng"]]
         min_dist_deg = min_network_distance_km / _KM_PER_DEGREE
-        near_dists, _ = pres_tree.query(
-            cand_df[["centroid_lat", "centroid_lng"]].values, k=1
-        )
+        near_dists, _ = pres_tree.query(cand_df[["centroid_lat", "centroid_lng"]].values, k=1)
         eligible_ids = cand_df["ogf_id"].values[near_dists > min_dist_deg]
     else:
         eligible_ids = feature_matrix.loc[
@@ -245,9 +243,7 @@ def train_species_model(
     if not absence_ogf_ids:
         raise ValueError(f"No pseudo-absence segments generated for {species_name}")
 
-    X_abs = _extract_features(
-        feature_matrix[feature_matrix["ogf_id"].isin(absence_ogf_ids)]
-    )
+    X_abs = _extract_features(feature_matrix[feature_matrix["ogf_id"].isin(absence_ogf_ids)])
     y_abs = pd.Series(np.zeros(len(X_abs), dtype=float), index=X_abs.index)
 
     X_all = pd.concat([X_pres, X_abs])
@@ -330,28 +326,39 @@ def _cast_bool_cols(df: pd.DataFrame) -> None:
 
 
 def _build_base_pipeline() -> Pipeline:
-    num_transformer = Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler", StandardScaler()),
-    ])
-    cat_transformer = Pipeline([
-        ("imputer", SimpleImputer(strategy="most_frequent")),
-        ("encoder", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
-    ])
-    preprocessor = ColumnTransformer([
-        ("num", num_transformer, _NUMERIC_FEATURES),
-        ("cat", cat_transformer, _CATEGORICAL_FEATURES),
-    ])
-    return Pipeline([
-        ("preprocessor", preprocessor),
-        ("clf", RandomForestClassifier(
-            n_estimators=200,
-            max_features="sqrt",
-            min_samples_leaf=5,
-            class_weight="balanced",
-            random_state=42,
-        )),
-    ])
+    num_transformer = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ]
+    )
+    cat_transformer = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("encoder", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+        ]
+    )
+    preprocessor = ColumnTransformer(
+        [
+            ("num", num_transformer, _NUMERIC_FEATURES),
+            ("cat", cat_transformer, _CATEGORICAL_FEATURES),
+        ]
+    )
+    return Pipeline(
+        [
+            ("preprocessor", preprocessor),
+            (
+                "clf",
+                RandomForestClassifier(
+                    n_estimators=200,
+                    max_features="sqrt",
+                    min_samples_leaf=5,
+                    class_weight="balanced",
+                    random_state=42,
+                ),
+            ),
+        ]
+    )
 
 
 def _spatial_block_cv(

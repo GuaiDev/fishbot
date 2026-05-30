@@ -28,9 +28,7 @@ from src.models.geology_unit import GeologyUnit
 _TILE_INDEX_URL = (
     "https://www.geologyontario.mndm.gov.on.ca/mines/data/google/mrd128/polygons/doc.kml"
 )
-_TILE_BASE_URL = (
-    "https://www.geologyontario.mndm.gov.on.ca/mines/data/google/mrd128/polygons/"
-)
+_TILE_BASE_URL = "https://www.geologyontario.mndm.gov.on.ca/mines/data/google/mrd128/polygons/"
 _INDEX_PATH = Path("data/raw/mrd128_index.kml")
 _TILE_DIR = Path("data/raw/mrd128_tiles/")
 _TTL = 365 * 86400
@@ -307,7 +305,12 @@ def load_geology(
     ]
     logger.info(
         "Home bbox (%.3f,%.3f)–(%.3f,%.3f) intersects %d/%d tiles",
-        q_west, q_south, q_east, q_north, len(relevant), len(all_tiles),
+        q_west,
+        q_south,
+        q_east,
+        q_north,
+        len(relevant),
+        len(all_tiles),
     )
 
     all_units: list[GeologyUnit] = []

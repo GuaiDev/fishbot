@@ -43,19 +43,19 @@ def predict_species(
     X_tr = preprocessor.transform(features_df[FEATURE_COLS])
     proba = clf.predict_proba(X_tr)[:, 1]
 
-    return pd.DataFrame({
-        "ogf_id": features_df["ogf_id"].values,
-        "species": species,
-        "presence_probability": proba,
-        "confidence_tier": meta.confidence_tier,
-        "model_version": f"rf-{meta.training_date.strftime('%Y%m%d')}",
-        "predicted_at": datetime.now(),
-    })
+    return pd.DataFrame(
+        {
+            "ogf_id": features_df["ogf_id"].values,
+            "species": species,
+            "presence_probability": proba,
+            "confidence_tier": meta.confidence_tier,
+            "model_version": f"rf-{meta.training_date.strftime('%Y%m%d')}",
+            "predicted_at": datetime.now(),
+        }
+    )
 
 
-def load_model_metadata(
-    species: str, models_dir: Path | None = None
-) -> SDMModelMeta | None:
+def load_model_metadata(species: str, models_dir: Path | None = None) -> SDMModelMeta | None:
     """Return metadata for a trained model without loading the model itself."""
     mdir = models_dir or _MODELS_DIR
     meta_path = mdir / f"{slugify(species)}_meta.json"
@@ -82,9 +82,7 @@ def list_trained_species(models_dir: Path | None = None) -> list[str]:
 # ── internal ──────────────────────────────────────────────────────────────────
 
 
-def _load_bundle(
-    species: str, models_dir: Path | None = None
-) -> tuple | None:
+def _load_bundle(species: str, models_dir: Path | None = None) -> tuple | None:
     """Return (preprocessor, clf, meta) or None if no model exists."""
     mdir = models_dir or _MODELS_DIR
     slug = slugify(species)

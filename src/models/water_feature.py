@@ -37,6 +37,8 @@ class AccessPoint(BaseModel):
         "public_land",
         "conservation_area",
         "park",
+        "road",
+        "building",
     ]
     name: str | None
     lat: float

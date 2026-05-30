@@ -20,9 +20,7 @@ _SPECIES_NOTES: dict[str, str] = {
         "Suitable for walleye, pike, bass. "
         "Marginal for salmonids — check for cold groundwater refugia."
     ),
-    "warmwater": (
-        "Carp, catfish, bass, sunfish. Too warm for sustained salmonid presence."
-    ),
+    "warmwater": ("Carp, catfish, bass, sunfish. Too warm for sustained salmonid presence."),
     "unknown": "Insufficient temperature data to classify thermal regime.",
 }
 

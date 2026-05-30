@@ -27,13 +27,9 @@ import httpx
 
 from src.models.benthic_sample import BenthicSample
 
-_STUDY_URL = (
-    "https://cabin-rcba.ec.gc.ca/Cabin/opendata/"
-    "cabin_study_data_mda02_1987-present.csv"
-)
+_STUDY_URL = "https://cabin-rcba.ec.gc.ca/Cabin/opendata/cabin_study_data_mda02_1987-present.csv"
 _BENTHIC_URL = (
-    "https://cabin-rcba.ec.gc.ca/Cabin/opendata/"
-    "cabin_benthic_data_mda02_1987-present.csv"
+    "https://cabin-rcba.ec.gc.ca/Cabin/opendata/cabin_benthic_data_mda02_1987-present.csv"
 )
 _STUDY_PATH = Path("data/raw/cabin_study_mda02.csv")
 _BENTHIC_PATH = Path("data/raw/cabin_benthic_mda02.csv")
@@ -46,25 +42,51 @@ logger = logging.getLogger(__name__)
 _EPT_FAMILIES: frozenset[str] = frozenset(
     {
         # Ephemeroptera (mayflies)
-        "Baetidae", "Ephemerellidae", "Heptageniidae", "Siphlonuridae",
-        "Leptophlebiidae", "Caenidae", "Ephemeridae", "Tricorythidae",
-        "Polymitarcyidae", "Potamanthidae", "Neoephemeridae", "Isonychiidae",
-        "Metretopodidae", "Ametropodidae",
+        "Baetidae",
+        "Ephemerellidae",
+        "Heptageniidae",
+        "Siphlonuridae",
+        "Leptophlebiidae",
+        "Caenidae",
+        "Ephemeridae",
+        "Tricorythidae",
+        "Polymitarcyidae",
+        "Potamanthidae",
+        "Neoephemeridae",
+        "Isonychiidae",
+        "Metretopodidae",
+        "Ametropodidae",
         # Plecoptera (stoneflies)
-        "Capniidae", "Chloroperlidae", "Leuctridae", "Nemouridae",
-        "Perlidae", "Perlodidae", "Pteronarcyidae", "Taeniopterygidae",
+        "Capniidae",
+        "Chloroperlidae",
+        "Leuctridae",
+        "Nemouridae",
+        "Perlidae",
+        "Perlodidae",
+        "Pteronarcyidae",
+        "Taeniopterygidae",
         # Trichoptera (caddisflies)
-        "Brachycentridae", "Glossosomatidae", "Hydropsychidae", "Hydroptilidae",
-        "Lepidostomatidae", "Leptoceridae", "Limnephilidae", "Molannidae",
-        "Odontoceridae", "Philopotamidae", "Phryganeidae", "Polycentropodidae",
-        "Psychomyiidae", "Rhyacophilidae", "Sericostomatidae", "Uenoidae",
+        "Brachycentridae",
+        "Glossosomatidae",
+        "Hydropsychidae",
+        "Hydroptilidae",
+        "Lepidostomatidae",
+        "Leptoceridae",
+        "Limnephilidae",
+        "Molannidae",
+        "Odontoceridae",
+        "Philopotamidae",
+        "Phryganeidae",
+        "Polycentropodidae",
+        "Psychomyiidae",
+        "Rhyacophilidae",
+        "Sericostomatidae",
+        "Uenoidae",
     }
 )
 
 # Order-level EPT names used when the row lacks family-level resolution
-_EPT_ORDERS: frozenset[str] = frozenset(
-    {"Ephemeroptera", "Plecoptera", "Trichoptera"}
-)
+_EPT_ORDERS: frozenset[str] = frozenset({"Ephemeroptera", "Plecoptera", "Trichoptera"})
 
 
 def _normalize_col(col: str) -> str:
@@ -147,9 +169,7 @@ def _download_if_stale(url: str, path: Path, ttl: int) -> Path:
         with path.open("wb") as f:
             for chunk in r.iter_bytes(chunk_size=8192):
                 f.write(chunk)
-    logger.info(
-        "Downloaded %s (%.1f MB)", path.name, path.stat().st_size / 1_048_576
-    )
+    logger.info("Downloaded %s (%.1f MB)", path.name, path.stat().st_size / 1_048_576)
     return path
 
 
@@ -203,14 +223,13 @@ def load_study(path: Path) -> tuple[dict[str, dict], set[str]]:
             }
     logger.info(
         "Study file: %d total visits, %d Ontario visits",
-        len(study_meta), len(on_visit_ids),
+        len(study_meta),
+        len(on_visit_ids),
     )
     return study_meta, on_visit_ids
 
 
-def parse_benthic(
-    path: Path, on_visit_ids: set[str]
-) -> dict[str, dict]:
+def parse_benthic(path: Path, on_visit_ids: set[str]) -> dict[str, dict]:
     """Stream the benthic CSV, aggregating taxon counts per Ontario visit.
 
     Returns {visit_id: {ept_count, total_count, ept_richness, ept_taxa_seen}}.
@@ -268,7 +287,8 @@ def parse_benthic(
 
     logger.info(
         "Benthic file: %d ON rows processed → %d site visits aggregated",
-        rows_processed, len(agg),
+        rows_processed,
+        len(agg),
     )
     return agg
 

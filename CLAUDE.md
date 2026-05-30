@@ -52,6 +52,12 @@ Species requiring stocking exclusion (`STOCKING_CONFOUND_SPECIES` in `src/servic
 
 Non-salmonid species (Creek Chub, Yellow Perch, Rainbow Darter, etc.) are never stocked at scale in Ontario. Applying stocking exclusion to them incorrectly removes valid habitat observations at stocked sites (which are also real stream habitat). The `stocking_exclusion` parameter in `prepare_species_data()` is ignored for species outside this list.
 
+## Phase 2d: Untapped potential — access score coverage limitation
+
+Access scores (`src/services/accessibility.py`) are only meaningful within the OSM ingestion radius (~55km of home). The OHN stream network covers all of Ontario (309k segments), but access point data (roads, parking, buildings) is fetched for 25km around home. Segments outside this radius receive a neutral baseline score (~0.27 after normalization) and are not meaningfully differentiated by access.
+
+`find_untapped_water` results are most reliable when filtered to the home-area radius. For exploration targets beyond 55km, the untapped score is dominated by habitat quality × observation pressure — access score adds no signal.
+
 ## Core principle: presence vs. pressure
 
 Crowdsourced catch and observation data measures angler activity as much as fish presence. The bot must not confuse the two:

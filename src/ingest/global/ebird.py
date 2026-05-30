@@ -42,21 +42,11 @@ logger = logging.getLogger(__name__)
 PISCIVORE_CODES = ["grbher3", "osprey1", "belkin1", "commer1", "doccor"]
 
 _SIGNIFICANCE: dict[str, str] = {
-    "grbher3": (
-        "Active hunting indicates shallow fish-bearing water within foraging range"
-    ),
-    "osprey1": (
-        "Confirmed fish presence — osprey only hunt where fish are abundant and catchable"
-    ),
-    "belkin1": (
-        "Strong indicator of small fish in clear, accessible water"
-    ),
-    "commer1": (
-        "Diving pursuit predator — confirms fish present at depth in rivers and lakes"
-    ),
-    "doccor": (
-        "Colonial fish predator — high densities indicate productive fish habitat"
-    ),
+    "grbher3": ("Active hunting indicates shallow fish-bearing water within foraging range"),
+    "osprey1": ("Confirmed fish presence — osprey only hunt where fish are abundant and catchable"),
+    "belkin1": ("Strong indicator of small fish in clear, accessible water"),
+    "commer1": ("Diving pursuit predator — confirms fish present at depth in rivers and lakes"),
+    "doccor": ("Colonial fish predator — high densities indicate productive fish habitat"),
 }
 
 

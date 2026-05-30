@@ -1,4 +1,4 @@
-.PHONY: run test lint format ingest ingest-hydat recent build-features train-sdm
+.PHONY: run test lint format ingest ingest-hydat recent build-features train-sdm compute-access compute-untapped
 
 run:
 	uv run python -m src.cli.main run
@@ -26,3 +26,9 @@ build-features:
 
 train-sdm:
 	uv run python -m src.cli.main train-sdm
+
+compute-access:
+	uv run python -m src.cli.main compute-access
+
+compute-untapped:
+	uv run python -m src.cli.main compute-untapped

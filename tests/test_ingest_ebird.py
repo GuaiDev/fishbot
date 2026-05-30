@@ -19,12 +19,14 @@ fetch_piscivore_observations = _ebird.fetch_piscivore_observations
 
 # --- Fixture loading ---
 
+
 @pytest.fixture()
 def fixture_data() -> list[dict]:
     return json.loads(FIXTURE.read_text())
 
 
 # --- Parsing ---
+
 
 def test_parse_response_returns_three_observations(fixture_data):
     obs = _parse_response(fixture_data, "grbher3")
@@ -97,6 +99,7 @@ def test_parse_response_private_location_has_name(fixture_data):
 
 # --- Missing API key ---
 
+
 def test_missing_api_key_returns_empty(tmp_path, monkeypatch):
     monkeypatch.delenv("EBIRD_API_KEY", raising=False)
     result = fetch_piscivore_observations(43.7, -79.4)
@@ -110,6 +113,7 @@ def test_empty_api_key_returns_empty(monkeypatch):
 
 
 # --- Cache ---
+
 
 def test_cache_key_deterministic():
     k1 = _cache_key("grbher3", 43.7, -79.4, 50, 30, "2026-05-25")
@@ -167,6 +171,7 @@ def test_cache_hit_skips_http(tmp_path, monkeypatch, fixture_data):
 
 
 # --- Significance mapping completeness ---
+
 
 def test_all_species_have_significance():
     for code in _ebird.PISCIVORE_CODES:
