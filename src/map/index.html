@@ -340,10 +340,11 @@ function buildHeatLayer() {
     .filter(f => (f.properties[scoreKey] || 0) > T.p60)
     .map(f => [f.geometry.coordinates[1], f.geometry.coordinates[0], f.properties[scoreKey]]);
   return L.heatLayer(heatData, {
-    radius: 20,
-    blur: 15,
+    radius: 12,
+    blur: 8,
     maxZoom: DOTS_ZOOM,
-    gradient: { 0.4: '#3498db', 0.6: '#2ecc71', 0.7: '#f1c40f', 0.85: '#e67e22', 1.0: '#e74c3c' }
+    max: T.p95,
+    gradient: { 0.0: '#3498db', 0.5: '#2ecc71', 0.7: '#f1c40f', 0.85: '#e67e22', 1.0: '#e74c3c' }
   });
 }
 
