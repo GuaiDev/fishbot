@@ -163,6 +163,10 @@ def compute_untapped_potential(
     _struct = _structural_bonus(base)
     _remote = _remoteness_multiplier(base["observation_density_25km"])
 
+    logger.info("Balanced:  habitat × (1-pressure) × structural × remoteness  [no access]")
+    logger.info("Easy:      habitat × (1-pressure) × access × structural × remoteness")
+    logger.info("Adventure: habitat × (1-pressure) × (1-access+0.1) × structural × remoteness")
+
     base["untapped_score_balanced"] = _h * (1.0 - _p) * _struct * _remote
     base["untapped_score_easy"] = _h * (1.0 - _p) * _a * _struct * _remote
     base["untapped_score_adventure"] = _h * (1.0 - _p) * (1.0 - _a + 0.1) * _struct * _remote

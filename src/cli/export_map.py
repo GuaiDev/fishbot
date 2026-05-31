@@ -188,22 +188,22 @@ def export_map_data(
     untapped["_dist_km"] = dists
     untapped = untapped[untapped["_dist_km"] <= HOME_RADIUS_KM].drop(columns=["_dist_km"])
 
-    # Remove lake water-body and Virtual Flow segments
+    # Remove lake surface, US territory, OHN coverage gaps, and Virtual Flow segments
     lake_ontario = (
-        (untapped["centroid_lat"] < 43.25)
-        & (untapped["centroid_lng"] >= -79.9)
-        & (untapped["centroid_lng"] <= -76.0)
+        (untapped["centroid_lat"] < 43.20)
+        & (untapped["centroid_lng"] > -79.90)
     )
-    lake_erie = untapped["centroid_lat"] < 42.9
+    lake_erie_and_us = untapped["centroid_lat"] < 42.80
+    north_of_coverage = untapped["centroid_lat"] > 46.40
     virtual_flow = (
         untapped["watercourse_type"] == "Virtual Flow"
         if "watercourse_type" in untapped.columns
         else pd.Series(False, index=untapped.index)
     )
-    lake_mask = lake_ontario | lake_erie | virtual_flow
+    lake_mask = lake_ontario | lake_erie_and_us | north_of_coverage | virtual_flow
     n_lake_removed = int(lake_mask.sum())
     untapped = untapped[~lake_mask]
-    logger.info("Removed %d lake/virtual-flow segments", n_lake_removed)
+    logger.info("Removed %d lake/OOB/virtual-flow segments", n_lake_removed)
 
     # Sort by balanced score descending, cap at MAX_SEGMENTS
     _has = lambda c: c in untapped.columns  # noqa: E731
