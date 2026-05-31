@@ -313,13 +313,19 @@ def export_map_data(
     logger.info("Within %d km: %d segments", HOME_RADIUS_KM, len(untapped))
 
     # ── non-fishable segment filtering ────────────────────────────────────────
-    # 1. Lake Ontario open-water surface (stricter lat threshold)
+    # 1. Lake Ontario open-water surface only.
+    # The old lat < 43.25 filter incorrectly removed the Niagara Peninsula
+    # (42.8–43.25°N, -79.9 to -79.0°W). The precise lake surface sits between
+    # 43.2–43.6°N and east of -79.4°W (Kingston direction), well north of the
+    # peninsula land mass.
     lake_ontario = (
-        (untapped["centroid_lat"] < 43.25)
-        & (untapped["centroid_lng"] > -79.90)
+        (untapped["centroid_lat"] > 43.2)
+        & (untapped["centroid_lat"] < 43.6)
+        & (untapped["centroid_lng"] > -79.4)
+        & (untapped["centroid_lng"] < -76.0)
     )
-    # 2. Lake Erie and US territory
-    lake_erie_and_us = untapped["centroid_lat"] < 42.80
+    # 2. Lake Erie open water and US territory (Ontario border is ~42.6°N at Niagara)
+    lake_erie_and_us = untapped["centroid_lat"] < 42.60
     # 3. North of OHN coverage
     north_of_coverage = untapped["centroid_lat"] > 46.40
     # 4. Virtual Flow segments (hydrological connectors, not real streams)
