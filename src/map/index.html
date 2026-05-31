@@ -58,6 +58,26 @@
   }
   label.check-row input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; accent-color: #4fc3f7; }
 
+  .radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  label.radio-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: background 0.1s;
+  }
+  label.radio-row:hover { background: #2a2a4a; }
+  label.radio-row input[type=radio] { width: 14px; height: 14px; cursor: pointer; accent-color: #4fc3f7; }
+  label.radio-row.active { background: #2a2a4a; }
+
   .slider-row {
     display: flex;
     flex-direction: column;
@@ -159,6 +179,24 @@
     <p class="subtitle">Untapped potential — Oakville 100 km</p>
   </div>
 
+  <div>
+    <div class="section-label">Basemap</div>
+    <div class="radio-group">
+      <label class="radio-row">
+        <input type="radio" name="basemap" value="satellite-v9"> 🛰️ Satellite
+      </label>
+      <label class="radio-row active">
+        <input type="radio" name="basemap" value="satellite-streets-v12" checked> 🛰️ Sat + Streets
+      </label>
+      <label class="radio-row">
+        <input type="radio" name="basemap" value="streets-v12"> 🗺️ Streets
+      </label>
+      <label class="radio-row">
+        <input type="radio" name="basemap" value="osm"> 🗺️ OpenStreetMap
+      </label>
+    </div>
+  </div>
+
   <div id="stats-bar">Loading segments...</div>
 
   <div>
@@ -178,9 +216,9 @@
     <div class="slider-row">
       <div class="slider-header">
         <span>Min order</span>
-        <span id="order-val">3</span>
+        <span id="order-val">1</span>
       </div>
-      <input type="range" id="filter-order" min="1" max="6" value="3">
+      <input type="range" id="filter-order" min="1" max="6" value="1">
     </div>
   </div>
 
@@ -215,10 +253,35 @@ const HOME = [43.4675, -79.6877];
 // ── map init ──────────────────────────────────────────────────────────────────
 const map = L.map('map', { preferCanvas: true }).setView(HOME, 11);
 
-L.tileLayer(
-  `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`,
-  { tileSize: 512, zoomOffset: -1, attribution: '© Mapbox © OpenStreetMap' }
-).addTo(map);
+let currentTileLayer = null;
+
+function setBasemap(style) {
+  if (currentTileLayer) map.removeLayer(currentTileLayer);
+  if (style === 'osm') {
+    currentTileLayer = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }
+    );
+  } else {
+    currentTileLayer = L.tileLayer(
+      `https://api.mapbox.com/styles/v1/mapbox/${style}/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`,
+      { tileSize: 512, zoomOffset: -1, attribution: '© <a href="https://www.mapbox.com/">Mapbox</a> © OpenStreetMap' }
+    );
+  }
+  currentTileLayer.addTo(map);
+}
+
+// Default: satellite + streets
+setBasemap('satellite-streets-v12');
+
+// Basemap radio buttons
+document.querySelectorAll('input[name="basemap"]').forEach(radio => {
+  radio.addEventListener('change', e => {
+    setBasemap(e.target.value);
+    document.querySelectorAll('label.radio-row').forEach(l => l.classList.remove('active'));
+    e.target.closest('label').classList.add('active');
+  });
+});
 
 // Home marker
 L.circleMarker(HOME, {
@@ -326,8 +389,8 @@ orderSlider.addEventListener('input', () => {
 document.getElementById('reset-btn').addEventListener('click', () => {
   document.getElementById('filter-confluence').checked = false;
   document.getElementById('filter-waterbody').checked  = false;
-  orderSlider.value = 3;
-  orderVal.textContent = '3';
+  orderSlider.value = 1;
+  orderVal.textContent = '1';
   document.getElementById('filter-species').value = '';
   applyFilters();
 });
