@@ -98,7 +98,10 @@ def test_export_map_generates_geojson(tmp_path):
             }
         ).set_index("ogf_id")
 
-        stats = export_map_data(output_path=out)
+        stats = export_map_data(
+            output_path=out,
+            html_output_path=tmp_path / "map_index.html",
+        )
 
     assert out.exists(), "Output file should be created"
     assert stats["segments"] == 2

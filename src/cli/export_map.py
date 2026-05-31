@@ -171,7 +171,10 @@ def _run_predictions(features_df: pd.DataFrame) -> pd.DataFrame:
 # ── main export ───────────────────────────────────────────────────────────────
 
 
-def export_map_data(output_path: Path = _OUTPUT_PATH) -> dict:
+def export_map_data(
+    output_path: Path = _OUTPUT_PATH,
+    html_output_path: Path = _HTML_OUTPUT,
+) -> dict:
     """Build and write map_data.json. Returns summary stats."""
     logger.info("Loading untapped potential...")
     untapped = pd.read_parquet(_UNTAPPED_PATH)
@@ -294,10 +297,11 @@ def export_map_data(output_path: Path = _OUTPUT_PATH) -> dict:
         html_content = _HTML_TEMPLATE.read_text()
         html_content = html_content.replace("%%MAPBOX_TOKEN%%", mapbox_token)
         html_content = html_content.replace("%%MAP_DATA%%", geojson_json)
-        _HTML_OUTPUT.write_text(html_content)
-        html_mb = _HTML_OUTPUT.stat().st_size / 1_048_576
-        html_out = _HTML_OUTPUT
-        logger.info("Self-contained HTML at %s (%.1f MB)", _HTML_OUTPUT, html_mb)
+        html_output_path.parent.mkdir(parents=True, exist_ok=True)
+        html_output_path.write_text(html_content)
+        html_mb = html_output_path.stat().st_size / 1_048_576
+        html_out = html_output_path
+        logger.info("Self-contained HTML at %s (%.1f MB)", html_output_path, html_mb)
     else:
         logger.warning("HTML template not found at %s", _HTML_TEMPLATE)
 

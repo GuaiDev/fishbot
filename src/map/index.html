@@ -220,6 +220,7 @@ L.circleMarker(HOME, {
 // ── state ─────────────────────────────────────────────────────────────────────
 let allFeatures = [];
 let markers = [];
+let markerLayer = null;
 let speciesSet = new Set();
 let scoreThresholds = { p50: 0.038, p80: 0.046, p95: 0.063 }; // overwritten from metadata
 
@@ -234,7 +235,7 @@ function zoomRadius() {
 
 map.on('zoomend', () => {
   const r = zoomRadius();
-  markers.forEach(m => m.setRadius(r));
+  markers.forEach(m => m.setRadius && m.setRadius(r));
 });
 
 // ── color ─────────────────────────────────────────────────────────────────────
@@ -293,10 +294,23 @@ function buildPopup(p) {
 
 // ── render ─────────────────────────────────────────────────────────────────────
 function renderMarkers(features) {
-  markers.forEach(m => m.remove());
+  // Remove previous layer group in one shot instead of 50k individual removes
+  if (markerLayer) { map.removeLayer(markerLayer); }
   markers = [];
+
   const selectedSpecies = document.getElementById('filter-species').value;
   const r = zoomRadius();
+
+  // Debug: confirm data is present and scores are readable
+  if (features.length > 0) {
+    console.log('First 5 untapped_scores:',
+      features.slice(0, 5).map(f => f.properties.untapped_score));
+    console.log('Score thresholds in use:', scoreThresholds);
+  }
+
+  // Batch all markers into a LayerGroup — one addTo(map) instead of 50k
+  markerLayer = L.layerGroup();
+  let markerCount = 0;
 
   features.forEach(f => {
     const p = f.properties;
@@ -305,10 +319,23 @@ function renderMarkers(features) {
     const m = L.circleMarker([lat, lng], {
       radius: r, color, weight: 1, fillColor: color, fillOpacity: 0.8,
     });
-    m.bindPopup(buildPopup(p), { maxWidth: 300 });
-    m.addTo(map);
+    // Lazy popup: build HTML only on first click, not upfront for all 50k
+    m.on('click', function() {
+      if (!this._popupContent) {
+        this._popupContent = buildPopup(p);
+        this.bindPopup(this._popupContent, { maxWidth: 300 });
+      }
+      this.openPopup();
+    });
+    markerLayer.addLayer(m);
     markers.push(m);
+    markerCount++;
   });
+
+  markerLayer.addTo(map);
+
+  console.log('Markers created:', markerCount);
+  console.log('Filtered out:', allFeatures.length - markerCount);
 
   document.getElementById('stats-bar').textContent =
     `${features.length.toLocaleString()} segments shown`;
