@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 HOME_LAT = 43.4675
 HOME_LNG = -79.6877
 HOME_RADIUS_KM = 150.0
-GRID_ROWS = 15
-GRID_COLS = 15
-GRID_PER_CELL = 400        # 200 top-scoring + 200 random for coverage
+GRID_ROWS = 25
+GRID_COLS = 25
+GRID_PER_CELL = 200        # 100 top-scoring + 100 random for coverage
+GRID_MIN_CELL = 20         # always keep at least this many from any populated cell
 
 _UNTAPPED_PATH = Path("data/processed/untapped_potential.parquet")
 _FEATURE_MATRIX_PATH = Path("data/processed/sdm_feature_matrix.parquet")
@@ -111,12 +112,14 @@ def grid_sample(
     rows: int = GRID_ROWS,
     cols: int = GRID_COLS,
     per_cell: int = GRID_PER_CELL,
+    min_per_cell: int = GRID_MIN_CELL,
 ) -> pd.DataFrame:
-    """Sample up to per_cell segments from each cell of a rows×cols geographic grid.
+    """Sample segments from each cell of a rows×cols geographic grid.
 
-    Each cell contributes the top per_cell//2 by score plus up to per_cell//2 random
-    lower-scoring segments, so sparse regions are never crowded out by dense ones.
-    Max output: rows × cols × per_cell = 90,000 segments.
+    Every populated cell contributes at least min_per_cell segments (guaranteeing
+    sparse regions like Niagara always appear). Dense cells contribute up to per_cell:
+    the top per_cell//2 by score plus per_cell//2 random from the remainder.
+    Max output: rows × cols × per_cell segments.
     """
     lat_bins = np.linspace(df["centroid_lat"].min(), df["centroid_lat"].max(), rows + 1)
     lng_bins = np.linspace(df["centroid_lng"].min(), df["centroid_lng"].max(), cols + 1)
@@ -130,6 +133,9 @@ def grid_sample(
             ]
             if len(cell) == 0:
                 continue
+            if len(cell) <= min_per_cell:
+                sampled.append(cell)
+                continue
             top = cell.nlargest(per_cell // 2, sort_col)
             remainder = cell[~cell.index.isin(top.index)]
             rest = (
@@ -137,7 +143,11 @@ def grid_sample(
                 if len(remainder) > 0
                 else pd.DataFrame()
             )
-            sampled.append(pd.concat([top, rest]))
+            combined = pd.concat([top, rest])
+            # Guarantee minimum even when per_cell//2 alone is below min_per_cell
+            if len(combined) < min_per_cell:
+                combined = cell.nlargest(min_per_cell, sort_col)
+            sampled.append(combined)
 
     if not sampled:
         return df.head(0)
@@ -214,8 +224,8 @@ def _run_predictions(features_df: pd.DataFrame) -> pd.DataFrame:
 # ── regional coverage helpers ─────────────────────────────────────────────────
 
 _REGIONS = {
-    "Niagara":        {"lat": (42.9, 43.3), "lng": (-80.0, -79.0)},
-    "Hamilton":       {"lat": (43.2, 43.4), "lng": (-80.0, -79.7)},
+    "Niagara":        {"lat": (42.8, 43.3), "lng": (-80.0, -78.8)},
+    "Hamilton":       {"lat": (43.2, 43.5), "lng": (-80.0, -79.6)},
     "Toronto-Barrie": {"lat": (43.8, 44.2), "lng": (-79.8, -79.2)},
     "Kawartha":       {"lat": (44.0, 45.5), "lng": (-79.5, -77.5)},
 }
@@ -295,10 +305,10 @@ def export_map_data(
 
     # ── geographic grid sampling for regional coverage ─────────────────────────
     n_before_grid = len(untapped)
-    untapped = grid_sample(untapped, sort_col, rows=GRID_ROWS, cols=GRID_COLS, per_cell=GRID_PER_CELL)
+    untapped = grid_sample(untapped, sort_col, rows=GRID_ROWS, cols=GRID_COLS, per_cell=GRID_PER_CELL, min_per_cell=GRID_MIN_CELL)
     logger.info(
-        "After grid sample (%dx%d, max %d/cell): %d segments (from %d)",
-        GRID_ROWS, GRID_COLS, GRID_PER_CELL, len(untapped), n_before_grid,
+        "After grid sample (%dx%d, max %d/cell, min %d/cell): %d segments (from %d)",
+        GRID_ROWS, GRID_COLS, GRID_PER_CELL, GRID_MIN_CELL, len(untapped), n_before_grid,
     )
 
     regional = _region_counts(untapped)
