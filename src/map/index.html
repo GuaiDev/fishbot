@@ -134,6 +134,9 @@
       <label class="check-row">
         <input type="checkbox" id="filter-waterbody"> Connected to water body
       </label>
+      <label class="check-row">
+        <input type="checkbox" id="filter-show-low" checked> Show low-score segments
+      </label>
     </div>
   </div>
 
@@ -229,10 +232,11 @@ let allThresholds = {
 // ── zoom radius ───────────────────────────────────────────────────────────────
 function zoomRadius() {
   const z = map.getZoom();
-  if (z < 10) return 3;
-  if (z < 12) return 5;
-  if (z < 14) return 7;
-  return 9;
+  if (z < 8)  return 4;
+  if (z < 10) return 5;
+  if (z < 12) return 6;
+  if (z < 14) return 8;
+  return 10;
 }
 map.on('zoomend', () => {
   const r = zoomRadius();
@@ -313,7 +317,8 @@ function renderMarkers(features) {
     const p = f.properties;
     const [lng, lat] = f.geometry.coordinates;
     const color = dotColor(p);
-    const m = L.circleMarker([lat, lng], { radius: r, color, weight: 1, fillColor: color, fillOpacity: 0.8 });
+    const fillOpacity = color === '#3498db' ? 0.8 : 0.75;
+    const m = L.circleMarker([lat, lng], { radius: r, color, weight: 1, fillColor: color, fillOpacity });
     m._feature = f;  // store ref for in-place recolor
     m.on('click', function() {
       if (!this._popupContent) {
@@ -342,10 +347,11 @@ function recolorMarkers() {
 
 // ── filter ─────────────────────────────────────────────────────────────────────
 function applyFilters() {
-  const onlyConf = document.getElementById('filter-confluence').checked;
-  const onlyWb   = document.getElementById('filter-waterbody').checked;
-  const minOrder = parseInt(document.getElementById('filter-order').value, 10);
-  const species  = document.getElementById('filter-species').value;
+  const onlyConf  = document.getElementById('filter-confluence').checked;
+  const onlyWb    = document.getElementById('filter-waterbody').checked;
+  const showLow   = document.getElementById('filter-show-low').checked;
+  const minOrder  = parseInt(document.getElementById('filter-order').value, 10);
+  const species   = document.getElementById('filter-species').value;
 
   const filtered = allFeatures.filter(f => {
     const p = f.properties;
@@ -353,6 +359,7 @@ function applyFilters() {
     if (onlyWb   && !p.connected_to_waterbody) return false;
     if (p.stream_order != null && p.stream_order < minOrder) return false;
     if (species && p.top1_species !== species && p.top2_species !== species) return false;
+    if (!showLow && dotColor(p) === '#3498db') return false;
     return true;
   });
 
@@ -380,6 +387,7 @@ document.querySelectorAll('input[name="scoremode"]').forEach(r => {
 
 document.getElementById('filter-confluence').addEventListener('change', applyFilters);
 document.getElementById('filter-waterbody').addEventListener('change', applyFilters);
+document.getElementById('filter-show-low').addEventListener('change', applyFilters);
 document.getElementById('filter-species').addEventListener('change', () => {
   recolorMarkers();
   const hasSpecies = !!document.getElementById('filter-species').value;
@@ -394,6 +402,7 @@ orderSlider.addEventListener('input', () => { orderVal.textContent = orderSlider
 document.getElementById('reset-btn').addEventListener('click', () => {
   document.getElementById('filter-confluence').checked = false;
   document.getElementById('filter-waterbody').checked  = false;
+  document.getElementById('filter-show-low').checked   = true;
   orderSlider.value = 1; orderVal.textContent = '1';
   document.getElementById('filter-species').value = '';
   applyFilters();
