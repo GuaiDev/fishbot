@@ -196,9 +196,9 @@
   <div>
     <div class="section-label">Legend — untapped score</div>
     <div class="legend">
-      <div class="legend-row"><div class="legend-dot" style="background:#e53935"></div><span>High (&gt;0.30)</span></div>
-      <div class="legend-row"><div class="legend-dot" style="background:#fb8c00"></div><span>Medium (0.15–0.30)</span></div>
-      <div class="legend-row"><div class="legend-dot" style="background:#1e88e5"></div><span>Low (&lt;0.15)</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#e53935"></div><span>High (&gt;0.08, ~top 1%)</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#fb8c00"></div><span>Medium (0.05–0.08)</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#1e88e5"></div><span>Low (&lt;0.05)</span></div>
       <div class="legend-row"><div class="legend-dot" style="background:#e040fb; border:2px solid #fff"></div><span>Home (Oakville)</span></div>
     </div>
   </div>
@@ -233,8 +233,8 @@ let speciesSet = new Set();
 
 // ── color ─────────────────────────────────────────────────────────────────────
 function scoreColor(score) {
-  if (score > 0.30) return '#e53935';
-  if (score > 0.15) return '#fb8c00';
+  if (score > 0.08) return '#e53935';
+  if (score > 0.05) return '#fb8c00';
   return '#1e88e5';
 }
 
