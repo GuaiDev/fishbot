@@ -4,7 +4,8 @@ Reads untapped_potential.parquet + sdm_feature_matrix.parquet, runs SDM predicti
 on the filtered set, and writes data/processed/map_data.json as a GeoJSON
 FeatureCollection of segment centroids.
 
-Only segments within 100 km of home (Oakville, ON) are included, capped at 50 000.
+Only segments within 150 km of home (Oakville, ON) are included, capped at 50 000.
+Lake Ontario/Erie water-body dots and Virtual Flow segments are excluded.
 """
 
 import json
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 HOME_LAT = 43.4675
 HOME_LNG = -79.6877
-HOME_RADIUS_KM = 100.0
+HOME_RADIUS_KM = 150.0
 MAX_SEGMENTS = 50_000
 
 _UNTAPPED_PATH = Path("data/processed/untapped_potential.parquet")
@@ -184,8 +185,35 @@ def export_map_data(output_path: Path = _OUTPUT_PATH) -> dict:
     untapped["_dist_km"] = dists
     untapped = untapped[untapped["_dist_km"] <= HOME_RADIUS_KM].drop(columns=["_dist_km"])
 
+    # Remove lake water-body and Virtual Flow segments
+    lake_ontario = (
+        (untapped["centroid_lat"] < 43.25)
+        & (untapped["centroid_lng"] >= -79.9)
+        & (untapped["centroid_lng"] <= -76.0)
+    )
+    lake_erie = untapped["centroid_lat"] < 42.9
+    virtual_flow = (
+        untapped["watercourse_type"] == "Virtual Flow"
+        if "watercourse_type" in untapped.columns
+        else pd.Series(False, index=untapped.index)
+    )
+    lake_mask = lake_ontario | lake_erie | virtual_flow
+    n_lake_removed = int(lake_mask.sum())
+    untapped = untapped[~lake_mask]
+    logger.info("Removed %d lake/virtual-flow segments", n_lake_removed)
+
     # Sort by untapped_score descending, cap at MAX_SEGMENTS
     untapped = untapped.sort_values("untapped_score", ascending=False).head(MAX_SEGMENTS)
+
+    # Compute percentile thresholds for the kept segments (used by JS for coloring)
+    scores = untapped["untapped_score"].values
+    p50 = float(scores[int(len(scores) * 0.50)])
+    p80 = float(scores[int(len(scores) * 0.20)])   # top 20% boundary (sorted desc)
+    p95 = float(scores[int(len(scores) * 0.05)])   # top 5% boundary (sorted desc)
+    logger.info(
+        "Score thresholds — p95(top5%%): %.4f  p80(top20%%): %.4f  p50(median): %.4f",
+        p95, p80, p50,
+    )
 
     logger.info("Loading feature matrix for SDM predictions...")
     features = pd.read_parquet(_FEATURE_MATRIX_PATH)
@@ -240,6 +268,7 @@ def export_map_data(output_path: Path = _OUTPUT_PATH) -> dict:
             "home_lng": HOME_LNG,
             "radius_km": HOME_RADIUS_KM,
             "segment_count": len(geojson_features),
+            "score_thresholds": {"p50": round(p50, 5), "p80": round(p80, 5), "p95": round(p95, 5)},
         },
     }
 
@@ -277,10 +306,12 @@ def export_map_data(output_path: Path = _OUTPUT_PATH) -> dict:
 
     return {
         "segments": len(geojson_features),
+        "lake_removed": n_lake_removed,
         "json_mb": round(json_mb, 1),
         "html_mb": round(_HTML_OUTPUT.stat().st_size / 1_048_576, 1) if html_out else None,
         "path": str(output_path),
         "html": str(html_out) if html_out else None,
+        "score_thresholds": {"p50": round(p50, 5), "p80": round(p80, 5), "p95": round(p95, 5)},
     }
 
 
@@ -288,5 +319,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     stats = export_map_data()
     print(f"\nExported {stats['segments']:,} segments → {stats['path']} ({stats['json_mb']} MB)")
+    print(f"Lake/virtual-flow segments removed: {stats['lake_removed']:,}")
+    t = stats["score_thresholds"]
+    print(f"Score thresholds — top5%: {t['p95']:.5f}  top20%: {t['p80']:.5f}  median: {t['p50']:.5f}")  # noqa: E501
     if stats.get("html"):
         print(f"Self-contained HTML: {stats['html']} ({stats['html_mb']} MB)")
