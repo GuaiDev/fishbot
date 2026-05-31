@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FishBot Explorer</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; height: 100vh; overflow: hidden; }
@@ -162,7 +164,7 @@
       <div class="legend-row"><div class="legend-dot" style="background:#e67e22"></div><span>🟠 Top 20% — high potential</span></div>
       <div class="legend-row"><div class="legend-dot" style="background:#f1c40f"></div><span>🟡 Top 40% — worth investigating</span></div>
       <div class="legend-row"><div class="legend-dot" style="background:#2ecc71"></div><span>🟢 Top 60% — moderate</span></div>
-      <div class="legend-row"><div class="legend-dot" style="background:#3498db"></div><span>🔵 Bottom 40% — baseline</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#ffffff;opacity:0.5"></div><span>⚪ Bottom 40% — baseline</span></div>
       <div class="legend-row"><div class="legend-dot" style="background:#e040fb; border:2px solid #fff"></div><span>Home (Oakville)</span></div>
     </div>
     <div id="legend-species" class="legend" style="display:none">
@@ -178,6 +180,7 @@
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
 const MAPBOX_TOKEN = '%%MAPBOX_TOKEN%%';
 const HOME = [43.4675, -79.6877];
@@ -249,7 +252,7 @@ function scoreColor(score, T) {
   if (score >= T.p80) return '#e67e22';
   if (score >= T.p60) return '#f1c40f';
   if (score >= T.p40) return '#2ecc71';
-  return '#3498db';
+  return '#ffffff';
 }
 function speciesColor(prob) {
   if (prob > 0.70) return '#e74c3c';
@@ -309,7 +312,20 @@ function renderMarkers(features) {
       features.slice(0, 5).map(f => f.properties.untapped_score_balanced));
   }
 
-  markerLayer = L.layerGroup();
+  markerLayer = L.markerClusterGroup({
+    maxClusterRadius: 40,
+    disableClusteringAtZoom: 13,
+    spiderfyOnMaxZoom: true,
+    showCoverageOnHover: false,
+    iconCreateFunction: function(cluster) {
+      const count = cluster.getChildCount();
+      return L.divIcon({
+        html: '<div style="background:rgba(231,76,60,0.8);color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:11px">' + count + '</div>',
+        className: '',
+        iconSize: [30, 30]
+      });
+    }
+  });
   const r = zoomRadius();
   let markerCount = 0;
 
@@ -317,8 +333,10 @@ function renderMarkers(features) {
     const p = f.properties;
     const [lng, lat] = f.geometry.coordinates;
     const color = dotColor(p);
-    const fillOpacity = color === '#3498db' ? 0.8 : 0.75;
-    const m = L.circleMarker([lat, lng], { radius: r, color, weight: 1, fillColor: color, fillOpacity });
+    const isLow = color === '#ffffff';
+    const fillOpacity = isLow ? 0.5 : 0.8;
+    const borderColor = isLow ? 'rgba(255,255,255,0.6)' : color;
+    const m = L.circleMarker([lat, lng], { radius: r, color: borderColor, weight: 1, fillColor: color, fillOpacity });
     m._feature = f;  // store ref for in-place recolor
     m.on('click', function() {
       if (!this._popupContent) {
@@ -359,7 +377,7 @@ function applyFilters() {
     if (onlyWb   && !p.connected_to_waterbody) return false;
     if (p.stream_order != null && p.stream_order < minOrder) return false;
     if (species && p.top1_species !== species && p.top2_species !== species) return false;
-    if (!showLow && dotColor(p) === '#3498db') return false;
+    if (!showLow && dotColor(p) === '#ffffff') return false;
     return true;
   });
 
