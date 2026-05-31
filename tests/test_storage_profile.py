@@ -23,7 +23,7 @@ def test_save_and_load_round_trip(tmp_path):
     assert loaded.fishing_style == "stillwater fly fishing"
 
 
-def test_default_profile_anchored_to_toronto():
+def test_default_profile_anchored_to_oakville():
     p = UserProfile.default()
     assert p.home_location is not None
-    assert "Toronto" in p.home_location.name
+    assert "Oakville" in p.home_location.name

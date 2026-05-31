@@ -178,10 +178,14 @@ def find_untapped_water_for_agent(
         )
         df = df.sort_values("untapped_score", ascending=False)
 
-    # Culverted stream heuristic: exclude small streams in high-density urban areas
+    # Culverted stream heuristic: two-tier filter for urban/suburban areas
     culverted_filtered = False
     if exclude_likely_culverted and "observation_density_25km" in df.columns:
-        mask = (df["stream_order"] <= 2) & (df["observation_density_25km"] > 100)
+        # Tier 1: dense urban core — order-3 streams almost certainly engineered
+        tier1 = (df["stream_order"] <= 3) & (df["observation_density_25km"] > 150)
+        # Tier 2: suburban fringe — small streams in moderately developed areas
+        tier2 = (df["stream_order"] <= 2) & (df["observation_density_25km"] > 50)
+        mask = tier1 | tier2
         if mask.any():
             df = df[~mask].copy()
             culverted_filtered = True
@@ -298,8 +302,8 @@ def find_untapped_water_for_agent(
     }
     if culverted_filtered:
         output["filter_note"] = (
-            "Small order-1/2 streams in high-density urban areas filtered out — likely culverted. "
-            "Set min_stream_order=2 to include them."
+            "Low-order urban streams filtered (likely culverted). "
+            "Use min_stream_order=2 to include them."
         )
     return json.dumps(output, indent=2)
 
@@ -311,7 +315,7 @@ def find_exploration_targets(
     radius_km: float = 50.0,
     species: str | None = None,
     mode: str = "balanced",
-    min_stream_order: int = 2,
+    min_stream_order: int = 3,
     limit: int = 5,
 ) -> str:
     """Agent-facing exploration tool with mode-based scoring and rich enrichment.

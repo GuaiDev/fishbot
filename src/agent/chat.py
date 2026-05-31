@@ -372,7 +372,7 @@ def _execute_tool(name: str, inputs: dict) -> str:
             radius_km=inputs.get("radius_km", 50),
             species=inputs.get("species"),
             mode=inputs.get("mode", "balanced"),
-            min_stream_order=inputs.get("min_stream_order", 2),
+            min_stream_order=inputs.get("min_stream_order", 3),
             limit=inputs.get("limit", 5),
         )
     return json.dumps({"error": f"Unknown tool: {name}"})
