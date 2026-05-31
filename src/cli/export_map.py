@@ -244,12 +244,14 @@ def export_map_data(output_path: Path = _OUTPUT_PATH) -> dict:
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(geojson, separators=(",", ":")))
 
-    size_mb = output_path.stat().st_size / 1_048_576
-    logger.info("Wrote %d features to %s (%.1f MB)", len(geojson_features), output_path, size_mb)
+    geojson_json = json.dumps(geojson, separators=(",", ":"))
+    output_path.write_text(geojson_json)
 
-    # Inject Mapbox token into a ready-to-open HTML copy
+    json_mb = output_path.stat().st_size / 1_048_576
+    logger.info("Wrote %d features to %s (%.1f MB)", len(geojson_features), output_path, json_mb)
+
+    # Read Mapbox token
     mapbox_token = os.environ.get("MAPBOX_TOKEN", "")
     if not mapbox_token and Path(".env").exists():
         for line in Path(".env").read_text().splitlines():
@@ -257,18 +259,26 @@ def export_map_data(output_path: Path = _OUTPUT_PATH) -> dict:
                 mapbox_token = line.split("=", 1)[1].strip()
                 break
 
+    # Build self-contained HTML: embed GeoJSON + token directly
     html_out: Path | None = None
-    if mapbox_token and _HTML_TEMPLATE.exists():
-        html_content = _HTML_TEMPLATE.read_text().replace("%%MAPBOX_TOKEN%%", mapbox_token)
+    if _HTML_TEMPLATE.exists():
+        html_content = _HTML_TEMPLATE.read_text()
+        html_content = html_content.replace("%%MAPBOX_TOKEN%%", mapbox_token)
+        html_content = html_content.replace("%%MAP_DATA%%", geojson_json)
         _HTML_OUTPUT.write_text(html_content)
+        html_mb = _HTML_OUTPUT.stat().st_size / 1_048_576
         html_out = _HTML_OUTPUT
-        logger.info("HTML ready at %s", _HTML_OUTPUT)
+        logger.info("Self-contained HTML at %s (%.1f MB)", _HTML_OUTPUT, html_mb)
     else:
-        logger.warning("No MAPBOX_TOKEN found — HTML not written. Set MAPBOX_TOKEN in .env.")
+        logger.warning("HTML template not found at %s", _HTML_TEMPLATE)
+
+    if not mapbox_token:
+        logger.warning("No MAPBOX_TOKEN in .env — satellite tiles will not load.")
 
     return {
         "segments": len(geojson_features),
-        "size_mb": round(size_mb, 1),
+        "json_mb": round(json_mb, 1),
+        "html_mb": round(_HTML_OUTPUT.stat().st_size / 1_048_576, 1) if html_out else None,
         "path": str(output_path),
         "html": str(html_out) if html_out else None,
     }
@@ -277,6 +287,6 @@ def export_map_data(output_path: Path = _OUTPUT_PATH) -> dict:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     stats = export_map_data()
-    print(f"\nExported {stats['segments']:,} segments → {stats['path']} ({stats['size_mb']} MB)")
+    print(f"\nExported {stats['segments']:,} segments → {stats['path']} ({stats['json_mb']} MB)")
     if stats.get("html"):
-        print(f"Open in browser: {stats['html']}")
+        print(f"Self-contained HTML: {stats['html']} ({stats['html_mb']} MB)")

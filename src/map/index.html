@@ -332,30 +332,26 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   applyFilters();
 });
 
-// ── load data ─────────────────────────────────────────────────────────────────
-fetch('../../data/processed/map_data.json')
-  .then(r => r.json())
-  .then(geojson => {
-    allFeatures = geojson.features;
+// ── inline data (embedded by make export-map) ─────────────────────────────────
+const mapData = %%MAP_DATA%%;
 
-    // Populate species dropdown
-    allFeatures.forEach(f => {
-      if (f.properties.top1_species) speciesSet.add(f.properties.top1_species);
-      if (f.properties.top2_species) speciesSet.add(f.properties.top2_species);
-    });
-    const sel = document.getElementById('filter-species');
-    Array.from(speciesSet).sort().forEach(sp => {
-      const opt = document.createElement('option');
-      opt.value = sp; opt.textContent = sp;
-      sel.appendChild(opt);
-    });
+console.log('FishBot map loading, segments:', mapData.features.length);
 
-    applyFilters();
-  })
-  .catch(err => {
-    document.getElementById('stats-bar').textContent = 'Error loading map_data.json — run make export-map first';
-    console.error(err);
-  });
+allFeatures = mapData.features;
+
+// Populate species dropdown
+allFeatures.forEach(f => {
+  if (f.properties.top1_species) speciesSet.add(f.properties.top1_species);
+  if (f.properties.top2_species) speciesSet.add(f.properties.top2_species);
+});
+const sel = document.getElementById('filter-species');
+Array.from(speciesSet).sort().forEach(sp => {
+  const opt = document.createElement('option');
+  opt.value = sp; opt.textContent = sp;
+  sel.appendChild(opt);
+});
+
+applyFilters();
 </script>
 </body>
 </html>
