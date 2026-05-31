@@ -5,9 +5,9 @@ on the filtered set, and writes data/processed/map_data.json as a GeoJSON
 FeatureCollection of segment centroids.
 
 Only segments within 150 km of home (Oakville, ON) are included.
-Lake Ontario/Erie water-body dots, Virtual Flow segments, and likely-culverted
-urban order-1 streams are excluded. Spatial deduplication at 200 m spacing
-replaces the hard segment cap, followed by 10×10 grid sampling for regional coverage.
+Lake Ontario/Erie water-body dots, Virtual Flow segments, and order-1 streams
+with observation_density_25km > 500 (dense urban core only) are excluded.
+15×15 grid sampling ensures regional coverage.
 """
 
 import json
@@ -269,10 +269,10 @@ def export_map_data(
         if "watercourse_type" in untapped.columns
         else pd.Series(False, index=untapped.index)
     )
-    # 5. Likely-culverted urban order-1 streams
+    # 5. Likely-culverted urban order-1 streams (only very dense urban core)
     culverted = (
         (untapped["stream_order"] == 1)
-        & (untapped["observation_density_25km"] > 100)
+        & (untapped["observation_density_25km"] > 500)
         if "observation_density_25km" in untapped.columns
         else pd.Series(False, index=untapped.index)
     )

@@ -247,14 +247,10 @@ def find_untapped_water_for_agent(
         )
         df = df.sort_values("untapped_score", ascending=False)
 
-    # Culverted stream heuristic: two-tier filter for urban/suburban areas
+    # Culverted stream heuristic: only first-order streams in dense urban core
     culverted_filtered = False
     if exclude_likely_culverted and "observation_density_25km" in df.columns:
-        # Tier 1: dense urban core — order-3 streams almost certainly engineered
-        tier1 = (df["stream_order"] <= 3) & (df["observation_density_25km"] > 150)
-        # Tier 2: suburban fringe — small streams in moderately developed areas
-        tier2 = (df["stream_order"] <= 2) & (df["observation_density_25km"] > 50)
-        mask = tier1 | tier2
+        mask = (df["stream_order"] == 1) & (df["observation_density_25km"] > 500)
         if mask.any():
             df = df[~mask].copy()
             culverted_filtered = True
