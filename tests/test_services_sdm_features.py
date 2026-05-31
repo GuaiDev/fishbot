@@ -547,7 +547,7 @@ def test_build_feature_matrix_integration(tmp_path: Path):
 
 
 def test_confluence_detection():
-    """A 3-way junction with order-2+ tributaries makes incident segments is_confluence_segment=True."""
+    """A 3-way junction with order-2+ tributaries makes incident segments confluences."""
     # hub is shared by three streams: A→hub, B→hub, hub→C
     hub = _node(-79.5, 43.7)
     A = _node(-79.6, 43.7)

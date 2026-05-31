@@ -512,3 +512,126 @@ def test_seen_before_penalty_pushes_segment_down(tmp_path: Path, monkeypatch):
     # Penalised segment should no longer be first
     if ids_with_penalty:
         assert ids_with_penalty[0] != penalised_id
+
+
+# ── dismiss + trip log feedback loop ─────────────────────────────────────────
+
+
+def _make_fm_with_centroids(tmp_path, n=4):
+    """Feature matrix where ogf_id N has centroid at (43.5 + N*0.01, -79.5)."""
+    lats = [43.5 + i * 0.01 for i in range(n)]
+    lngs = [-79.5] * n
+    return pd.DataFrame(
+        {
+            "ogf_id": list(range(1, n + 1)),
+            "centroid_lat": lats,
+            "centroid_lng": lngs,
+            "stream_order": [3] * n,
+            "observation_density_25km": [0.0] * n,
+            "watercourse_type": [""] * n,
+            "watercourse_name": [""] * n,
+        }
+    )
+
+
+def _setup_full_env(tmp_path, monkeypatch):
+    import src.services.accessibility as acc_mod
+    import src.services.untapped_potential as up_mod
+
+    monkeypatch.setattr(acc_mod, "_PARQUET_PATH", tmp_path / "a.parquet")
+    monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "u.parquet")
+    monkeypatch.setattr(up_mod, "_FEATURE_MATRIX_PATH", tmp_path / "fm.parquet")
+
+    db = get_db(tmp_path / "test.db")
+    fm = _make_fm_with_centroids(tmp_path)
+    _insert_predictions(db, "Sp", {i: 0.6 for i in range(1, 5)})
+    _insert_access_scores(tmp_path, {i: 0.7 for i in range(1, 5)})
+
+    # Write feature matrix parquet so _snap_trips_to_segments can read it
+    fm_slim = fm[["ogf_id", "centroid_lat", "centroid_lng"]].copy()
+    fm_slim.to_parquet(tmp_path / "fm.parquet", index=False)
+
+    compute_untapped_potential(db, fm)
+    return db, fm
+
+
+def test_dismissed_segments_penalized(tmp_path, monkeypatch):
+    """Segment in dismissed_segments scores 0.3× and ranks below equal-quality segments."""
+    db, _ = _setup_full_env(tmp_path, monkeypatch)
+
+    # Dismiss ogf_id=1
+    from datetime import datetime
+    db["dismissed_segments"].insert(
+        {"ogf_id": 1, "dismissed_at": datetime.now().isoformat(), "reason": "private"}
+    )
+
+    result = json.loads(
+        find_exploration_targets(
+            db, 43.75, -79.5, radius_km=200, mode="balanced",
+            limit=4, enable_vision=False,
+        )
+    )
+    ids = [s["ogf_id"] for s in result.get("segments", [])]
+    # ogf_id 1 should not be first — penalised to 0.3× score
+    if len(ids) >= 2:
+        assert ids[0] != 1
+
+
+def test_trip_log_segments_penalized(tmp_path, monkeypatch):
+    """Trip with lat/lng near ogf_id=2 causes that segment to be penalised."""
+    db, fm = _setup_full_env(tmp_path, monkeypatch)
+
+    # ogf_id=2 centroid is at (43.51, -79.5) — insert a trip 200m away
+    from datetime import datetime
+    db["trips"].insert(
+        {
+            "id": 1,
+            "status": "completed",
+            "date": "2026-05-01",
+            "planned_for": None,
+            "jurisdiction": "CA-ON",
+            "location_name": "Test Creek",
+            "lat": 43.510,   # very close to ogf_id=2 centroid at 43.51
+            "lng": -79.500,
+            "species_caught": None,
+            "conditions": None,
+            "gear_used": None,
+            "notes": None,
+            "what_worked": None,
+            "what_didnt": None,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+        }
+    )
+
+    result = json.loads(
+        find_exploration_targets(
+            db, 43.75, -79.5, radius_km=200, mode="balanced",
+            limit=4, enable_vision=False,
+        )
+    )
+    ids = [s["ogf_id"] for s in result.get("segments", [])]
+    if len(ids) >= 2:
+        assert ids[0] != 2
+
+
+def test_dismiss_tool_inserts_record(tmp_path, monkeypatch):
+    """dismiss_segment tool call inserts a row into dismissed_segments."""
+    import src.storage.database as db_mod
+    monkeypatch.setattr(db_mod, "DB_PATH", tmp_path / "test.db")
+
+    db = get_db(tmp_path / "test.db")
+
+    # Call the tool dispatch directly
+    import json as _json
+
+    from src.agent.chat import _execute_tool
+
+    result = _json.loads(_execute_tool("dismiss_segment", {"ogf_id": 42, "reason": "private"}))
+    assert result["success"] is True
+    assert result["ogf_id"] == 42
+
+    rows = list(db["dismissed_segments"].rows)
+    assert len(rows) == 1
+    assert rows[0]["ogf_id"] == 42
+    assert rows[0]["reason"] == "private"

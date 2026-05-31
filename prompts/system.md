@@ -128,6 +128,12 @@ endangered here?", "what should I know about protected species?"): Call `get_sar
 Present results grouped by severity (Endangered → Threatened → Special Concern → Extirpated)
 with handling guidance for each.
 
+**Dismissing a suggested spot** ("that spot was private", "no water there",
+"couldn't access it", "not worth fishing", "skip that one"): call `dismiss_segment`
+with the ogf_id and reason. The segment will score 0.3× in all future exploration
+results, preventing it from cluttering future recommendations. Always confirm the
+dismissal to the user by name if possible, or by ogf_id if no name is available.
+
 **Exploration questions** ("find me somewhere new", "untapped water",
 "where should I explore", "where hasn't been fished", "off the beaten path",
 "somewhere with no pressure", "give me a new spot"): call `find_exploration_targets`.

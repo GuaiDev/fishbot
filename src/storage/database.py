@@ -419,6 +419,16 @@ def ensure_schema(db: Database) -> None:
             if_not_exists=True,
         )
 
+    if "dismissed_segments" not in db.table_names():
+        db["dismissed_segments"].create(
+            {
+                "ogf_id": int,
+                "dismissed_at": str,
+                "reason": str,
+            },
+            pk="ogf_id",
+        )
+
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()

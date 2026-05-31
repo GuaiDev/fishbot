@@ -388,9 +388,12 @@ def find_exploration_targets(
     df = df.copy()
     df["score"] = _compute_mode_score(df, mode)
 
-    # Penalise previously surfaced segments to encourage result diversity
+    # Penalise seen-before segments: dismissed + visited trips + explicit list
+    all_seen: set[int] = set(_get_seen_ogf_ids(db))
     if previously_shown_ogf_ids:
-        seen_mask = df["ogf_id"].isin(previously_shown_ogf_ids)
+        all_seen.update(previously_shown_ogf_ids)
+    if all_seen:
+        seen_mask = df["ogf_id"].isin(all_seen)
         df.loc[seen_mask, "score"] = df.loc[seen_mask, "score"] * 0.3
 
     df = df.sort_values("score", ascending=False)
@@ -1070,3 +1073,67 @@ for _k in list(_COMMON_NAMES.keys()):
 
 def _resolve_species(name: str) -> str:
     return _COMMON_TO_SCI.get(name.lower(), name)
+
+
+# ── seen-before helpers ───────────────────────────────────────────────────────
+
+_SNAP_RADIUS_KM = 0.5  # 500m — trip location must be this close to snap to a segment
+
+
+def _snap_trips_to_segments(db) -> list[int]:
+    """Snap trip lat/lng locations to the nearest OHN segment centroid within 500m."""
+    if "trips" not in db.table_names():
+        return []
+    trips = list(db["trips"].rows_where("lat IS NOT NULL AND lng IS NOT NULL"))
+    if not trips:
+        return []
+    if not _FEATURE_MATRIX_PATH.exists():
+        return []
+
+    import numpy as np
+    from scipy.spatial import cKDTree
+
+    try:
+        fm = pd.read_parquet(
+            _FEATURE_MATRIX_PATH,
+            columns=["ogf_id", "centroid_lat", "centroid_lng"],
+        )
+        fm = fm.dropna(subset=["centroid_lat", "centroid_lng"])
+    except Exception:
+        return []
+
+    if fm.empty:
+        return []
+
+    ogf_ids = fm["ogf_id"].tolist()
+    coords = np.array(
+        [
+            [lat * 111.0, lng * 80.5]
+            for lat, lng in zip(fm["centroid_lat"], fm["centroid_lng"])
+        ]
+    )
+    tree = cKDTree(coords)
+
+    seen = []
+    for trip in trips:
+        q = np.array([[float(trip["lat"]) * 111.0, float(trip["lng"]) * 80.5]])
+        dist_km, idx = tree.query(q)
+        if dist_km[0] <= _SNAP_RADIUS_KM:
+            seen.append(ogf_ids[idx[0]])
+    return seen
+
+
+def _get_seen_ogf_ids(db) -> list[int]:
+    """Return ogf_ids that should receive the seen-before score penalty.
+
+    Combines explicitly dismissed segments and trip-log locations snapped to
+    the nearest OHN segment.
+    """
+    seen: set[int] = set()
+
+    if "dismissed_segments" in db.table_names():
+        for row in db["dismissed_segments"].rows:
+            seen.add(int(row["ogf_id"]))
+
+    seen.update(_snap_trips_to_segments(db))
+    return list(seen)

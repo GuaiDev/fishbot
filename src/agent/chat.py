@@ -375,6 +375,31 @@ def _execute_tool(name: str, inputs: dict) -> str:
             min_stream_order=inputs.get("min_stream_order", 3),
             limit=inputs.get("limit", 5),
         )
+    if name == "dismiss_segment":
+        from datetime import datetime
+
+        db = get_db()
+        ogf_id = int(inputs["ogf_id"])
+        reason = inputs.get("reason") or ""
+        db["dismissed_segments"].upsert(
+            {
+                "ogf_id": ogf_id,
+                "dismissed_at": datetime.now().isoformat(),
+                "reason": reason,
+            },
+            pk="ogf_id",
+        )
+        return json.dumps(
+            {
+                "success": True,
+                "message": (
+                    f"Segment {ogf_id} dismissed ({reason or 'no reason given'}). "
+                    "It will score 0.3× in future exploration results."
+                ),
+                "ogf_id": ogf_id,
+                "reason": reason,
+            }
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -1431,6 +1456,34 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "dismiss_segment",
+            "description": (
+                "Call this when the user says a suggested spot was private property, "
+                "had no water, wasn't accessible, or wasn't worth fishing. "
+                "Inserts the segment into the dismissed_segments table so it scores "
+                "0.3× in all future exploration results. "
+                "Prevents it from appearing as a top recommendation in future sessions."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "ogf_id": {
+                        "type": "integer",
+                        "description": (
+                            "The OHN segment ID to dismiss. "
+                            "Found in the ogf_id field of find_exploration_targets results."
+                        ),
+                    },
+                    "reason": {
+                        "type": "string",
+                        "enum": ["visited", "private", "no water", "not fishable", "other"],
+                        "description": "Why this segment is being dismissed.",
+                    },
+                },
+                "required": ["ogf_id"],
             },
         },
         {
