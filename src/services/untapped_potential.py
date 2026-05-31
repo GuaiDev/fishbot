@@ -353,6 +353,7 @@ def find_exploration_targets(
     min_stream_order: int = 3,
     limit: int = 5,
     enable_vision: bool = True,
+    previously_shown_ogf_ids: list[int] | None = None,
 ) -> str:
     """Agent-facing exploration tool with mode-based scoring and rich enrichment.
 
@@ -386,6 +387,12 @@ def find_exploration_targets(
     # Recompute score from stored components based on mode
     df = df.copy()
     df["score"] = _compute_mode_score(df, mode)
+
+    # Penalise previously surfaced segments to encourage result diversity
+    if previously_shown_ogf_ids:
+        seen_mask = df["ogf_id"].isin(previously_shown_ogf_ids)
+        df.loc[seen_mask, "score"] = df.loc[seen_mask, "score"] * 0.3
+
     df = df.sort_values("score", ascending=False)
 
     # Spatial filter
@@ -502,7 +509,12 @@ def find_exploration_targets(
                 " Culvert crossing detected — check both sides of the road "
                 "for outlet pools where fish stack."
             )
-        if vision_screening.get("access_blocked_by_structures"):
+        if vision_screening.get("is_golf_course"):
+            expl_note += (
+                " Golf course detected in imagery — likely private property. "
+                "Verify public access before visiting."
+            )
+        elif vision_screening.get("access_blocked_by_structures"):
             expl_note += (
                 " Adjacent structures visible — access may be limited to road allowance only."
             )

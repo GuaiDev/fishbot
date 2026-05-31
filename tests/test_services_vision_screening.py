@@ -82,6 +82,23 @@ def test_screen_segment_houses(monkeypatch):
     assert result["verdict"] == "possible"
 
 
+def test_screen_segment_golf_course(monkeypatch):
+    """Vision response mentioning golf course → is_golf_course=True, access_blocked=True."""
+    _mock_tile(monkeypatch)
+    _mock_vision(
+        monkeypatch,
+        "1. WATER: yes\n2. TYPE: natural stream\n"
+        "3. ACCESS: yes, golf course fairway borders the stream\n"
+        "4. STRUCTURE: none visible\n5. VERDICT: maybe",
+    )
+
+    result = vs_mod.screen_segment(43.5, -79.5, 3, None, False)
+
+    assert result["screened"] is True
+    assert result["is_golf_course"] is True
+    assert result["access_blocked_by_structures"] is True
+
+
 def test_screen_segment_satellite_unavailable(monkeypatch):
     """Failed Mapbox fetch → screened=False, verdict=unverified."""
     def _raise(*a, **kw):

@@ -396,7 +396,11 @@ def test_find_exploration_targets_balanced_mode(tmp_path: Path, monkeypatch):
     _insert_access_scores(tmp_path, {i: 0.7 for i in range(1, 6)})
     compute_untapped_potential(db, fm)
 
-    result = json.loads(find_exploration_targets(db, 43.75, -79.75, radius_km=200, mode="balanced", enable_vision=False))
+    result = json.loads(
+        find_exploration_targets(
+            db, 43.75, -79.75, radius_km=200, mode="balanced", enable_vision=False
+        )
+    )
 
     assert "segments" in result
     assert result.get("mode") == "balanced"
@@ -460,3 +464,51 @@ def test_structural_bonus_graceful_missing_columns():
     df = pd.DataFrame({"habitat_score": [0.5, 0.7]})
     bonus = _structural_bonus(df)
     assert (bonus == 1.0).all()
+
+
+# ── seen-before penalty ───────────────────────────────────────────────────────
+
+
+def test_seen_before_penalty_pushes_segment_down(tmp_path: Path, monkeypatch):
+    """Previously shown ogf_id scores 0.3× so it ranks below equal-quality unseen segments."""
+    import src.services.accessibility as acc_mod
+    import src.services.untapped_potential as up_mod
+
+    monkeypatch.setattr(acc_mod, "_PARQUET_PATH", tmp_path / "a.parquet")
+    monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "u.parquet")
+    monkeypatch.setattr(up_mod, "_FEATURE_MATRIX_PATH", tmp_path / "fm.parquet")
+
+    db = get_db(tmp_path / "test.db")
+    fm = _make_feature_matrix(4)
+    fm["observation_density_25km"] = 0.0
+    fm["stream_order"] = [3, 3, 3, 3]
+    _insert_predictions(db, "Sp", {i: 0.6 for i in range(1, 5)})
+    _insert_access_scores(tmp_path, {i: 0.7 for i in range(1, 5)})
+    compute_untapped_potential(db, fm)
+
+    # Without penalty: all scores equal, first segment wins ties
+    result_no_penalty = json.loads(
+        find_exploration_targets(
+            db, 43.75, -79.75, radius_km=200, mode="balanced",
+            limit=4, enable_vision=False,
+        )
+    )
+    first_ids_no_penalty = [s["ogf_id"] for s in result_no_penalty.get("segments", [])]
+
+    # With penalty on first segment: it should rank last
+    if not first_ids_no_penalty:
+        pytest.skip("No segments returned without penalty")
+
+    penalised_id = first_ids_no_penalty[0]
+    result_with_penalty = json.loads(
+        find_exploration_targets(
+            db, 43.75, -79.75, radius_km=200, mode="balanced",
+            limit=4, enable_vision=False,
+            previously_shown_ogf_ids=[penalised_id],
+        )
+    )
+    ids_with_penalty = [s["ogf_id"] for s in result_with_penalty.get("segments", [])]
+
+    # Penalised segment should no longer be first
+    if ids_with_penalty:
+        assert ids_with_penalty[0] != penalised_id

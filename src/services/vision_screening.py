@@ -77,8 +77,10 @@ def screen_segment(
 1. WATER: Is there clearly visible open water? (yes/no/unclear)
 2. TYPE: Does it look like natural stream, engineered drainage/ditch, \
 culvert crossing, or pond/lake? (one of these)
-3. ACCESS: Are there houses or structures directly adjacent to the \
-stream that would block bank access? (yes/no/partial)
+3. ACCESS: Is access likely blocked by any of these? Houses/residential \
+buildings directly on the bank, golf course or sports facility, fenced \
+private property, manicured lawns extending to the water. \
+(yes/no/partial — specify what you see)
 4. STRUCTURE: Any visible confluence, stream widening, beaver dam, \
 or pool? (describe briefly or 'none visible')
 5. VERDICT: Is this worth investigating for fishing? \
@@ -120,6 +122,9 @@ Be direct and brief. If water is not visible, say so immediately."""
             verdict = "unlikely"
 
         access_blocked = "yes" in vision_text.lower().split("3.")[-1][:30]
+        is_golf_course = "golf" in vision_text.lower()
+        if is_golf_course:
+            access_blocked = True
 
         structure_section = vision_text.split("4.")[-1][:100] if "4." in vision_text else ""
 
@@ -134,6 +139,7 @@ Be direct and brief. If water is not visible, say so immediately."""
             "verdict": verdict,
             "is_engineered_drainage": is_engineered,
             "is_culvert_crossing": is_culvert,
+            "is_golf_course": is_golf_course,
             "access_blocked_by_structures": access_blocked,
             "vision_note": vision_text,
             "structure_detected": structure_section.strip(),
