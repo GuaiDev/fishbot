@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FishBot Explorer</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; height: 100vh; overflow: hidden; }
@@ -180,10 +178,11 @@
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script>
 const MAPBOX_TOKEN = '%%MAPBOX_TOKEN%%';
 const HOME = [43.4675, -79.6877];
+const DOTS_ZOOM = 11;
 
 // ── map ───────────────────────────────────────────────────────────────────────
 const map = L.map('map', { preferCanvas: true }).setView(HOME, 10);
@@ -221,16 +220,18 @@ L.circleMarker(HOME, { radius: 9, color: '#fff', weight: 2, fillColor: '#e040fb'
 
 // ── state ─────────────────────────────────────────────────────────────────────
 let allFeatures = [];
-let markers = [];
-let markerLayer = null;
+let filteredFeatures = [];
 let speciesSet = new Set();
 let scoreMode = 'balanced';
-// Thresholds by mode, overwritten from metadata
 let allThresholds = {
   balanced: { p40: 0.032, p60: 0.038, p80: 0.046, p95: 0.063 },
   easy:     { p40: 0.020, p60: 0.028, p80: 0.038, p95: 0.055 },
   adventure:{ p40: 0.025, p60: 0.033, p80: 0.044, p95: 0.060 },
 };
+
+// ── layers ─────────────────────────────────────────────────────────────────────
+const dotsLayer = L.layerGroup();
+let heatLayer = null;
 
 // ── zoom radius ───────────────────────────────────────────────────────────────
 function zoomRadius() {
@@ -241,10 +242,6 @@ function zoomRadius() {
   if (z < 14) return 8;
   return 10;
 }
-map.on('zoomend', () => {
-  const r = zoomRadius();
-  markers.forEach(m => m.setRadius && m.setRadius(r));
-});
 
 // ── color ─────────────────────────────────────────────────────────────────────
 function scoreColor(score, T) {
@@ -302,52 +299,22 @@ function buildPopup(p) {
     </div>`;
 }
 
-// ── render ─────────────────────────────────────────────────────────────────────
-function renderMarkers(features) {
-  if (markerLayer) map.removeLayer(markerLayer);
-  markers = [];
-
-  if (features.length > 0) {
-    console.log('First 5 balanced scores:',
-      features.slice(0, 5).map(f => f.properties.untapped_score_balanced));
-  }
-
-  markerLayer = L.markerClusterGroup({
-    maxClusterRadius: function(z) {
-      return z < 7 ? 60 : z < 8 ? 40 : z < 9 ? 25 : z < 10 ? 15 : z < 11 ? 8 : 4;
-    },
-    disableClusteringAtZoom: 11,
-    spiderfyOnMaxZoom: true,
-    showCoverageOnHover: false,
-    iconCreateFunction: function(cluster) {
-      const children = cluster.getAllChildMarkers();
-      const maxScore = Math.max(...children.map(m => m.options.score || 0));
-      const T = allThresholds[scoreMode] || allThresholds.balanced;
-      const bg = maxScore >= T.p95 ? 'rgba(231,76,60,0.85)'
-               : maxScore >= T.p80 ? 'rgba(230,126,34,0.85)'
-               : maxScore >= T.p60 ? 'rgba(241,196,15,0.85)'
-               : maxScore >= T.p40 ? 'rgba(46,204,113,0.85)'
-               : 'rgba(160,160,160,0.75)';
-      const count = cluster.getChildCount();
-      return L.divIcon({
-        html: `<div style="background:${bg};color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,0.5)">${count}</div>`,
-        className: '',
-        iconSize: [30, 30]
-      });
-    }
-  });
+// ── dot rendering (viewport-culled) ───────────────────────────────────────────
+function renderDotsInView() {
+  dotsLayer.clearLayers();
+  const bounds = map.getBounds();
   const r = zoomRadius();
-  let markerCount = 0;
+  let count = 0;
 
-  features.forEach(f => {
-    const p = f.properties;
+  filteredFeatures.forEach(f => {
     const [lng, lat] = f.geometry.coordinates;
+    if (!bounds.contains([lat, lng])) return;
+    const p = f.properties;
     const color = dotColor(p);
     const isLow = color === '#ffffff';
     const fillOpacity = isLow ? 0.5 : 0.8;
     const borderColor = isLow ? 'rgba(255,255,255,0.6)' : color;
-    const m = L.circleMarker([lat, lng], { radius: r, color: borderColor, weight: 1, fillColor: color, fillOpacity, score: p.untapped_score_balanced || 0 });
-    m._feature = f;  // store ref for in-place recolor
+    const m = L.circleMarker([lat, lng], { radius: r, color: borderColor, weight: 1, fillColor: color, fillOpacity });
     m.on('click', function() {
       if (!this._popupContent) {
         this._popupContent = buildPopup(p);
@@ -355,23 +322,49 @@ function renderMarkers(features) {
       }
       this.openPopup();
     });
-    markerLayer.addLayer(m);
-    markers.push(m);
-    markerCount++;
+    dotsLayer.addLayer(m);
+    count++;
   });
 
-  markerLayer.addTo(map);
-  console.log('Markers created:', markerCount, 'Filtered out:', allFeatures.length - markerCount);
-  document.getElementById('stats-bar').textContent = `${features.length.toLocaleString()} segments shown`;
+  document.getElementById('stats-bar').textContent =
+    `${count.toLocaleString()} in view · ${filteredFeatures.length.toLocaleString()} total`;
 }
 
-// Recolor existing markers in-place (no rebuild) when mode or species changes
-function recolorMarkers() {
-  markers.forEach(m => {
-    const color = dotColor(m._feature.properties);
-    m.setStyle({ color, fillColor: color });
+// ── heatmap ────────────────────────────────────────────────────────────────────
+function buildHeatLayer() {
+  const scoreKey = scoreMode === 'easy' ? 'untapped_score_easy'
+                 : scoreMode === 'adventure' ? 'untapped_score_adventure'
+                 : 'untapped_score_balanced';
+  const T = allThresholds[scoreMode] || allThresholds.balanced;
+  const heatData = allFeatures
+    .filter(f => (f.properties[scoreKey] || 0) > T.p60)
+    .map(f => [f.geometry.coordinates[1], f.geometry.coordinates[0], f.properties[scoreKey]]);
+  return L.heatLayer(heatData, {
+    radius: 20,
+    blur: 15,
+    maxZoom: DOTS_ZOOM,
+    gradient: { 0.4: '#3498db', 0.6: '#2ecc71', 0.7: '#f1c40f', 0.85: '#e67e22', 1.0: '#e74c3c' }
   });
 }
+
+// ── layer switcher ─────────────────────────────────────────────────────────────
+function updateLayers() {
+  const z = map.getZoom();
+  if (z >= DOTS_ZOOM) {
+    if (heatLayer && heatLayer._map) heatLayer.remove();
+    if (!dotsLayer._map) dotsLayer.addTo(map);
+    renderDotsInView();
+  } else {
+    if (dotsLayer._map) dotsLayer.remove();
+    if (!heatLayer) heatLayer = buildHeatLayer();
+    if (!heatLayer._map) heatLayer.addTo(map);
+    const T = allThresholds[scoreMode] || allThresholds.balanced;
+    document.getElementById('stats-bar').textContent =
+      `Heatmap — ${filteredFeatures.length.toLocaleString()} segments · zoom in for dots`;
+  }
+}
+
+map.on('zoomend moveend', updateLayers);
 
 // ── filter ─────────────────────────────────────────────────────────────────────
 function applyFilters() {
@@ -381,7 +374,7 @@ function applyFilters() {
   const minOrder  = parseInt(document.getElementById('filter-order').value, 10);
   const species   = document.getElementById('filter-species').value;
 
-  const filtered = allFeatures.filter(f => {
+  filteredFeatures = allFeatures.filter(f => {
     const p = f.properties;
     if (onlyConf && !p.is_confluence_segment) return false;
     if (onlyWb   && !p.connected_to_waterbody) return false;
@@ -395,7 +388,7 @@ function applyFilters() {
   document.getElementById('legend-untapped').style.display = hasSpecies ? 'none' : '';
   document.getElementById('legend-species').style.display  = hasSpecies ? '' : 'none';
 
-  renderMarkers(filtered);
+  updateLayers();
 }
 
 // ── controls ──────────────────────────────────────────────────────────────────
@@ -409,19 +402,17 @@ document.querySelectorAll('input[name="scoremode"]').forEach(r => {
     });
     e.target.closest('label').classList.add('active');
     document.getElementById('legend-label').textContent = `Legend — ${SCORE_MODE_LABELS[scoreMode]}`;
-    recolorMarkers();  // no rebuild needed — just update colors
+    // Rebuild heatmap for new score mode, then refresh visible layer
+    if (heatLayer && heatLayer._map) heatLayer.remove();
+    heatLayer = buildHeatLayer();
+    updateLayers();
   });
 });
 
 document.getElementById('filter-confluence').addEventListener('change', applyFilters);
 document.getElementById('filter-waterbody').addEventListener('change', applyFilters);
 document.getElementById('filter-show-low').addEventListener('change', applyFilters);
-document.getElementById('filter-species').addEventListener('change', () => {
-  recolorMarkers();
-  const hasSpecies = !!document.getElementById('filter-species').value;
-  document.getElementById('legend-untapped').style.display = hasSpecies ? 'none' : '';
-  document.getElementById('legend-species').style.display  = hasSpecies ? '' : 'none';
-});
+document.getElementById('filter-species').addEventListener('change', applyFilters);
 
 const orderSlider = document.getElementById('filter-order');
 const orderVal    = document.getElementById('order-val');
@@ -459,6 +450,8 @@ Array.from(speciesSet).sort().forEach(sp => {
   sel.appendChild(opt);
 });
 
+// Initialize: build heatmap and apply filters (triggers updateLayers)
+heatLayer = buildHeatLayer();
 applyFilters();
 </script>
 </body>
