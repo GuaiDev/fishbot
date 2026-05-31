@@ -34,9 +34,10 @@ GRID_MIN_CELL = 20         # always keep at least this many from any populated c
 
 # (name, lat_min, lat_max, lng_min, lng_max, min_segments)
 ANCHOR_REGIONS: list[tuple[str, float, float, float, float, int]] = [
-    ("Hamilton", 43.1, 43.5, -80.1, -79.7, 100),
-    ("Niagara",  42.8, 43.3, -80.0, -78.8, 200),
-    ("Kawartha", 44.3, 44.8, -78.8, -78.0, 200),
+    ("Hamilton",   43.1,  43.5,  -80.1,  -79.7,  100),
+    ("Niagara",    42.8,  43.3,  -80.0,  -78.8,  200),
+    ("Kawartha",   44.3,  44.8,  -78.8,  -78.0,  200),
+    ("Burlington", 43.25, 43.55, -79.95, -79.60, 200),
 ]
 
 _UNTAPPED_PATH = Path("data/processed/untapped_potential.parquet")
