@@ -121,13 +121,16 @@ def test_export_map_generates_geojson(tmp_path):
 
         props = feat["properties"]
         # Required properties present
-        for key in ("untapped_score", "habitat_score", "access_score", "stream_order",
+        for key in ("untapped_score_balanced", "untapped_score_easy", "untapped_score_adventure",
+                    "habitat_score", "access_score", "stream_order",
                     "is_confluence_segment", "connected_to_waterbody",
                     "google_maps_url", "swoop_url"):
             assert key in props, f"Missing property: {key}"
 
-        # Scores are numeric and in range
-        assert 0.0 <= props["untapped_score"] <= 1.0
+        # Scores are numeric and non-negative
+        assert props["untapped_score_balanced"] >= 0.0
+        assert props["untapped_score_easy"] >= 0.0
+        assert props["untapped_score_adventure"] >= 0.0
         assert 0.0 <= props["habitat_score"] <= 1.0
         assert 0.0 <= props["access_score"] <= 1.0
 

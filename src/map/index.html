@@ -10,25 +10,14 @@
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; height: 100vh; overflow: hidden; }
 
   #sidebar {
-    width: 280px;
-    min-width: 280px;
-    background: #1a1a2e;
-    color: #e0e0e0;
-    padding: 16px;
-    overflow-y: auto;
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+    width: 280px; min-width: 280px; background: #1a1a2e; color: #e0e0e0;
+    padding: 16px; overflow-y: auto; z-index: 1000;
+    display: flex; flex-direction: column; gap: 14px;
   }
-
   #sidebar h1 { font-size: 18px; font-weight: 700; color: #4fc3f7; letter-spacing: 0.5px; }
   #sidebar .subtitle { font-size: 11px; color: #888; margin-top: -10px; }
 
-  .section-label {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
-    color: #666; margin-bottom: 4px;
-  }
+  .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #666; margin-bottom: 4px; }
 
   .filter-group { display: flex; flex-direction: column; gap: 8px; }
 
@@ -40,9 +29,9 @@
 
   .radio-group { display: flex; flex-direction: column; gap: 4px; }
   label.radio-row {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 13px; cursor: pointer; user-select: none;
-    padding: 4px 6px; border-radius: 4px; transition: background 0.1s;
+    display: flex; align-items: center; gap: 8px; font-size: 13px;
+    cursor: pointer; user-select: none; padding: 4px 6px;
+    border-radius: 4px; transition: background 0.1s;
   }
   label.radio-row:hover { background: #2a2a4a; }
   label.radio-row.active { background: #2a2a4a; }
@@ -56,11 +45,10 @@
     width: 100%; padding: 6px 8px; background: #2a2a4a; color: #e0e0e0;
     border: 1px solid #444; border-radius: 4px; font-size: 13px; cursor: pointer;
   }
-
   button#reset-btn {
     padding: 8px; background: #2a2a4a; color: #4fc3f7;
-    border: 1px solid #4fc3f7; border-radius: 4px; font-size: 13px;
-    cursor: pointer; width: 100%; transition: background 0.15s;
+    border: 1px solid #4fc3f7; border-radius: 4px;
+    font-size: 13px; cursor: pointer; width: 100%; transition: background 0.15s;
   }
   button#reset-btn:hover { background: #4fc3f7; color: #1a1a2e; }
 
@@ -103,6 +91,21 @@
   </div>
 
   <div>
+    <div class="section-label">Scoring mode</div>
+    <div class="radio-group">
+      <label class="radio-row active">
+        <input type="radio" name="scoremode" value="balanced" checked> ⚖️ Balanced
+      </label>
+      <label class="radio-row">
+        <input type="radio" name="scoremode" value="easy"> 🚗 Easy Access
+      </label>
+      <label class="radio-row">
+        <input type="radio" name="scoremode" value="adventure"> 🥾 Adventure
+      </label>
+    </div>
+  </div>
+
+  <div>
     <div class="section-label">Basemap</div>
     <div class="radio-group">
       <label class="radio-row">
@@ -137,25 +140,20 @@
   <div>
     <div class="section-label">Stream order</div>
     <div class="slider-row">
-      <div class="slider-header">
-        <span>Min order</span>
-        <span id="order-val">1</span>
-      </div>
+      <div class="slider-header"><span>Min order</span><span id="order-val">1</span></div>
       <input type="range" id="filter-order" min="1" max="6" value="1">
     </div>
   </div>
 
   <div>
     <div class="section-label">Species (recolors dots)</div>
-    <select id="filter-species">
-      <option value="">All species</option>
-    </select>
+    <select id="filter-species"><option value="">All species</option></select>
   </div>
 
   <button id="reset-btn">Reset filters</button>
 
   <div>
-    <div class="section-label">Legend</div>
+    <div class="section-label" id="legend-label">Legend — balanced score</div>
     <div id="legend-untapped" class="legend">
       <div class="legend-row"><div class="legend-dot" style="background:#e74c3c"></div><span>🔴 Top 5% — highest potential</span></div>
       <div class="legend-row"><div class="legend-dot" style="background:#e67e22"></div><span>🟠 Top 20% — high potential</span></div>
@@ -178,21 +176,19 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-// ── config injected at export time ────────────────────────────────────────────
 const MAPBOX_TOKEN = '%%MAPBOX_TOKEN%%';
 const HOME = [43.4675, -79.6877];
 
-// ── map init ──────────────────────────────────────────────────────────────────
+// ── map ───────────────────────────────────────────────────────────────────────
 const map = L.map('map', { preferCanvas: true }).setView(HOME, 10);
 
 let currentTileLayer = null;
-
 function setBasemap(style) {
   if (currentTileLayer) map.removeLayer(currentTileLayer);
   if (style === 'osm') {
     currentTileLayer = L.tileLayer(
       'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }
+      { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }
     );
   } else {
     currentTileLayer = L.tileLayer(
@@ -202,30 +198,35 @@ function setBasemap(style) {
   }
   currentTileLayer.addTo(map);
 }
-
 setBasemap('satellite-streets-v12');
 
-document.querySelectorAll('input[name="basemap"]').forEach(radio => {
-  radio.addEventListener('change', e => {
+document.querySelectorAll('input[name="basemap"]').forEach(r => {
+  r.addEventListener('change', e => {
     setBasemap(e.target.value);
-    document.querySelectorAll('label.radio-row').forEach(l => l.classList.remove('active'));
+    document.querySelectorAll('label.radio-row').forEach(l => {
+      if (l.querySelector('input[name="basemap"]')) l.classList.remove('active');
+    });
     e.target.closest('label').classList.add('active');
   });
 });
 
-// Home marker
-L.circleMarker(HOME, {
-  radius: 9, color: '#fff', weight: 2, fillColor: '#e040fb', fillOpacity: 1
-}).addTo(map).bindPopup('<b style="color:#e040fb">Home — Oakville, ON</b>');
+L.circleMarker(HOME, { radius: 9, color: '#fff', weight: 2, fillColor: '#e040fb', fillOpacity: 1 })
+  .addTo(map).bindPopup('<b style="color:#e040fb">Home — Oakville, ON</b>');
 
 // ── state ─────────────────────────────────────────────────────────────────────
 let allFeatures = [];
 let markers = [];
 let markerLayer = null;
 let speciesSet = new Set();
-let scoreThresholds = { p40: 0.032, p60: 0.038, p80: 0.046, p95: 0.063 }; // overwritten from metadata
+let scoreMode = 'balanced';
+// Thresholds by mode, overwritten from metadata
+let allThresholds = {
+  balanced: { p40: 0.032, p60: 0.038, p80: 0.046, p95: 0.063 },
+  easy:     { p40: 0.020, p60: 0.028, p80: 0.038, p95: 0.055 },
+  adventure:{ p40: 0.025, p60: 0.033, p80: 0.044, p95: 0.060 },
+};
 
-// ── zoom-based radius ─────────────────────────────────────────────────────────
+// ── zoom radius ───────────────────────────────────────────────────────────────
 function zoomRadius() {
   const z = map.getZoom();
   if (z < 10) return 3;
@@ -233,59 +234,59 @@ function zoomRadius() {
   if (z < 14) return 7;
   return 9;
 }
-
 map.on('zoomend', () => {
   const r = zoomRadius();
   markers.forEach(m => m.setRadius && m.setRadius(r));
 });
 
 // ── color ─────────────────────────────────────────────────────────────────────
-function untappedColor(score) {
-  const T = scoreThresholds;
-  if (score >= T.p95) return '#e74c3c';  // red:    top 5%
-  if (score >= T.p80) return '#e67e22';  // orange: top 20%
-  if (score >= T.p60) return '#f1c40f';  // yellow: top 40%
-  if (score >= T.p40) return '#2ecc71';  // green:  top 60%
-  return '#3498db';                       // blue:   bottom 40%
+function scoreColor(score, T) {
+  if (score >= T.p95) return '#e74c3c';
+  if (score >= T.p80) return '#e67e22';
+  if (score >= T.p60) return '#f1c40f';
+  if (score >= T.p40) return '#2ecc71';
+  return '#3498db';
 }
-
 function speciesColor(prob) {
   if (prob > 0.70) return '#e74c3c';
   if (prob > 0.50) return '#e67e22';
   if (prob > 0.30) return '#f1c40f';
   return '#3498db';
 }
-
-function dotColor(p, selectedSpecies) {
-  if (!selectedSpecies) return untappedColor(p.untapped_score);
-  const prob = p.top1_species === selectedSpecies ? p.top1_prob
-             : p.top2_species === selectedSpecies ? p.top2_prob
-             : null;
-  return prob != null ? speciesColor(prob) : untappedColor(p.untapped_score);
+function dotColor(p) {
+  const sel = document.getElementById('filter-species').value;
+  if (sel) {
+    const prob = p.top1_species === sel ? p.top1_prob
+               : p.top2_species === sel ? p.top2_prob : null;
+    if (prob != null) return speciesColor(prob);
+  }
+  const scoreKey = scoreMode === 'easy' ? 'untapped_score_easy'
+                 : scoreMode === 'adventure' ? 'untapped_score_adventure'
+                 : 'untapped_score_balanced';
+  return scoreColor(p[scoreKey] || 0, allThresholds[scoreMode]);
 }
 
-// ── popup builder ─────────────────────────────────────────────────────────────
+// ── popup ─────────────────────────────────────────────────────────────────────
 function buildPopup(p) {
-  const name = p.watercourse_name || p.nearest_named_stream || '(unnamed)';
+  const name  = p.watercourse_name || p.nearest_named_stream || '(unnamed)';
   const order = p.stream_order != null ? `Order ${p.stream_order}` : '—';
-  const confluence = p.is_confluence_segment ? '✓ Yes' : 'No';
-  const wbody = p.connected_to_waterbody ? '✓ Yes' : 'No';
-
-  function scoreBar(val) {
+  const conf  = p.is_confluence_segment ? '✓ Yes' : 'No';
+  const wb    = p.connected_to_waterbody  ? '✓ Yes' : 'No';
+  function bar(val) {
     const pct = Math.round((val || 0) * 100);
     return `<div class="score-bar-wrap"><div class="score-bar" style="width:${pct}px;max-width:80px"></div><span class="score-num">${(val||0).toFixed(3)}</span></div>`;
   }
-
   const sp1 = p.top1_species ? `${p.top1_species} (${(p.top1_prob*100).toFixed(0)}%)` : '—';
   const sp2 = p.top2_species ? `${p.top2_species} (${(p.top2_prob*100).toFixed(0)}%)` : '—';
-
   return `
     <div class="popup-title">${name} — ${order}</div>
-    <div class="popup-row"><span class="popup-key">Untapped score</span>${scoreBar(p.untapped_score)}</div>
-    <div class="popup-row"><span class="popup-key">Habitat score</span>${scoreBar(p.habitat_score)}</div>
-    <div class="popup-row"><span class="popup-key">Access score</span>${scoreBar(p.access_score)}</div>
-    <div class="popup-row"><span class="popup-key">Confluence</span><span class="popup-val">${confluence}</span></div>
-    <div class="popup-row"><span class="popup-key">Connected to lake</span><span class="popup-val">${wbody}</span></div>
+    <div class="popup-row"><span class="popup-key">Balanced score</span>${bar(p.untapped_score_balanced)}</div>
+    <div class="popup-row"><span class="popup-key">Easy access score</span>${bar(p.untapped_score_easy)}</div>
+    <div class="popup-row"><span class="popup-key">Adventure score</span>${bar(p.untapped_score_adventure)}</div>
+    <div class="popup-row"><span class="popup-key">Habitat score</span>${bar(p.habitat_score)}</div>
+    <div class="popup-row"><span class="popup-key">Access score</span>${bar(p.access_score)}</div>
+    <div class="popup-row"><span class="popup-key">Confluence</span><span class="popup-val">${conf}</span></div>
+    <div class="popup-row"><span class="popup-key">Connected to lake</span><span class="popup-val">${wb}</span></div>
     <div class="popup-row"><span class="popup-key">#1 species</span><span class="popup-val">${sp1}</span></div>
     <div class="popup-row"><span class="popup-key">#2 species</span><span class="popup-val">${sp2}</span></div>
     <div class="popup-links">
@@ -296,36 +297,28 @@ function buildPopup(p) {
 
 // ── render ─────────────────────────────────────────────────────────────────────
 function renderMarkers(features) {
-  // Remove previous layer group in one shot instead of 50k individual removes
-  if (markerLayer) { map.removeLayer(markerLayer); }
+  if (markerLayer) map.removeLayer(markerLayer);
   markers = [];
 
-  const selectedSpecies = document.getElementById('filter-species').value;
-  const r = zoomRadius();
-
-  // Debug: confirm data is present and scores are readable
   if (features.length > 0) {
-    console.log('First 5 untapped_scores:',
-      features.slice(0, 5).map(f => f.properties.untapped_score));
-    console.log('Score thresholds in use:', scoreThresholds);
+    console.log('First 5 balanced scores:',
+      features.slice(0, 5).map(f => f.properties.untapped_score_balanced));
   }
 
-  // Batch all markers into a LayerGroup — one addTo(map) instead of 50k
   markerLayer = L.layerGroup();
+  const r = zoomRadius();
   let markerCount = 0;
 
   features.forEach(f => {
     const p = f.properties;
     const [lng, lat] = f.geometry.coordinates;
-    const color = dotColor(p, selectedSpecies);
-    const m = L.circleMarker([lat, lng], {
-      radius: r, color, weight: 1, fillColor: color, fillOpacity: 0.8,
-    });
-    // Lazy popup: build HTML only on first click, not upfront for all 50k
+    const color = dotColor(p);
+    const m = L.circleMarker([lat, lng], { radius: r, color, weight: 1, fillColor: color, fillOpacity: 0.8 });
+    m._feature = f;  // store ref for in-place recolor
     m.on('click', function() {
       if (!this._popupContent) {
         this._popupContent = buildPopup(p);
-        this.bindPopup(this._popupContent, { maxWidth: 300 });
+        this.bindPopup(this._popupContent, { maxWidth: 320 });
       }
       this.openPopup();
     });
@@ -335,77 +328,94 @@ function renderMarkers(features) {
   });
 
   markerLayer.addTo(map);
+  console.log('Markers created:', markerCount, 'Filtered out:', allFeatures.length - markerCount);
+  document.getElementById('stats-bar').textContent = `${features.length.toLocaleString()} segments shown`;
+}
 
-  console.log('Markers created:', markerCount);
-  console.log('Filtered out:', allFeatures.length - markerCount);
-
-  document.getElementById('stats-bar').textContent =
-    `${features.length.toLocaleString()} segments shown`;
+// Recolor existing markers in-place (no rebuild) when mode or species changes
+function recolorMarkers() {
+  markers.forEach(m => {
+    const color = dotColor(m._feature.properties);
+    m.setStyle({ color, fillColor: color });
+  });
 }
 
 // ── filter ─────────────────────────────────────────────────────────────────────
 function applyFilters() {
-  const onlyConfluence = document.getElementById('filter-confluence').checked;
-  const onlyWaterbody  = document.getElementById('filter-waterbody').checked;
-  const minOrder       = parseInt(document.getElementById('filter-order').value, 10);
-  const species        = document.getElementById('filter-species').value;
+  const onlyConf = document.getElementById('filter-confluence').checked;
+  const onlyWb   = document.getElementById('filter-waterbody').checked;
+  const minOrder = parseInt(document.getElementById('filter-order').value, 10);
+  const species  = document.getElementById('filter-species').value;
 
   const filtered = allFeatures.filter(f => {
     const p = f.properties;
-    if (onlyConfluence && !p.is_confluence_segment) return false;
-    if (onlyWaterbody  && !p.connected_to_waterbody) return false;
+    if (onlyConf && !p.is_confluence_segment) return false;
+    if (onlyWb   && !p.connected_to_waterbody) return false;
     if (p.stream_order != null && p.stream_order < minOrder) return false;
     if (species && p.top1_species !== species && p.top2_species !== species) return false;
     return true;
   });
 
-  // Toggle legend between untapped and species modes
-  document.getElementById('legend-untapped').style.display = species ? 'none' : '';
-  document.getElementById('legend-species').style.display  = species ? ''     : 'none';
+  const hasSpecies = !!species;
+  document.getElementById('legend-untapped').style.display = hasSpecies ? 'none' : '';
+  document.getElementById('legend-species').style.display  = hasSpecies ? '' : 'none';
 
   renderMarkers(filtered);
 }
 
 // ── controls ──────────────────────────────────────────────────────────────────
+const SCORE_MODE_LABELS = { balanced: 'balanced score', easy: 'easy access score', adventure: 'adventure score' };
+
+document.querySelectorAll('input[name="scoremode"]').forEach(r => {
+  r.addEventListener('change', e => {
+    scoreMode = e.target.value;
+    document.querySelectorAll('label.radio-row').forEach(l => {
+      if (l.querySelector('input[name="scoremode"]')) l.classList.remove('active');
+    });
+    e.target.closest('label').classList.add('active');
+    document.getElementById('legend-label').textContent = `Legend — ${SCORE_MODE_LABELS[scoreMode]}`;
+    recolorMarkers();  // no rebuild needed — just update colors
+  });
+});
+
 document.getElementById('filter-confluence').addEventListener('change', applyFilters);
 document.getElementById('filter-waterbody').addEventListener('change', applyFilters);
-document.getElementById('filter-species').addEventListener('change', applyFilters);
+document.getElementById('filter-species').addEventListener('change', () => {
+  recolorMarkers();
+  const hasSpecies = !!document.getElementById('filter-species').value;
+  document.getElementById('legend-untapped').style.display = hasSpecies ? 'none' : '';
+  document.getElementById('legend-species').style.display  = hasSpecies ? '' : 'none';
+});
 
 const orderSlider = document.getElementById('filter-order');
 const orderVal    = document.getElementById('order-val');
-orderSlider.addEventListener('input', () => {
-  orderVal.textContent = orderSlider.value;
-  applyFilters();
-});
+orderSlider.addEventListener('input', () => { orderVal.textContent = orderSlider.value; applyFilters(); });
 
 document.getElementById('reset-btn').addEventListener('click', () => {
   document.getElementById('filter-confluence').checked = false;
   document.getElementById('filter-waterbody').checked  = false;
-  orderSlider.value = 1;
-  orderVal.textContent = '1';
+  orderSlider.value = 1; orderVal.textContent = '1';
   document.getElementById('filter-species').value = '';
   applyFilters();
 });
 
-// ── inline data (embedded by make export-map) ─────────────────────────────────
+// ── data ───────────────────────────────────────────────────────────────────────
 const mapData = %%MAP_DATA%%;
 
 console.log('FishBot map loading, segments:', mapData.features.length);
 
-// Load percentile thresholds from export metadata (5-tier: p40, p60, p80, p95)
 if (mapData.metadata && mapData.metadata.score_thresholds) {
-  scoreThresholds = mapData.metadata.score_thresholds;
-  console.log('Score thresholds:', scoreThresholds);
+  allThresholds = mapData.metadata.score_thresholds;
+  console.log('Score thresholds loaded:', allThresholds);
 }
 
 allFeatures = mapData.features;
 
-// Populate species dropdown
+const sel = document.getElementById('filter-species');
 allFeatures.forEach(f => {
   if (f.properties.top1_species) speciesSet.add(f.properties.top1_species);
   if (f.properties.top2_species) speciesSet.add(f.properties.top2_species);
 });
-const sel = document.getElementById('filter-species');
 Array.from(speciesSet).sort().forEach(sp => {
   const opt = document.createElement('option');
   opt.value = sp; opt.textContent = sp;

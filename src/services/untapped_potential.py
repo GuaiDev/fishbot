@@ -41,18 +41,19 @@ def compute_untapped_potential(
     feature_matrix: pd.DataFrame | None = None,
     species: str | None = None,
     force_recompute_access: bool = False,
-    mode: str = "easy_access",
+    mode: str = "balanced",
 ) -> pd.DataFrame:
     """Compute untapped potential for all segments.
 
     mode options:
-      "easy_access"  — habitat × (1-pressure) × access  (road-accessible spots)
-      "adventure"    — habitat × (1-pressure) × (1-access+0.1)  (remote spots)
-      "balanced"     — habitat × (1-pressure)  (pure habitat quality, access-agnostic)
+      "balanced"     — habitat × (1-pressure) × remoteness  (default — access ignored)
+      "easy_access"  — habitat × (1-pressure) × access × remoteness  (road-accessible)
+      "adventure"    — habitat × (1-pressure) × (1-access+0.1) × remoteness  (remote)
 
-    Returns DataFrame sorted descending by untapped_score with columns:
-      ogf_id, centroid_lat, centroid_lng, watercourse_name, stream_order,
-      habitat_score, access_score, observation_pressure, untapped_score
+    All three scores are always computed and stored as separate columns
+    (untapped_score_balanced, untapped_score_easy, untapped_score_adventure).
+    The `mode` parameter determines which becomes the primary `untapped_score`
+    used for sorting and agent-facing queries.
 
     Caches result to data/processed/untapped_potential.parquet.
     """
@@ -155,25 +156,23 @@ def compute_untapped_potential(
         "Habitat floor applied to %d remote segments with coarse/mixed substrate", n_floored
     )
 
-    if mode == "adventure":
-        base["untapped_score"] = (
-            base["habitat_score"]
-            * (1.0 - base["observation_pressure"])
-            * (1.0 - base["access_score"] + 0.1)
-        )
-    elif mode == "balanced":
-        base["untapped_score"] = base["habitat_score"] * (1.0 - base["observation_pressure"])
-    else:  # easy_access (default)
-        base["untapped_score"] = (
-            base["habitat_score"] * (1.0 - base["observation_pressure"]) * base["access_score"]
-        )
+    # Compute all three mode scores so the map can toggle between them
+    _h = base["habitat_score"]
+    _p = base["observation_pressure"]
+    _a = base["access_score"]
+    _struct = _structural_bonus(base)
+    _remote = _remoteness_multiplier(base["observation_density_25km"])
 
-    # Apply structural bonus then remoteness multiplier
-    base["untapped_score"] = (
-        base["untapped_score"]
-        * _structural_bonus(base)
-        * _remoteness_multiplier(base["observation_density_25km"])
-    )
+    base["untapped_score_balanced"] = _h * (1.0 - _p) * _struct * _remote
+    base["untapped_score_easy"] = _h * (1.0 - _p) * _a * _struct * _remote
+    base["untapped_score_adventure"] = _h * (1.0 - _p) * (1.0 - _a + 0.1) * _struct * _remote
+
+    if mode == "adventure":
+        base["untapped_score"] = base["untapped_score_adventure"]
+    elif mode == "easy_access":
+        base["untapped_score"] = base["untapped_score_easy"]
+    else:  # balanced (default)
+        base["untapped_score"] = base["untapped_score_balanced"]
 
     result = base.reset_index().sort_values("untapped_score", ascending=False)
 
@@ -1100,11 +1099,19 @@ def _load_habitat_scores(db, species: str | None) -> pd.Series:
 
 
 def _compute_pressure(feature_matrix: pd.DataFrame) -> pd.Series:
-    """Normalise observation_density_25km to [0, 1]."""
+    """Normalise observation_density_25km to [0, 1] using log scale.
+
+    Log normalization compresses the urban/rural gap: a 100× density difference
+    (rural=5 vs urban=500) becomes ~3× on log scale, giving rural segments more
+    credit for their genuinely low pressure instead of treating them as near-zero.
+    """
+    import numpy as np
+
     col = feature_matrix.set_index("ogf_id")["observation_density_25km"].fillna(0.0)
-    lo, hi = col.min(), col.max()
-    if hi > lo:
-        return ((col - lo) / (hi - lo)).rename("observation_pressure")
+    log_density = np.log1p(col)
+    log_max = float(log_density.max())
+    if log_max > 0:
+        return (log_density / log_max).rename("observation_pressure")
     return col.clip(0.0, 1.0).rename("observation_pressure")
 
 

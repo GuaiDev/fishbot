@@ -205,19 +205,37 @@ def export_map_data(
     untapped = untapped[~lake_mask]
     logger.info("Removed %d lake/virtual-flow segments", n_lake_removed)
 
-    # Sort by untapped_score descending, cap at MAX_SEGMENTS
-    untapped = untapped.sort_values("untapped_score", ascending=False).head(MAX_SEGMENTS)
+    # Sort by balanced score descending, cap at MAX_SEGMENTS
+    _has = lambda c: c in untapped.columns  # noqa: E731
+    sort_col = "untapped_score_balanced" if _has("untapped_score_balanced") else "untapped_score"
+    untapped = untapped.sort_values(sort_col, ascending=False).head(MAX_SEGMENTS)
 
-    # Compute percentile thresholds for the kept segments (used by JS for coloring).
-    # Scores are sorted descending, so index 0 = max, index n*0.05 = p95, etc.
-    scores = untapped["untapped_score"].values
-    p95 = float(scores[int(len(scores) * 0.05)])   # top 5%  boundary
-    p80 = float(scores[int(len(scores) * 0.20)])   # top 20% boundary
-    p60 = float(scores[int(len(scores) * 0.40)])   # top 40% boundary
-    p40 = float(scores[int(len(scores) * 0.60)])   # top 60% boundary (bottom 40% below)
+    def _percentile_thresholds(col: pd.Series) -> dict:
+        """Compute 5-tier thresholds from a score column sorted descending."""
+        vals = col.sort_values(ascending=False).values
+        n = len(vals)
+        return {
+            "p95": round(float(vals[int(n * 0.05)]), 5),
+            "p80": round(float(vals[int(n * 0.20)]), 5),
+            "p60": round(float(vals[int(n * 0.40)]), 5),
+            "p40": round(float(vals[int(n * 0.60)]), 5),
+        }
+
+    # Compute per-mode thresholds so the JS can colour correctly in each mode
+    def _col(suffix: str) -> str:
+        return f"untapped_score_{suffix}" if _has(f"untapped_score_{suffix}") else "untapped_score"
+
+    score_cols = {
+        "balanced": _col("balanced"),
+        "easy": _col("easy"),
+        "adventure": _col("adventure"),
+    }
+    thresholds_by_mode = {
+        mode: _percentile_thresholds(untapped[col]) for mode, col in score_cols.items()
+    }
     logger.info(
-        "Score thresholds — p95: %.4f  p80: %.4f  p60: %.4f  p40: %.4f",
-        p95, p80, p60, p40,
+        "Score thresholds (balanced) — p95: %.4f  p80: %.4f  p60: %.4f  p40: %.4f",
+        *thresholds_by_mode["balanced"].values(),
     )
 
     logger.info("Loading feature matrix for SDM predictions...")
@@ -236,16 +254,22 @@ def export_map_data(
         lat = float(row.centroid_lat)
         lng = float(row.centroid_lng)
 
+        def _score(col: str) -> float | None:
+            v = getattr(row, col, None)
+            return round(float(v), 4) if v is not None and v == v else None
+
         props = {
             "ogf_id": int(ogf_id) if ogf_id == ogf_id else None,
-            "untapped_score": round(float(row.untapped_score), 4),
+            "untapped_score_balanced": _score(score_cols["balanced"]),
+            "untapped_score_easy": _score(score_cols["easy"]),
+            "untapped_score_adventure": _score(score_cols["adventure"]),
             "habitat_score": round(float(row.habitat_score), 4),
             "access_score": round(float(row.access_score), 4),
             "stream_order": int(row.stream_order) if row.stream_order == row.stream_order else None,
             "watercourse_name": str(row.watercourse_name)
             if row.watercourse_name and str(row.watercourse_name) != "nan"
             else None,
-            "nearest_named_stream": None,  # not in parquet; placeholder
+            "nearest_named_stream": None,
             "is_confluence_segment": bool(row.is_confluence_segment),
             "connected_to_waterbody": bool(row.connected_to_waterbody),
             "observation_pressure": round(float(row.observation_pressure), 4),
@@ -273,12 +297,7 @@ def export_map_data(
             "home_lng": HOME_LNG,
             "radius_km": HOME_RADIUS_KM,
             "segment_count": len(geojson_features),
-            "score_thresholds": {
-                "p40": round(p40, 5),
-                "p60": round(p60, 5),
-                "p80": round(p80, 5),
-                "p95": round(p95, 5),
-            },
+            "score_thresholds": thresholds_by_mode,
         },
     }
 
@@ -319,15 +338,10 @@ def export_map_data(
         "segments": len(geojson_features),
         "lake_removed": n_lake_removed,
         "json_mb": round(json_mb, 1),
-        "html_mb": round(_HTML_OUTPUT.stat().st_size / 1_048_576, 1) if html_out else None,
+        "html_mb": round(html_output_path.stat().st_size / 1_048_576, 1) if html_out else None,
         "path": str(output_path),
         "html": str(html_out) if html_out else None,
-        "score_thresholds": {
-            "p40": round(p40, 5),
-            "p60": round(p60, 5),
-            "p80": round(p80, 5),
-            "p95": round(p95, 5),
-        },
+        "score_thresholds": thresholds_by_mode,
     }
 
 
@@ -336,10 +350,7 @@ if __name__ == "__main__":
     stats = export_map_data()
     print(f"\nExported {stats['segments']:,} segments → {stats['path']} ({stats['json_mb']} MB)")
     print(f"Lake/virtual-flow segments removed: {stats['lake_removed']:,}")
-    t = stats["score_thresholds"]
-    print(  # noqa: E501
-        f"Score thresholds — top5%: {t['p95']:.5f}  top20%: {t['p80']:.5f}"
-        f"  top40%: {t['p60']:.5f}  top60%: {t['p40']:.5f}"
-    )
+    t = stats["score_thresholds"]["balanced"]
+    print(f"Balanced thresholds — p95: {t['p95']:.5f}  p80: {t['p80']:.5f}  p60: {t['p60']:.5f}  p40: {t['p40']:.5f}")  # noqa: E501
     if stats.get("html"):
         print(f"Self-contained HTML: {stats['html']} ({stats['html_mb']} MB)")
