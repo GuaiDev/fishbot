@@ -65,6 +65,11 @@ _NUMERIC_FEATURES = [
     "observation_density_25km",
     "is_stocked_within_5yr",
     "pwqmn_coverage",
+    # Phase 3a: structural features
+    "is_confluence_segment",
+    "distance_to_nearest_confluence_km",
+    "nearest_waterbody_distance_m",
+    "connected_to_waterbody",
 ]
 _ALL_FEATURES = _NUMERIC_FEATURES + _CATEGORICAL_FEATURES
 
@@ -320,7 +325,14 @@ def _extract_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def _cast_bool_cols(df: pd.DataFrame) -> None:
     """Cast bool columns to float in-place so sklearn imputers work correctly."""
-    for col in ["flow_verified", "is_stocked_within_5yr", "pwqmn_coverage"]:
+    bool_cols = [
+        "flow_verified",
+        "is_stocked_within_5yr",
+        "pwqmn_coverage",
+        "is_confluence_segment",
+        "connected_to_waterbody",
+    ]
+    for col in bool_cols:
         if col in df.columns and df[col].dtype == bool:
             df[col] = df[col].astype(float)
 

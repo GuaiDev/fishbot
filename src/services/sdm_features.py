@@ -200,6 +200,25 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
     stocking_map = _assign_stocking(centroids, stocking_rows)
     logger.info("  stocking: %.1fs", time.time() - t)
 
+    t = time.time()
+    logger.info("Computing confluence features...")
+    is_confluence, confluence_distances = _compute_confluence_features(G, centroids)
+    logger.info(
+        "  confluence: %d confluence segments, %.1fs",
+        sum(is_confluence.values()),
+        time.time() - t,
+    )
+
+    t = time.time()
+    logger.info("Computing waterbody proximity features...")
+    wb_distances = _compute_waterbody_proximity(db, centroids)
+    n_connected = sum(1 for v in wb_distances.values() if v is not None and v <= 200.0)
+    logger.info(
+        "  waterbody proximity: %d segments within 200m of water body, %.1fs",
+        n_connected,
+        time.time() - t,
+    )
+
     rows = []
     for seg in segments:
         oid = seg["ogf_id"]
@@ -209,6 +228,7 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
         ept = ept_map.get(oid, {})
         stocking = stocking_map.get(oid, {})
 
+        wb_dist = wb_distances.get(oid)
         rows.append(
             {
                 "ogf_id": oid,
@@ -236,6 +256,11 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
                 # distance; False = outside monitoring coverage (correlates with
                 # Canadian Shield / northern Ontario)
                 "pwqmn_coverage": oid in thermal_map,
+                # Phase 3a structural features
+                "is_confluence_segment": is_confluence.get(oid, False),
+                "distance_to_nearest_confluence_km": confluence_distances.get(oid),
+                "nearest_waterbody_distance_m": wb_dist,
+                "connected_to_waterbody": wb_dist is not None and wb_dist <= 200.0,
             }
         )
 
@@ -607,4 +632,114 @@ def _assign_stocking(
                 "is_stocked": True,
                 "species": recent[nearest].get("species"),
             }
+    return result
+
+
+def _compute_confluence_features(
+    G: nx.DiGraph,
+    centroids: dict[int, tuple[float, float]],
+) -> tuple[dict[int, bool], dict[int, float | None]]:
+    """Detect confluence segments and compute distance to nearest confluence node.
+
+    A confluence node has total degree >= 3 (multiple tributaries meeting).
+    Uses a deduplicated DAG to avoid inflating degree from bidirectional edges.
+    """
+    from scipy.spatial import cKDTree
+
+    # Deduplicate by ogf_id (same as _compute_strahler_order) to avoid counting
+    # bidirectional unverified-flow edges twice at each node.
+    seen_ogf: set[int] = set()
+    dag = nx.DiGraph()
+    for u, v, data in G.edges(data=True):
+        ogf_id = data.get("ogf_id")
+        if ogf_id is None or ogf_id in seen_ogf:
+            continue
+        seen_ogf.add(ogf_id)
+        dag.add_edge(u, v, **data)
+
+    confluence_nodes = {
+        n for n in dag.nodes() if dag.in_degree(n) + dag.out_degree(n) >= 3
+    }
+
+    # Map each ogf_id to its endpoint nodes
+    ogf_to_nodes: dict[int, set[str]] = {}
+    for u, v, data in dag.edges(data=True):
+        ogf_id = data.get("ogf_id")
+        if ogf_id is None:
+            continue
+        s = ogf_to_nodes.setdefault(ogf_id, set())
+        s.add(u)
+        s.add(v)
+
+    is_confluence = {
+        ogf_id: bool(nodes & confluence_nodes)
+        for ogf_id, nodes in ogf_to_nodes.items()
+    }
+
+    if not confluence_nodes:
+        return is_confluence, {ogf_id: None for ogf_id in centroids}
+
+    # Parse confluence node coordinates ("lng,lat" format)
+    conf_lats, conf_lngs = [], []
+    for node in confluence_nodes:
+        parts = node.split(",")
+        conf_lngs.append(float(parts[0]))
+        conf_lats.append(float(parts[1]))
+
+    # Scale to km so the KDTree distance is in km
+    conf_coords = np.array(
+        [[lat * 111.0, lng * 80.5] for lat, lng in zip(conf_lats, conf_lngs)]
+    )
+    tree = cKDTree(conf_coords)
+
+    ogf_ids = list(centroids.keys())
+    seg_coords = np.array([[centroids[k][0] * 111.0, centroids[k][1] * 80.5] for k in ogf_ids])
+    dists_km, _ = tree.query(seg_coords)
+
+    confluence_distances: dict[int, float | None] = {
+        ogf_ids[i]: float(dists_km[i]) for i in range(len(ogf_ids))
+    }
+    return is_confluence, confluence_distances
+
+
+_WATERBODY_TYPES = frozenset({"pond", "lake", "reservoir", "basin", "water", "wetland"})
+_WATERBODY_MAX_M = 500.0
+
+
+def _compute_waterbody_proximity(
+    db: Any,
+    centroids: dict[int, tuple[float, float]],
+) -> dict[int, float | None]:
+    """Distance in metres from each segment midpoint to nearest mapped water body.
+
+    Returns None for segments with no water body within _WATERBODY_MAX_M metres.
+    """
+    if "water_features" not in db.table_names():
+        return {ogf_id: None for ogf_id in centroids}
+
+    from scipy.spatial import cKDTree
+
+    wb_rows = [
+        r
+        for r in db["water_features"].rows
+        if r.get("feature_type") in _WATERBODY_TYPES
+        and r.get("lat") is not None
+        and r.get("lng") is not None
+    ]
+    if not wb_rows:
+        return {ogf_id: None for ogf_id in centroids}
+
+    wb_coords = np.array([[r["lat"] * 111.0, r["lng"] * 80.5] for r in wb_rows])
+    tree = cKDTree(wb_coords)
+
+    ogf_ids = list(centroids.keys())
+    seg_coords = np.array([[centroids[k][0] * 111.0, centroids[k][1] * 80.5] for k in ogf_ids])
+
+    max_km = _WATERBODY_MAX_M / 1000.0
+    dists_km, _ = tree.query(seg_coords, distance_upper_bound=max_km * 1.05)
+
+    result: dict[int, float | None] = {}
+    for i, ogf_id in enumerate(ogf_ids):
+        dist_km = dists_km[i]
+        result[ogf_id] = float(dist_km * 1000.0) if dist_km <= max_km else None
     return result

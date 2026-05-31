@@ -104,6 +104,21 @@ def compute_untapped_potential(
     else:
         base["observation_density_25km"] = 0
 
+    # Phase 3a structural features — pass through from feature matrix if present
+    _struct_cols = [
+        "is_confluence_segment",
+        "distance_to_nearest_confluence_km",
+        "nearest_waterbody_distance_m",
+        "connected_to_waterbody",
+    ]
+    for col in _struct_cols:
+        if col in feature_matrix.columns:
+            base[col] = feature_matrix[col].values
+        elif col in ("is_confluence_segment", "connected_to_waterbody"):
+            base[col] = False
+        else:
+            base[col] = float("nan")
+
     base = base.set_index("ogf_id")
 
     base["habitat_score"] = habitat_scores.reindex(base.index).fillna(0.0)
@@ -122,6 +137,9 @@ def compute_untapped_potential(
         base["untapped_score"] = (
             base["habitat_score"] * (1.0 - base["observation_pressure"]) * base["access_score"]
         )
+
+    # Apply structural bonus
+    base["untapped_score"] = base["untapped_score"] * _structural_bonus(base)
 
     result = base.reset_index().sort_values("untapped_score", ascending=False)
 
@@ -243,6 +261,16 @@ def find_untapped_water_for_agent(
         seg_type = str(row["watercourse_type"]) if row.get("watercourse_type") else None
         is_crown = bool(crown_dict.get(int(row["ogf_id"]), False))
         access_score_val = float(row["access_score"])
+        is_conf = bool(row.get("is_confluence_segment", False))
+        wb_conn = bool(row.get("connected_to_waterbody", False))
+        wb_m_raw = row.get("nearest_waterbody_distance_m")
+        wb_m = float(wb_m_raw) if wb_m_raw is not None and not pd.isna(wb_m_raw) else None
+        conf_dist_raw = row.get("distance_to_nearest_confluence_km")
+        conf_dist = (
+            float(conf_dist_raw)
+            if conf_dist_raw is not None and not pd.isna(conf_dist_raw)
+            else None
+        )
 
         segments.append(
             {
@@ -260,6 +288,10 @@ def find_untapped_water_for_agent(
                 "untapped_score": round(float(row["untapped_score"]), 4),
                 "is_crown_land": is_crown,
                 "access_note": _access_note(is_crown, access_score_val),
+                "is_confluence": is_conf,
+                "connected_to_waterbody": wb_conn,
+                "nearest_waterbody_m": round(wb_m, 1) if wb_m is not None else None,
+                "structural_note": _structural_note(is_conf, wb_conn, wb_m, conf_dist),
                 "nearest_named_stream": named_stream,
                 "nearest_road_access": road_access,
                 "nearest_osm_access": osm_access,
@@ -273,6 +305,9 @@ def find_untapped_water_for_agent(
                     float(row["observation_pressure"]),
                     top_species,
                     species,
+                    is_confluence=is_conf,
+                    connected_to_waterbody=wb_conn,
+                    nearest_waterbody_m=wb_m,
                 ),
             }
         )
@@ -417,6 +452,16 @@ def find_exploration_targets(
         seg_type = str(row["watercourse_type"]) if row.get("watercourse_type") else None
         is_crown = bool(crown_dict.get(int(row["ogf_id"]), False))
         access_score_val = float(row["access_score"])
+        is_conf = bool(row.get("is_confluence_segment", False))
+        wb_conn = bool(row.get("connected_to_waterbody", False))
+        wb_m_raw = row.get("nearest_waterbody_distance_m")
+        wb_m = float(wb_m_raw) if wb_m_raw is not None and not pd.isna(wb_m_raw) else None
+        conf_dist_raw = row.get("distance_to_nearest_confluence_km")
+        conf_dist = (
+            float(conf_dist_raw)
+            if conf_dist_raw is not None and not pd.isna(conf_dist_raw)
+            else None
+        )
 
         segments.append(
             {
@@ -435,6 +480,10 @@ def find_exploration_targets(
                 "mode": mode,
                 "is_crown_land": is_crown,
                 "access_note": _access_note(is_crown, access_score_val),
+                "is_confluence": is_conf,
+                "connected_to_waterbody": wb_conn,
+                "nearest_waterbody_m": round(wb_m, 1) if wb_m is not None else None,
+                "structural_note": _structural_note(is_conf, wb_conn, wb_m, conf_dist),
                 "nearby_confirmed_species": nearby_species,
                 "connectivity_note": connectivity_note,
                 "habitat_summary": habitat_summary,
@@ -452,6 +501,9 @@ def find_exploration_targets(
                     float(row["observation_pressure"]),
                     top_sp,
                     species,
+                    is_confluence=is_conf,
+                    connected_to_waterbody=wb_conn,
+                    nearest_waterbody_m=wb_m,
                 ),
             }
         )
@@ -667,16 +719,34 @@ def _exploration_note(
     pressure: float,
     top_species: list[str],
     filter_species: str | None,
+    is_confluence: bool = False,
+    connected_to_waterbody: bool = False,
+    nearest_waterbody_m: float | None = None,
 ) -> str:
     parts = []
 
-    # Water identity
-    if seg_name:
-        parts.append(f"{seg_name}.")
-    elif named_stream:
-        parts.append(f"Unnamed tributary near {named_stream.split('(')[0].strip()}.")
-    else:
-        parts.append("Unnamed stream segment.")
+    # Lead with structural features when present
+    stream_ref = seg_name or (named_stream.split("(")[0].strip() if named_stream else None)
+    if is_confluence and stream_ref:
+        parts.append(
+            f"Confluence point on {stream_ref} — check the pool below the junction."
+        )
+    elif is_confluence:
+        parts.append("Confluence point — check the pool below the junction.")
+    elif connected_to_waterbody and nearest_waterbody_m is not None:
+        parts.append(
+            f"Creek connects to water body {int(nearest_waterbody_m)}m away "
+            "— fish likely stacking at the transition."
+        )
+
+    # Water identity (if not already led with structural)
+    if not is_confluence and not (connected_to_waterbody and nearest_waterbody_m is not None):
+        if seg_name:
+            parts.append(f"{seg_name}.")
+        elif named_stream:
+            parts.append(f"Unnamed tributary near {named_stream.split('(')[0].strip()}.")
+        else:
+            parts.append("Unnamed stream segment.")
 
     # Habitat signal
     if filter_species:
@@ -747,17 +817,62 @@ def _access_note(is_crown_land: bool, access_score: float) -> str:
     return "Road or park access nearby — verify public right of way."
 
 
+def _structural_bonus(df: pd.DataFrame) -> pd.Series:
+    """Multiplicative bonus for structural fish congregation features. Capped at 2.0."""
+    import numpy as np
+
+    bonus = pd.Series(1.0, index=df.index, dtype=float)
+
+    if "is_confluence_segment" in df.columns:
+        is_conf = df["is_confluence_segment"].fillna(False).astype(bool)
+        bonus += np.where(is_conf, 0.4, 0.0)
+
+        if "distance_to_nearest_confluence_km" in df.columns:
+            dist = df["distance_to_nearest_confluence_km"].fillna(float("inf"))
+            near_conf = (~is_conf) & (dist < 0.5)
+            bonus += np.where(near_conf, 0.2, 0.0)
+
+    if "connected_to_waterbody" in df.columns:
+        is_wb = df["connected_to_waterbody"].fillna(False).astype(bool)
+        bonus += np.where(is_wb, 0.3, 0.0)
+
+    return bonus.clip(upper=2.0)
+
+
+def _structural_note(
+    is_confluence: bool,
+    connected_to_waterbody: bool,
+    nearest_waterbody_m: float | None,
+    distance_to_nearest_confluence_km: float | None,
+) -> str:
+    """One-sentence structural congregation note for a stream segment."""
+    if is_confluence:
+        return (
+            "Confluence point — multiple streams meet here. "
+            "High fish congregation probability."
+        )
+    if connected_to_waterbody and nearest_waterbody_m is not None:
+        return (
+            f"Stream connects to nearby water body within {int(nearest_waterbody_m)}m "
+            "— likely pool or pond where fish stack."
+        )
+    if distance_to_nearest_confluence_km is not None and distance_to_nearest_confluence_km < 0.5:
+        return "Within 500m of a stream confluence — fish often hold in this zone."
+    return "No structural features detected from mapped data — verify on satellite view."
+
+
 def _compute_mode_score(df: pd.DataFrame, mode: str) -> pd.Series:
-    """Return untapped scores for each row based on the requested mode."""
+    """Return untapped scores for each row based on the requested mode and structural bonus."""
     h = df["habitat_score"]
     p = df["observation_pressure"]
     a = df["access_score"]
     if mode == "adventure":
-        return h * (1.0 - p) * (1.0 - a + 0.1)
+        base = h * (1.0 - p) * (1.0 - a + 0.1)
     elif mode == "balanced":
-        return h * (1.0 - p)
+        base = h * (1.0 - p)
     else:  # easy_access
-        return h * (1.0 - p) * a
+        base = h * (1.0 - p) * a
+    return base * _structural_bonus(df)
 
 
 def _nearby_confirmed_species(db, lat: float, lng: float, radius_km: float = 5.0) -> list[str]:

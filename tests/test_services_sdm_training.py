@@ -55,6 +55,13 @@ def _make_features(n: int = _N, seed: int = 0) -> pd.DataFrame:
             "observation_density_25km": rng.integers(0, 20, n),
             "is_stocked_within_5yr": np.zeros(n, dtype=bool),
             "pwqmn_coverage": np.zeros(n, dtype=bool),
+            # Phase 3a structural features
+            "is_confluence_segment": np.zeros(n, dtype=bool),
+            "distance_to_nearest_confluence_km": rng.uniform(0.1, 5.0, n),
+            "nearest_waterbody_distance_m": np.where(
+                np.arange(n) < 5, rng.uniform(50, 450, n), np.nan
+            ),
+            "connected_to_waterbody": np.where(np.arange(n) < 5, True, False),
         }
     )
     return df

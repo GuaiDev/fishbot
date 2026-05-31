@@ -10,7 +10,9 @@ from src.services.sdm_features import (
     _assign_from_upstream_stations,
     _assign_geology,
     _assign_stocking,
+    _compute_confluence_features,
     _compute_strahler_order,
+    _compute_waterbody_proximity,
     _count_upstream_barriers,
     _make_snap_fn,
     _nearest_observation_distance,
@@ -539,3 +541,124 @@ def test_build_feature_matrix_integration(tmp_path: Path):
     # Coverage fraction is a float between 0 and 1
     cov = coverage_fraction(df)
     assert 0.0 <= cov <= 1.0
+
+
+# ── Phase 3a: structural features ─────────────────────────────────────────────
+
+
+def test_confluence_detection():
+    """A 3-way junction node makes its incident segments is_confluence_segment=True."""
+    # hub is shared by three streams: A→hub, B→hub, hub→C
+    hub = _node(-79.5, 43.7)
+    A = _node(-79.6, 43.7)
+    B = _node(-79.5, 43.8)
+    C = _node(-79.4, 43.6)
+
+    G = nx.DiGraph()
+    G.add_edge(A, hub, ogf_id=1, length_m=1000.0)
+    G.add_edge(B, hub, ogf_id=2, length_m=1000.0)
+    G.add_edge(hub, C, ogf_id=3, length_m=1000.0)
+
+    centroids = {
+        1: (43.7, -79.55),   # midpoint A→hub
+        2: (43.75, -79.5),   # midpoint B→hub
+        3: (43.65, -79.45),  # midpoint hub→C
+    }
+    is_conf, _ = _compute_confluence_features(G, centroids)
+
+    # Segments 1 and 2 share the hub endpoint → confluence
+    assert is_conf[1] is True
+    assert is_conf[2] is True
+    # Segment 3 also touches hub → confluence
+    assert is_conf[3] is True
+
+
+def test_non_confluence_segment():
+    """A simple 2-node chain has no confluence — both segments are False."""
+    A = _node(-79.6, 43.7)
+    B = _node(-79.5, 43.7)
+    C = _node(-79.4, 43.7)
+
+    G = nx.DiGraph()
+    G.add_edge(A, B, ogf_id=1, length_m=500.0)
+    G.add_edge(B, C, ogf_id=2, length_m=500.0)
+
+    centroids = {1: (43.7, -79.55), 2: (43.7, -79.45)}
+    is_conf, dists = _compute_confluence_features(G, centroids)
+
+    assert is_conf.get(1, False) is False
+    assert is_conf.get(2, False) is False
+
+
+def test_confluence_distance():
+    """Segment midpoints farther from confluence get higher distance values."""
+    hub = _node(-79.5, 43.7)
+    A = _node(-79.6, 43.7)
+    B = _node(-79.5, 43.8)
+    C = _node(-79.4, 43.6)
+    D = _node(-79.0, 43.7)  # far downstream segment
+
+    G = nx.DiGraph()
+    G.add_edge(A, hub, ogf_id=1, length_m=1000.0)
+    G.add_edge(B, hub, ogf_id=2, length_m=1000.0)
+    G.add_edge(hub, C, ogf_id=3, length_m=1000.0)
+    G.add_edge(C, D, ogf_id=4, length_m=50000.0)
+
+    centroids = {
+        1: (43.7, -79.55),
+        2: (43.75, -79.5),
+        3: (43.65, -79.45),
+        4: (43.65, -79.2),  # far from hub
+    }
+    _, dists = _compute_confluence_features(G, centroids)
+
+    # Segment 4 is far from the hub confluence → larger distance
+    assert dists[4] > dists[1]
+    assert dists[4] > 10.0  # should be many km away
+
+
+def test_waterbody_proximity(tmp_path):
+    """Segment within 200m of a pond gets connected_to_waterbody=True."""
+    from src.storage.database import get_db
+
+    db = get_db(tmp_path / "test.db")
+    if "water_features" not in db.table_names():
+        db["water_features"].create(
+            {
+                "osm_id": str, "feature_type": str, "name": str,
+                "lat": float, "lng": float, "jurisdiction": str,
+                "area_m2": float, "tags": str, "fetched_at": str,
+            },
+            pk="osm_id",
+        )
+    # Insert a pond very close to segment 1 (~150m away)
+    db["water_features"].insert({
+        "osm_id": "w1", "feature_type": "pond", "name": "Test Pond",
+        "lat": 43.7013, "lng": -79.5000,   # ~150m north of 43.7, -79.5
+        "jurisdiction": "CA-ON", "area_m2": 5000.0,
+        "tags": "{}", "fetched_at": "2026-01-01T00:00:00",
+    })
+
+    centroids = {
+        1: (43.7, -79.5),     # close to pond
+        2: (43.8, -79.5),     # far from pond (~11km)
+    }
+    dists = _compute_waterbody_proximity(db, centroids)
+
+    assert dists[1] is not None
+    assert dists[1] <= 200.0
+    assert dists[2] is None  # outside 500m window
+
+
+def test_structural_note_confluence():
+    """Confluence segments get the high-congregation note."""
+    from src.services.untapped_potential import _structural_note
+
+    note = _structural_note(
+        is_confluence=True,
+        connected_to_waterbody=False,
+        nearest_waterbody_m=None,
+        distance_to_nearest_confluence_km=0.0,
+    )
+    assert "Confluence" in note or "confluence" in note
+    assert "congregation" in note.lower() or "streams meet" in note.lower()

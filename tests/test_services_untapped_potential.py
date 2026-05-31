@@ -13,6 +13,7 @@ from src.services.untapped_potential import (
     _compute_pressure,
     _load_habitat_scores,
     _resolve_species,
+    _structural_bonus,
     compute_untapped_potential,
     find_exploration_targets,
     find_untapped_water_for_agent,
@@ -406,3 +407,56 @@ def test_find_exploration_targets_balanced_mode(tmp_path: Path, monkeypatch):
         assert "habitat_summary" in seg
         assert "regulation_zone" in seg
         assert "maps_urls" in seg
+
+
+# ── Phase 3a: structural scoring tests ────────────────────────────────────────
+
+
+def test_structural_bonus_confluence_scores_higher():
+    """Confluence segment scores higher than identical non-confluence segment."""
+
+    df = pd.DataFrame({
+        "habitat_score": [0.6, 0.6],
+        "observation_pressure": [0.2, 0.2],
+        "access_score": [0.5, 0.5],
+        "is_confluence_segment": [True, False],
+        "distance_to_nearest_confluence_km": [0.0, 5.0],
+        "connected_to_waterbody": [False, False],
+    })
+    bonus = _structural_bonus(df)
+    assert float(bonus.iloc[0]) > float(bonus.iloc[1])
+    assert float(bonus.iloc[0]) == pytest.approx(1.4)  # +0.4 for confluence
+
+
+def test_structural_bonus_waterbody_adds_to_score():
+    """connected_to_waterbody adds +0.3 bonus."""
+
+    df = pd.DataFrame({
+        "is_confluence_segment": [False, False],
+        "distance_to_nearest_confluence_km": [5.0, 5.0],
+        "connected_to_waterbody": [True, False],
+    })
+    bonus = _structural_bonus(df)
+    assert float(bonus.iloc[0]) == pytest.approx(1.3)
+    assert float(bonus.iloc[1]) == pytest.approx(1.0)
+
+
+def test_structural_bonus_capped_at_two():
+    """Confluence + waterbody bonus is capped at 2.0."""
+
+    df = pd.DataFrame({
+        "is_confluence_segment": [True],
+        "distance_to_nearest_confluence_km": [0.0],
+        "connected_to_waterbody": [True],
+    })
+    bonus = _structural_bonus(df)
+    # 1.0 + 0.4 + 0.3 = 1.7 → not capped in this case
+    assert float(bonus.iloc[0]) == pytest.approx(1.7)
+
+
+def test_structural_bonus_graceful_missing_columns():
+    """_structural_bonus returns 1.0 when structural columns are absent."""
+
+    df = pd.DataFrame({"habitat_score": [0.5, 0.7]})
+    bonus = _structural_bonus(df)
+    assert (bonus == 1.0).all()
