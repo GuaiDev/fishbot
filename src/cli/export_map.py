@@ -32,6 +32,13 @@ GRID_COLS = 25
 GRID_PER_CELL = 200        # 100 top-scoring + 100 random for coverage
 GRID_MIN_CELL = 20         # always keep at least this many from any populated cell
 
+# (name, lat_min, lat_max, lng_min, lng_max, min_segments)
+ANCHOR_REGIONS: list[tuple[str, float, float, float, float, int]] = [
+    ("Hamilton", 43.1, 43.5, -80.1, -79.7, 100),
+    ("Niagara",  42.8, 43.3, -80.0, -78.8, 200),
+    ("Kawartha", 44.3, 44.8, -78.8, -78.0, 200),
+]
+
 _UNTAPPED_PATH = Path("data/processed/untapped_potential.parquet")
 _FEATURE_MATRIX_PATH = Path("data/processed/sdm_feature_matrix.parquet")
 _MODELS_DIR = Path("data/processed/sdm_models")
@@ -154,6 +161,48 @@ def grid_sample(
     return pd.concat(sampled).drop_duplicates(subset="ogf_id")
 
 
+def anchor_topup(
+    exported: pd.DataFrame,
+    source: pd.DataFrame,
+    sort_col: str,
+    anchors: list[tuple[str, float, float, float, float, int]] = ANCHOR_REGIONS,
+) -> pd.DataFrame:
+    """Top up named regions that fell below their minimum after grid sampling.
+
+    Grid cell boundaries can cause a region to share a cell with a higher-scoring
+    adjacent area, crowding it out. This function adds the best-scoring source
+    segments from each under-represented anchor region regardless of grid cells.
+    """
+    extra: list[pd.DataFrame] = []
+    already_exported: set = set(exported["ogf_id"])
+
+    for name, lat_min, lat_max, lng_min, lng_max, min_segs in anchors:
+        in_region = exported[
+            exported["centroid_lat"].between(lat_min, lat_max)
+            & exported["centroid_lng"].between(lng_min, lng_max)
+        ]
+        count = len(in_region)
+        if count >= min_segs:
+            logger.info("Anchor %s: %d segments (>= %d, ok)", name, count, min_segs)
+            continue
+        need = min_segs - count
+        candidates = source[
+            source["centroid_lat"].between(lat_min, lat_max)
+            & source["centroid_lng"].between(lng_min, lng_max)
+            & ~source["ogf_id"].isin(already_exported)
+        ].nlargest(need, sort_col)
+        logger.info(
+            "Anchor %s: %d/%d — topping up with %d segments",
+            name, count, min_segs, len(candidates),
+        )
+        extra.append(candidates)
+        already_exported.update(candidates["ogf_id"])
+
+    if not extra:
+        return exported
+    return pd.concat([exported, *extra]).drop_duplicates(subset="ogf_id")
+
+
 def _run_predictions(features_df: pd.DataFrame) -> pd.DataFrame:
     """Run all available models and return top-2 species per segment.
 
@@ -225,7 +274,7 @@ def _run_predictions(features_df: pd.DataFrame) -> pd.DataFrame:
 
 _REGIONS = {
     "Niagara":        {"lat": (42.8, 43.3), "lng": (-80.0, -78.8)},
-    "Hamilton":       {"lat": (43.2, 43.5), "lng": (-80.0, -79.6)},
+    "Hamilton":       {"lat": (43.1, 43.5), "lng": (-80.1, -79.7)},
     "Toronto-Barrie": {"lat": (43.8, 44.2), "lng": (-79.8, -79.2)},
     "Kawartha":       {"lat": (44.0, 45.5), "lng": (-79.5, -77.5)},
 }
@@ -305,11 +354,16 @@ def export_map_data(
 
     # ── geographic grid sampling for regional coverage ─────────────────────────
     n_before_grid = len(untapped)
+    pre_grid = untapped  # kept for anchor topup (segments not yet selected by grid)
     untapped = grid_sample(untapped, sort_col, rows=GRID_ROWS, cols=GRID_COLS, per_cell=GRID_PER_CELL, min_per_cell=GRID_MIN_CELL)
     logger.info(
         "After grid sample (%dx%d, max %d/cell, min %d/cell): %d segments (from %d)",
         GRID_ROWS, GRID_COLS, GRID_PER_CELL, GRID_MIN_CELL, len(untapped), n_before_grid,
     )
+
+    # ── anchor region top-up ──────────────────────────────────────────────────
+    untapped = anchor_topup(untapped, pre_grid, sort_col)
+    logger.info("After anchor topup: %d segments", len(untapped))
 
     regional = _region_counts(untapped)
     logger.info("Regional coverage — %s", ", ".join(f"{k}: {v}" for k, v in regional.items()))
