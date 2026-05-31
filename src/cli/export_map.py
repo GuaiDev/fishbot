@@ -4,8 +4,10 @@ Reads untapped_potential.parquet + sdm_feature_matrix.parquet, runs SDM predicti
 on the filtered set, and writes data/processed/map_data.json as a GeoJSON
 FeatureCollection of segment centroids.
 
-Only segments within 150 km of home (Oakville, ON) are included, capped at 50 000.
-Lake Ontario/Erie water-body dots and Virtual Flow segments are excluded.
+Only segments within 150 km of home (Oakville, ON) are included.
+Lake Ontario/Erie water-body dots, Virtual Flow segments, and likely-culverted
+urban order-1 streams are excluded. Spatial deduplication at 200 m spacing
+replaces the hard segment cap, followed by 10×10 grid sampling for regional coverage.
 """
 
 import json
@@ -15,6 +17,7 @@ import os
 from pathlib import Path
 
 import joblib
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -24,7 +27,9 @@ logger = logging.getLogger(__name__)
 HOME_LAT = 43.4675
 HOME_LNG = -79.6877
 HOME_RADIUS_KM = 150.0
-MAX_SEGMENTS = 50_000
+MIN_DIST_DEG = 0.002       # ≈ 200 m spatial deduplication radius
+GRID_CELLS = 10            # grid dimensions for regional coverage sampling
+MAX_PER_CELL = 200         # cap per grid cell after dedup
 
 _UNTAPPED_PATH = Path("data/processed/untapped_potential.parquet")
 _FEATURE_MATRIX_PATH = Path("data/processed/sdm_feature_matrix.parquet")
@@ -100,6 +105,68 @@ def _load_model(slug: str):
     return bundle.get("model")
 
 
+def deduplicate_segments(df: pd.DataFrame, sort_col: str, min_dist_deg: float = MIN_DIST_DEG) -> pd.DataFrame:
+    """Keep highest-scoring segment when multiple fall within min_dist_deg (~200 m).
+
+    Uses a grid hash for O(n) performance instead of a full pairwise check.
+    """
+    df_sorted = df.sort_values(sort_col, ascending=False).reset_index(drop=True)
+    coords = df_sorted[["centroid_lng", "centroid_lat"]].values.astype(np.float64)
+
+    grid: dict[tuple[int, int], list[tuple[float, float]]] = {}
+    kept_mask = np.zeros(len(df_sorted), dtype=bool)
+    min_dist_sq = min_dist_deg ** 2
+
+    for i in range(len(df_sorted)):
+        lng, lat = coords[i]
+        cx = int(lng / min_dist_deg)
+        cy = int(lat / min_dist_deg)
+
+        too_close = False
+        for dx in (-1, 0, 1):
+            if too_close:
+                break
+            for dy in (-1, 0, 1):
+                for klng, klat in grid.get((cx + dx, cy + dy), []):
+                    if (lng - klng) ** 2 + (lat - klat) ** 2 < min_dist_sq:
+                        too_close = True
+                        break
+                if too_close:
+                    break
+
+        if not too_close:
+            kept_mask[i] = True
+            cell = (cx, cy)
+            if cell not in grid:
+                grid[cell] = []
+            grid[cell].append((lng, lat))
+
+    return df_sorted[kept_mask]
+
+
+def grid_sample(df: pd.DataFrame, sort_col: str, n_cells: int = GRID_CELLS, max_per_cell: int = MAX_PER_CELL) -> pd.DataFrame:
+    """Cap segments per cell in an n_cells×n_cells geographic grid.
+
+    Ensures remote regions (Niagara, Kawartha) aren't squeezed out by
+    the denser Oakville-area stream network even after spatial dedup.
+    """
+    lng_min, lng_max = df["centroid_lng"].min(), df["centroid_lng"].max()
+    lat_min, lat_max = df["centroid_lat"].min(), df["centroid_lat"].max()
+    lng_step = (lng_max - lng_min) / n_cells or 1.0
+    lat_step = (lat_max - lat_min) / n_cells or 1.0
+
+    df = df.copy()
+    df["_cx"] = ((df["centroid_lng"] - lng_min) / lng_step).clip(0, n_cells - 1).astype(int)
+    df["_cy"] = ((df["centroid_lat"] - lat_min) / lat_step).clip(0, n_cells - 1).astype(int)
+
+    result = (
+        df.sort_values(sort_col, ascending=False)
+        .groupby(["_cx", "_cy"], sort=False)
+        .head(max_per_cell)
+    )
+    return result.drop(columns=["_cx", "_cy"])
+
+
 def _run_predictions(features_df: pd.DataFrame) -> pd.DataFrame:
     """Run all available models and return top-2 species per segment.
 
@@ -109,7 +176,6 @@ def _run_predictions(features_df: pd.DataFrame) -> pd.DataFrame:
     Returns a DataFrame indexed by ogf_id with columns top1_species, top1_prob,
     top2_species, top2_prob.
     """
-    # Build X once — index by ogf_id, fill any missing columns with 0.
     available = [c for c in ALL_FEATURES if c in features_df.columns]
     missing = [c for c in ALL_FEATURES if c not in features_df.columns]
     if missing:
@@ -118,7 +184,7 @@ def _run_predictions(features_df: pd.DataFrame) -> pd.DataFrame:
     X = features_df.set_index("ogf_id")[available].copy()
     for col in missing:
         X[col] = 0
-    X = X[ALL_FEATURES]  # enforce column order
+    X = X[ALL_FEATURES]
 
     all_preds: dict[str, pd.Series] = {}
 
@@ -145,7 +211,7 @@ def _run_predictions(features_df: pd.DataFrame) -> pd.DataFrame:
             index=features_df["ogf_id"],
         )
 
-    pred_df = pd.DataFrame(all_preds)  # rows=ogf_id, cols=species
+    pred_df = pd.DataFrame(all_preds)
 
     n_species = pred_df.shape[1]
     sorted_idx = pred_df.values.argsort(axis=1)
@@ -168,6 +234,26 @@ def _run_predictions(features_df: pd.DataFrame) -> pd.DataFrame:
     ).set_index("ogf_id")
 
 
+# ── regional coverage helpers ─────────────────────────────────────────────────
+
+_REGIONS = {
+    "Niagara":  {"lat": (42.9, 43.3), "lng": (-79.6, -78.9)},
+    "Hamilton": {"lat": (43.1, 43.5), "lng": (-80.2, -79.6)},
+    "Kawartha": {"lat": (44.0, 45.5), "lng": (-79.5, -77.5)},
+}
+
+
+def _region_counts(df: pd.DataFrame) -> dict[str, int]:
+    counts = {}
+    for name, bounds in _REGIONS.items():
+        mask = (
+            df["centroid_lat"].between(*bounds["lat"])
+            & df["centroid_lng"].between(*bounds["lng"])
+        )
+        counts[name] = int(mask.sum())
+    return counts
+
+
 # ── main export ───────────────────────────────────────────────────────────────
 
 
@@ -187,31 +273,67 @@ def export_map_data(
     untapped = untapped.copy()
     untapped["_dist_km"] = dists
     untapped = untapped[untapped["_dist_km"] <= HOME_RADIUS_KM].drop(columns=["_dist_km"])
+    logger.info("Within %d km: %d segments", HOME_RADIUS_KM, len(untapped))
 
-    # Remove lake surface, US territory, OHN coverage gaps, and Virtual Flow segments
+    # ── non-fishable segment filtering ────────────────────────────────────────
+    # 1. Lake Ontario open-water surface (stricter lat threshold)
     lake_ontario = (
-        (untapped["centroid_lat"] < 43.20)
+        (untapped["centroid_lat"] < 43.25)
         & (untapped["centroid_lng"] > -79.90)
     )
+    # 2. Lake Erie and US territory
     lake_erie_and_us = untapped["centroid_lat"] < 42.80
+    # 3. North of OHN coverage
     north_of_coverage = untapped["centroid_lat"] > 46.40
+    # 4. Virtual Flow segments (hydrological connectors, not real streams)
     virtual_flow = (
         untapped["watercourse_type"] == "Virtual Flow"
         if "watercourse_type" in untapped.columns
         else pd.Series(False, index=untapped.index)
     )
-    lake_mask = lake_ontario | lake_erie_and_us | north_of_coverage | virtual_flow
-    n_lake_removed = int(lake_mask.sum())
-    untapped = untapped[~lake_mask]
-    logger.info("Removed %d lake/OOB/virtual-flow segments", n_lake_removed)
+    # 5. Likely-culverted urban order-1 streams
+    culverted = (
+        (untapped["stream_order"] == 1)
+        & (untapped["observation_density_25km"] > 100)
+        if "observation_density_25km" in untapped.columns
+        else pd.Series(False, index=untapped.index)
+    )
 
-    # Sort by balanced score descending, cap at MAX_SEGMENTS
+    non_fishable = lake_ontario | lake_erie_and_us | north_of_coverage | virtual_flow | culverted
+    n_removed = int(non_fishable.sum())
+    logger.info(
+        "Removed %d non-fishable segments (lake=%d, erie/us=%d, coverage=%d, virtual=%d, culverted=%d)",
+        n_removed,
+        int(lake_ontario.sum()),
+        int(lake_erie_and_us.sum()),
+        int(north_of_coverage.sum()),
+        int(virtual_flow.sum()),
+        int(culverted.sum()),
+    )
+    untapped = untapped[~non_fishable]
+
     _has = lambda c: c in untapped.columns  # noqa: E731
     sort_col = "untapped_score_balanced" if _has("untapped_score_balanced") else "untapped_score"
-    untapped = untapped.sort_values(sort_col, ascending=False).head(MAX_SEGMENTS)
+
+    # ── spatial deduplication at 200 m spacing ────────────────────────────────
+    n_before_dedup = len(untapped)
+    logger.info("Deduplicating %d segments at %.0f m spacing...", n_before_dedup, MIN_DIST_DEG * 111_000)
+    untapped = deduplicate_segments(untapped, sort_col, min_dist_deg=MIN_DIST_DEG)
+    n_after_dedup = len(untapped)
+    logger.info("After dedup: %d segments (removed %d duplicates)", n_after_dedup, n_before_dedup - n_after_dedup)
+
+    # ── geographic grid sampling for regional coverage ─────────────────────────
+    n_before_grid = len(untapped)
+    untapped = grid_sample(untapped, sort_col, n_cells=GRID_CELLS, max_per_cell=MAX_PER_CELL)
+    logger.info(
+        "After grid sample (%dx%d, max %d/cell): %d segments",
+        GRID_CELLS, GRID_CELLS, MAX_PER_CELL, len(untapped),
+    )
+
+    regional = _region_counts(untapped)
+    logger.info("Regional coverage — %s", ", ".join(f"{k}: {v}" for k, v in regional.items()))
 
     def _percentile_thresholds(col: pd.Series) -> dict:
-        """Compute 5-tier thresholds from a score column sorted descending."""
         vals = col.sort_values(ascending=False).values
         n = len(vals)
         return {
@@ -221,7 +343,6 @@ def export_map_data(
             "p40": round(float(vals[int(n * 0.60)]), 5),
         }
 
-    # Compute per-mode thresholds so the JS can colour correctly in each mode
     def _col(suffix: str) -> str:
         return f"untapped_score_{suffix}" if _has(f"untapped_score_{suffix}") else "untapped_score"
 
@@ -336,7 +457,9 @@ def export_map_data(
 
     return {
         "segments": len(geojson_features),
-        "lake_removed": n_lake_removed,
+        "non_fishable_removed": n_removed,
+        "dedup_removed": n_before_dedup - n_after_dedup,
+        "regional": regional,
         "json_mb": round(json_mb, 1),
         "html_mb": round(html_output_path.stat().st_size / 1_048_576, 1) if html_out else None,
         "path": str(output_path),
@@ -349,8 +472,10 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     stats = export_map_data()
     print(f"\nExported {stats['segments']:,} segments → {stats['path']} ({stats['json_mb']} MB)")
-    print(f"Lake/virtual-flow segments removed: {stats['lake_removed']:,}")
+    print(f"Non-fishable removed: {stats['non_fishable_removed']:,}")
     t = stats["score_thresholds"]["balanced"]
-    print(f"Balanced thresholds — p95: {t['p95']:.5f}  p80: {t['p80']:.5f}  p60: {t['p60']:.5f}  p40: {t['p40']:.5f}")  # noqa: E501
+    print(f"Balanced thresholds — p95: {t['p95']:.5f}  p80: {t['p80']:.5f}  p60: {t['p60']:.5f}  p40: {t['p40']:.5f}")
+    if stats.get("regional"):
+        print("Regional coverage:", "  ".join(f"{k}: {v}" for k, v in stats["regional"].items()))
     if stats.get("html"):
         print(f"Self-contained HTML: {stats['html']} ({stats['html_mb']} MB)")

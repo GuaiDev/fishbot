@@ -318,9 +318,17 @@ function renderMarkers(features) {
     spiderfyOnMaxZoom: true,
     showCoverageOnHover: false,
     iconCreateFunction: function(cluster) {
+      const children = cluster.getAllChildMarkers();
+      const maxScore = Math.max(...children.map(m => m.options.score || 0));
+      const T = allThresholds[scoreMode] || allThresholds.balanced;
+      const bg = maxScore >= T.p95 ? 'rgba(231,76,60,0.85)'
+               : maxScore >= T.p80 ? 'rgba(230,126,34,0.85)'
+               : maxScore >= T.p60 ? 'rgba(241,196,15,0.85)'
+               : maxScore >= T.p40 ? 'rgba(46,204,113,0.85)'
+               : 'rgba(160,160,160,0.75)';
       const count = cluster.getChildCount();
       return L.divIcon({
-        html: '<div style="background:rgba(231,76,60,0.8);color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:11px">' + count + '</div>',
+        html: `<div style="background:${bg};color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,0.5)">${count}</div>`,
         className: '',
         iconSize: [30, 30]
       });
@@ -336,7 +344,7 @@ function renderMarkers(features) {
     const isLow = color === '#ffffff';
     const fillOpacity = isLow ? 0.5 : 0.8;
     const borderColor = isLow ? 'rgba(255,255,255,0.6)' : color;
-    const m = L.circleMarker([lat, lng], { radius: r, color: borderColor, weight: 1, fillColor: color, fillOpacity });
+    const m = L.circleMarker([lat, lng], { radius: r, color: borderColor, weight: 1, fillColor: color, fillOpacity, score: p.untapped_score_balanced || 0 });
     m._feature = f;  // store ref for in-place recolor
     m.on('click', function() {
       if (!this._popupContent) {
