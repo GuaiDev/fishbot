@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FishBot Explorer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; height: 100vh; overflow: hidden; }
+
+  #sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    padding: 16px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  #sidebar h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #4fc3f7;
+    letter-spacing: 0.5px;
+  }
+  #sidebar .subtitle {
+    font-size: 11px;
+    color: #888;
+    margin-top: -10px;
+  }
+
+  .section-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #666;
+    margin-bottom: 4px;
+  }
+
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  label.check-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+  }
+  label.check-row input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; accent-color: #4fc3f7; }
+
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .slider-row .slider-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+  }
+  .slider-row input[type=range] { width: 100%; accent-color: #4fc3f7; }
+
+  select {
+    width: 100%;
+    padding: 6px 8px;
+    background: #2a2a4a;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  button#reset-btn {
+    padding: 8px;
+    background: #2a2a4a;
+    color: #4fc3f7;
+    border: 1px solid #4fc3f7;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.15s;
+  }
+  button#reset-btn:hover { background: #4fc3f7; color: #1a1a2e; }
+
+  #stats-bar {
+    font-size: 11px;
+    color: #888;
+    padding: 6px 8px;
+    background: #12121f;
+    border-radius: 4px;
+  }
+
+  .legend {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1.5px solid rgba(255,255,255,0.3);
+  }
+
+  #map { flex: 1; }
+
+  /* Leaflet popup overrides */
+  .leaflet-popup-content-wrapper {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    border-radius: 6px;
+    border: 1px solid #333;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  .leaflet-popup-tip { background: #1a1a2e; }
+  .leaflet-popup-content { margin: 12px 16px; min-width: 220px; }
+  .popup-title { font-size: 14px; font-weight: 600; color: #4fc3f7; margin-bottom: 8px; }
+  .popup-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px solid #2a2a3a; }
+  .popup-row:last-of-type { border-bottom: none; }
+  .popup-key { color: #999; }
+  .popup-val { color: #e0e0e0; font-weight: 500; text-align: right; max-width: 140px; }
+  .popup-links { margin-top: 10px; display: flex; gap: 8px; }
+  .popup-link {
+    flex: 1; text-align: center; padding: 5px 4px;
+    background: #2a2a4a; color: #4fc3f7;
+    border-radius: 4px; text-decoration: none; font-size: 11px;
+    border: 1px solid #444;
+  }
+  .popup-link:hover { background: #4fc3f7; color: #1a1a2e; }
+  .score-bar-wrap { width: 80px; display: flex; align-items: center; gap: 4px; }
+  .score-bar { height: 6px; border-radius: 3px; background: #4fc3f7; flex-shrink: 0; }
+  .score-num { font-size: 11px; color: #ccc; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div>
+    <h1>FishBot Explorer</h1>
+    <p class="subtitle">Untapped potential — Oakville 100 km</p>
+  </div>
+
+  <div id="stats-bar">Loading segments...</div>
+
+  <div>
+    <div class="section-label">Filters</div>
+    <div class="filter-group">
+      <label class="check-row">
+        <input type="checkbox" id="filter-confluence"> Confluences only
+      </label>
+      <label class="check-row">
+        <input type="checkbox" id="filter-waterbody"> Connected to water body
+      </label>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-label">Stream order</div>
+    <div class="slider-row">
+      <div class="slider-header">
+        <span>Min order</span>
+        <span id="order-val">3</span>
+      </div>
+      <input type="range" id="filter-order" min="1" max="6" value="3">
+    </div>
+  </div>
+
+  <div>
+    <div class="section-label">Species</div>
+    <select id="filter-species">
+      <option value="">All species</option>
+    </select>
+  </div>
+
+  <button id="reset-btn">Reset filters</button>
+
+  <div>
+    <div class="section-label">Legend — untapped score</div>
+    <div class="legend">
+      <div class="legend-row"><div class="legend-dot" style="background:#e53935"></div><span>High (&gt;0.30)</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#fb8c00"></div><span>Medium (0.15–0.30)</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#1e88e5"></div><span>Low (&lt;0.15)</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#e040fb; border:2px solid #fff"></div><span>Home (Oakville)</span></div>
+    </div>
+  </div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── config injected at export time ────────────────────────────────────────────
+const MAPBOX_TOKEN = '%%MAPBOX_TOKEN%%';
+const HOME = [43.4675, -79.6877];
+
+// ── map init ──────────────────────────────────────────────────────────────────
+const map = L.map('map', { preferCanvas: true }).setView(HOME, 11);
+
+L.tileLayer(
+  `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`,
+  { tileSize: 512, zoomOffset: -1, attribution: '© Mapbox © OpenStreetMap' }
+).addTo(map);
+
+// Home marker
+L.circleMarker(HOME, {
+  radius: 9, color: '#fff', weight: 2,
+  fillColor: '#e040fb', fillOpacity: 1
+}).addTo(map).bindPopup('<b style="color:#e040fb">Home — Oakville, ON</b>');
+
+// ── state ─────────────────────────────────────────────────────────────────────
+let allFeatures = [];
+let markers = [];
+let speciesSet = new Set();
+
+// ── color ─────────────────────────────────────────────────────────────────────
+function scoreColor(score) {
+  if (score > 0.30) return '#e53935';
+  if (score > 0.15) return '#fb8c00';
+  return '#1e88e5';
+}
+
+// ── popup builder ─────────────────────────────────────────────────────────────
+function buildPopup(p) {
+  const name = p.watercourse_name || p.nearest_named_stream || '(unnamed)';
+  const order = p.stream_order != null ? `Order ${p.stream_order}` : '—';
+  const confluence = p.is_confluence_segment ? '✓ Yes' : 'No';
+  const wbody = p.connected_to_waterbody ? '✓ Yes' : 'No';
+
+  function scoreBar(val) {
+    const pct = Math.round((val || 0) * 100);
+    return `<div class="score-bar-wrap"><div class="score-bar" style="width:${pct}px;max-width:80px"></div><span class="score-num">${(val||0).toFixed(3)}</span></div>`;
+  }
+
+  const sp1 = p.top1_species ? `${p.top1_species} (${(p.top1_prob*100).toFixed(0)}%)` : '—';
+  const sp2 = p.top2_species ? `${p.top2_species} (${(p.top2_prob*100).toFixed(0)}%)` : '—';
+
+  return `
+    <div class="popup-title">${name} — ${order}</div>
+    <div class="popup-row"><span class="popup-key">Untapped score</span>${scoreBar(p.untapped_score)}</div>
+    <div class="popup-row"><span class="popup-key">Habitat score</span>${scoreBar(p.habitat_score)}</div>
+    <div class="popup-row"><span class="popup-key">Access score</span>${scoreBar(p.access_score)}</div>
+    <div class="popup-row"><span class="popup-key">Confluence</span><span class="popup-val">${confluence}</span></div>
+    <div class="popup-row"><span class="popup-key">Connected to lake</span><span class="popup-val">${wbody}</span></div>
+    <div class="popup-row"><span class="popup-key">#1 species</span><span class="popup-val">${sp1}</span></div>
+    <div class="popup-row"><span class="popup-key">#2 species</span><span class="popup-val">${sp2}</span></div>
+    <div class="popup-links">
+      <a class="popup-link" href="${p.google_maps_url}" target="_blank">Google Maps</a>
+      <a class="popup-link" href="${p.swoop_url}" target="_blank">SWOOP 2025</a>
+    </div>`;
+}
+
+// ── render ─────────────────────────────────────────────────────────────────────
+function renderMarkers(features) {
+  markers.forEach(m => m.remove());
+  markers = [];
+
+  features.forEach(f => {
+    const p = f.properties;
+    const [lng, lat] = f.geometry.coordinates;
+    const m = L.circleMarker([lat, lng], {
+      radius: 6,
+      color: scoreColor(p.untapped_score),
+      weight: 1,
+      fillColor: scoreColor(p.untapped_score),
+      fillOpacity: 0.8,
+    });
+    m.bindPopup(buildPopup(p), { maxWidth: 300 });
+    m.addTo(map);
+    markers.push(m);
+  });
+
+  document.getElementById('stats-bar').textContent =
+    `${features.length.toLocaleString()} segments shown`;
+}
+
+// ── filter ─────────────────────────────────────────────────────────────────────
+function applyFilters() {
+  const onlyConfluence = document.getElementById('filter-confluence').checked;
+  const onlyWaterbody  = document.getElementById('filter-waterbody').checked;
+  const minOrder       = parseInt(document.getElementById('filter-order').value, 10);
+  const species        = document.getElementById('filter-species').value;
+
+  const filtered = allFeatures.filter(f => {
+    const p = f.properties;
+    if (onlyConfluence && !p.is_confluence_segment) return false;
+    if (onlyWaterbody  && !p.connected_to_waterbody)  return false;
+    if (p.stream_order != null && p.stream_order < minOrder) return false;
+    if (species && p.top1_species !== species && p.top2_species !== species) return false;
+    return true;
+  });
+
+  renderMarkers(filtered);
+}
+
+// ── controls ──────────────────────────────────────────────────────────────────
+document.getElementById('filter-confluence').addEventListener('change', applyFilters);
+document.getElementById('filter-waterbody').addEventListener('change', applyFilters);
+document.getElementById('filter-species').addEventListener('change', applyFilters);
+
+const orderSlider = document.getElementById('filter-order');
+const orderVal    = document.getElementById('order-val');
+orderSlider.addEventListener('input', () => {
+  orderVal.textContent = orderSlider.value;
+  applyFilters();
+});
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  document.getElementById('filter-confluence').checked = false;
+  document.getElementById('filter-waterbody').checked  = false;
+  orderSlider.value = 3;
+  orderVal.textContent = '3';
+  document.getElementById('filter-species').value = '';
+  applyFilters();
+});
+
+// ── load data ─────────────────────────────────────────────────────────────────
+fetch('../../data/processed/map_data.json')
+  .then(r => r.json())
+  .then(geojson => {
+    allFeatures = geojson.features;
+
+    // Populate species dropdown
+    allFeatures.forEach(f => {
+      if (f.properties.top1_species) speciesSet.add(f.properties.top1_species);
+      if (f.properties.top2_species) speciesSet.add(f.properties.top2_species);
+    });
+    const sel = document.getElementById('filter-species');
+    Array.from(speciesSet).sort().forEach(sp => {
+      const opt = document.createElement('option');
+      opt.value = sp; opt.textContent = sp;
+      sel.appendChild(opt);
+    });
+
+    applyFilters();
+  })
+  .catch(err => {
+    document.getElementById('stats-bar').textContent = 'Error loading map_data.json — run make export-map first';
+    console.error(err);
+  });
+</script>
+</body>
+</html>
