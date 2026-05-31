@@ -159,9 +159,9 @@ def test_untapped_formula_high_habitat_low_pressure_good_access(tmp_path: Path, 
 
     df = compute_untapped_potential(db, fm)
 
-    # Segment 1: habitat=1.0, pressure=0.0, access=1.0 → untapped=1.0
+    # Segment 1: habitat=1.0, pressure=0.0, access=1.0, density=0 → remoteness=1.5 → score=1.5
     seg1 = df[df["ogf_id"] == 1].iloc[0]
-    assert seg1["untapped_score"] == pytest.approx(1.0)
+    assert seg1["untapped_score"] == pytest.approx(1.5)
 
     # Segment 2: habitat=0.5, pressure>0, access=0.5 → lower
     seg2 = df[df["ogf_id"] == 2].iloc[0]

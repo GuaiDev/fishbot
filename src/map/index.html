@@ -159,8 +159,9 @@
     <div id="legend-untapped" class="legend">
       <div class="legend-row"><div class="legend-dot" style="background:#e74c3c"></div><span>🔴 Top 5% — highest potential</span></div>
       <div class="legend-row"><div class="legend-dot" style="background:#e67e22"></div><span>🟠 Top 20% — high potential</span></div>
-      <div class="legend-row"><div class="legend-dot" style="background:#f1c40f"></div><span>🟡 Top 50% — moderate</span></div>
-      <div class="legend-row"><div class="legend-dot" style="background:#3498db"></div><span>🔵 Lower half — baseline</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#f1c40f"></div><span>🟡 Top 40% — worth investigating</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#2ecc71"></div><span>🟢 Top 60% — moderate</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#3498db"></div><span>🔵 Bottom 40% — baseline</span></div>
       <div class="legend-row"><div class="legend-dot" style="background:#e040fb; border:2px solid #fff"></div><span>Home (Oakville)</span></div>
     </div>
     <div id="legend-species" class="legend" style="display:none">
@@ -222,7 +223,7 @@ let allFeatures = [];
 let markers = [];
 let markerLayer = null;
 let speciesSet = new Set();
-let scoreThresholds = { p50: 0.038, p80: 0.046, p95: 0.063 }; // overwritten from metadata
+let scoreThresholds = { p40: 0.032, p60: 0.038, p80: 0.046, p95: 0.063 }; // overwritten from metadata
 
 // ── zoom-based radius ─────────────────────────────────────────────────────────
 function zoomRadius() {
@@ -241,10 +242,11 @@ map.on('zoomend', () => {
 // ── color ─────────────────────────────────────────────────────────────────────
 function untappedColor(score) {
   const T = scoreThresholds;
-  if (score >= T.p95) return '#e74c3c';
-  if (score >= T.p80) return '#e67e22';
-  if (score >= T.p50) return '#f1c40f';
-  return '#3498db';
+  if (score >= T.p95) return '#e74c3c';  // red:    top 5%
+  if (score >= T.p80) return '#e67e22';  // orange: top 20%
+  if (score >= T.p60) return '#f1c40f';  // yellow: top 40%
+  if (score >= T.p40) return '#2ecc71';  // green:  top 60%
+  return '#3498db';                       // blue:   bottom 40%
 }
 
 function speciesColor(prob) {
@@ -390,9 +392,10 @@ const mapData = %%MAP_DATA%%;
 
 console.log('FishBot map loading, segments:', mapData.features.length);
 
-// Load percentile thresholds from export metadata
+// Load percentile thresholds from export metadata (5-tier: p40, p60, p80, p95)
 if (mapData.metadata && mapData.metadata.score_thresholds) {
   scoreThresholds = mapData.metadata.score_thresholds;
+  console.log('Score thresholds:', scoreThresholds);
 }
 
 allFeatures = mapData.features;

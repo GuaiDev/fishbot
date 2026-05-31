@@ -1,13 +1,18 @@
 """Untapped potential scoring — combines habitat, pressure, and access.
 
 Formula per segment:
-  untapped_score = habitat_score × (1 - observation_pressure) × access_score
+  untapped_score = habitat_score × (1 - observation_pressure) × access_modifier
+                   × structural_bonus × remoteness_multiplier
 
 Where:
-  habitat_score        = mean SDM presence probability across species (0–1)
-                         filtered to one species if species= is given
-  observation_pressure = normalised observation_density_25km from feature matrix (0–1)
-  access_score         = normalised accessibility score from services/accessibility.py
+  habitat_score        = mean SDM presence probability across species (0–1),
+                         with a floor of 0.35 for zero-observation segments
+                         that have stream_order≥3 and coarse/mixed substrate
+  observation_pressure = normalised observation_density_25km (0–1)
+  access_modifier      = access_score (easy_access), (1-access+0.1) (adventure),
+                         or 1.0 (balanced)
+  structural_bonus     = confluence and waterbody proximity multiplier (1.0–2.0)
+  remoteness_multiplier = 1.5 if obs_density==0, 1.25 if 1–4, 1.0 if 5+
 
 Result cached to data/processed/untapped_potential.parquet.
 """
@@ -119,11 +124,36 @@ def compute_untapped_potential(
         else:
             base[col] = float("nan")
 
+    # Substrate category — needed for habitat floor correction
+    if "substrate_category" in feature_matrix.columns:
+        base["substrate_category"] = feature_matrix["substrate_category"].fillna("").values
+    else:
+        base["substrate_category"] = ""
+
     base = base.set_index("ogf_id")
 
     base["habitat_score"] = habitat_scores.reindex(base.index).fillna(0.0)
     base["access_score"] = access_scores.reindex(base.index).fillna(0.5)
     base["observation_pressure"] = pressure.reindex(base.index).fillna(0.0)
+
+    # Sampling bias correction: the SDM was trained on presence records biased toward
+    # accessible locations. Remote segments with good environmental features score low
+    # not because habitat is poor but because they have sparse training data.
+    # Floor habitat_score at 0.35 for zero-observation segments with order≥3 and
+    # coarse/mixed substrate — the minimum "probably decent" signal.
+    _COARSE_SUBSTRATES = {"coarse", "mixed"}
+    remote_good_env = (
+        (base["observation_density_25km"] == 0)
+        & (base["stream_order"] >= 3)
+        & (base["substrate_category"].str.lower().isin(_COARSE_SUBSTRATES))
+    )
+    base.loc[remote_good_env, "habitat_score"] = (
+        base.loc[remote_good_env, "habitat_score"].clip(lower=0.35)
+    )
+    n_floored = int(remote_good_env.sum())
+    logger.info(
+        "Habitat floor applied to %d remote segments with coarse/mixed substrate", n_floored
+    )
 
     if mode == "adventure":
         base["untapped_score"] = (
@@ -138,8 +168,12 @@ def compute_untapped_potential(
             base["habitat_score"] * (1.0 - base["observation_pressure"]) * base["access_score"]
         )
 
-    # Apply structural bonus
-    base["untapped_score"] = base["untapped_score"] * _structural_bonus(base)
+    # Apply structural bonus then remoteness multiplier
+    base["untapped_score"] = (
+        base["untapped_score"]
+        * _structural_bonus(base)
+        * _remoteness_multiplier(base["observation_density_25km"])
+    )
 
     result = base.reset_index().sort_values("untapped_score", ascending=False)
 
@@ -865,6 +899,19 @@ def _access_note(is_crown_land: bool, access_score: float) -> str:
     return "Road or park access nearby — verify public right of way."
 
 
+def _remoteness_multiplier(observation_density: pd.Series) -> pd.Series:
+    """Bonus for genuinely unexplored water based on observation density in 25km radius.
+
+    0 observations  → 1.5× (zero crowdsourced records = genuinely unexplored)
+    1–4 observations → 1.25× (sparse = likely undersampled, not fishless)
+    5+ observations  → 1.0× (sufficient sampling, no bonus)
+    """
+    mult = pd.Series(1.0, index=observation_density.index, dtype=float)
+    mult[observation_density == 0] = 1.5
+    mult[(observation_density > 0) & (observation_density < 5)] = 1.25
+    return mult
+
+
 def _structural_bonus(df: pd.DataFrame) -> pd.Series:
     """Multiplicative bonus for structural fish congregation features. Capped at 2.0."""
     import numpy as np
@@ -910,7 +957,7 @@ def _structural_note(
 
 
 def _compute_mode_score(df: pd.DataFrame, mode: str) -> pd.Series:
-    """Return untapped scores for each row based on the requested mode and structural bonus."""
+    """Return untapped scores for each row based on mode, structural bonus, and remoteness."""
     h = df["habitat_score"]
     p = df["observation_pressure"]
     a = df["access_score"]
@@ -920,7 +967,14 @@ def _compute_mode_score(df: pd.DataFrame, mode: str) -> pd.Series:
         base = h * (1.0 - p)
     else:  # easy_access
         base = h * (1.0 - p) * a
-    return base * _structural_bonus(df)
+
+    # Default density to 5 (no remoteness bonus) when column is absent
+    density = (
+        df["observation_density_25km"]
+        if "observation_density_25km" in df.columns
+        else pd.Series(5, index=df.index, dtype=float)
+    )
+    return base * _structural_bonus(df) * _remoteness_multiplier(density)
 
 
 def _nearby_confirmed_species(db, lat: float, lng: float, radius_km: float = 5.0) -> list[str]:

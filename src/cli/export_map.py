@@ -208,14 +208,16 @@ def export_map_data(
     # Sort by untapped_score descending, cap at MAX_SEGMENTS
     untapped = untapped.sort_values("untapped_score", ascending=False).head(MAX_SEGMENTS)
 
-    # Compute percentile thresholds for the kept segments (used by JS for coloring)
+    # Compute percentile thresholds for the kept segments (used by JS for coloring).
+    # Scores are sorted descending, so index 0 = max, index n*0.05 = p95, etc.
     scores = untapped["untapped_score"].values
-    p50 = float(scores[int(len(scores) * 0.50)])
-    p80 = float(scores[int(len(scores) * 0.20)])   # top 20% boundary (sorted desc)
-    p95 = float(scores[int(len(scores) * 0.05)])   # top 5% boundary (sorted desc)
+    p95 = float(scores[int(len(scores) * 0.05)])   # top 5%  boundary
+    p80 = float(scores[int(len(scores) * 0.20)])   # top 20% boundary
+    p60 = float(scores[int(len(scores) * 0.40)])   # top 40% boundary
+    p40 = float(scores[int(len(scores) * 0.60)])   # top 60% boundary (bottom 40% below)
     logger.info(
-        "Score thresholds — p95(top5%%): %.4f  p80(top20%%): %.4f  p50(median): %.4f",
-        p95, p80, p50,
+        "Score thresholds — p95: %.4f  p80: %.4f  p60: %.4f  p40: %.4f",
+        p95, p80, p60, p40,
     )
 
     logger.info("Loading feature matrix for SDM predictions...")
@@ -271,7 +273,12 @@ def export_map_data(
             "home_lng": HOME_LNG,
             "radius_km": HOME_RADIUS_KM,
             "segment_count": len(geojson_features),
-            "score_thresholds": {"p50": round(p50, 5), "p80": round(p80, 5), "p95": round(p95, 5)},
+            "score_thresholds": {
+                "p40": round(p40, 5),
+                "p60": round(p60, 5),
+                "p80": round(p80, 5),
+                "p95": round(p95, 5),
+            },
         },
     }
 
@@ -315,7 +322,12 @@ def export_map_data(
         "html_mb": round(_HTML_OUTPUT.stat().st_size / 1_048_576, 1) if html_out else None,
         "path": str(output_path),
         "html": str(html_out) if html_out else None,
-        "score_thresholds": {"p50": round(p50, 5), "p80": round(p80, 5), "p95": round(p95, 5)},
+        "score_thresholds": {
+            "p40": round(p40, 5),
+            "p60": round(p60, 5),
+            "p80": round(p80, 5),
+            "p95": round(p95, 5),
+        },
     }
 
 
@@ -325,6 +337,9 @@ if __name__ == "__main__":
     print(f"\nExported {stats['segments']:,} segments → {stats['path']} ({stats['json_mb']} MB)")
     print(f"Lake/virtual-flow segments removed: {stats['lake_removed']:,}")
     t = stats["score_thresholds"]
-    print(f"Score thresholds — top5%: {t['p95']:.5f}  top20%: {t['p80']:.5f}  median: {t['p50']:.5f}")  # noqa: E501
+    print(  # noqa: E501
+        f"Score thresholds — top5%: {t['p95']:.5f}  top20%: {t['p80']:.5f}"
+        f"  top40%: {t['p60']:.5f}  top60%: {t['p40']:.5f}"
+    )
     if stats.get("html"):
         print(f"Self-contained HTML: {stats['html']} ({stats['html_mb']} MB)")
