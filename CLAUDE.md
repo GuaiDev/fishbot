@@ -4,7 +4,7 @@ Personal fishing exploration bot. Multi-jurisdiction (Canada + US), Ontario firs
 
 ## My fishing context
 
-- Home: Toronto, Ontario (CA-ON)
+- Home: Oakville, Ontario (CA-ON)
 - Target species: ALL species including microfishing targets (darters, dace, madtoms, shiners, chubs, lampreys) — not just popular gamefish
 - Fishing style: stream + small lakes primarily
 - Skill: intermediate
