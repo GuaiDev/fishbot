@@ -339,7 +339,7 @@ function buildHeatLayer() {
   // Normalize weights to 0–1 relative to p95 so leaflet.heat's internal
   // max=1.0 default maps the full color gradient across the actual score range.
   const heatData = allFeatures
-    .filter(f => (f.properties[scoreKey] || 0) > T.p60)
+    .filter(f => (f.properties[scoreKey] || 0) > T.p40)
     .map(f => {
       const w = Math.min((f.properties[scoreKey] || 0) / T.p95, 1.0);
       return [f.geometry.coordinates[1], f.geometry.coordinates[0], w];
