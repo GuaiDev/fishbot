@@ -313,8 +313,10 @@ function renderMarkers(features) {
   }
 
   markerLayer = L.markerClusterGroup({
-    maxClusterRadius: 40,
-    disableClusteringAtZoom: 13,
+    maxClusterRadius: function(z) {
+      return z < 7 ? 60 : z < 8 ? 40 : z < 9 ? 25 : z < 10 ? 15 : z < 11 ? 8 : 4;
+    },
+    disableClusteringAtZoom: 11,
     spiderfyOnMaxZoom: true,
     showCoverageOnHover: false,
     iconCreateFunction: function(cluster) {
