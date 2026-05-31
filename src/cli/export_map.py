@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 HOME_LAT = 43.4675
 HOME_LNG = -79.6877
 HOME_RADIUS_KM = 150.0
-MIN_DIST_DEG = 0.002       # ≈ 200 m spatial deduplication radius
-GRID_CELLS = 10            # grid dimensions for regional coverage sampling
-MAX_PER_CELL = 200         # cap per grid cell after dedup
+GRID_ROWS = 15
+GRID_COLS = 15
+GRID_PER_CELL = 400        # 200 top-scoring + 200 random for coverage
 
 _UNTAPPED_PATH = Path("data/processed/untapped_potential.parquet")
 _FEATURE_MATRIX_PATH = Path("data/processed/sdm_feature_matrix.parquet")
@@ -105,66 +105,43 @@ def _load_model(slug: str):
     return bundle.get("model")
 
 
-def deduplicate_segments(df: pd.DataFrame, sort_col: str, min_dist_deg: float = MIN_DIST_DEG) -> pd.DataFrame:
-    """Keep highest-scoring segment when multiple fall within min_dist_deg (~200 m).
+def grid_sample(
+    df: pd.DataFrame,
+    sort_col: str,
+    rows: int = GRID_ROWS,
+    cols: int = GRID_COLS,
+    per_cell: int = GRID_PER_CELL,
+) -> pd.DataFrame:
+    """Sample up to per_cell segments from each cell of a rows×cols geographic grid.
 
-    Uses a grid hash for O(n) performance instead of a full pairwise check.
+    Each cell contributes the top per_cell//2 by score plus up to per_cell//2 random
+    lower-scoring segments, so sparse regions are never crowded out by dense ones.
+    Max output: rows × cols × per_cell = 90,000 segments.
     """
-    df_sorted = df.sort_values(sort_col, ascending=False).reset_index(drop=True)
-    coords = df_sorted[["centroid_lng", "centroid_lat"]].values.astype(np.float64)
+    lat_bins = np.linspace(df["centroid_lat"].min(), df["centroid_lat"].max(), rows + 1)
+    lng_bins = np.linspace(df["centroid_lng"].min(), df["centroid_lng"].max(), cols + 1)
 
-    grid: dict[tuple[int, int], list[tuple[float, float]]] = {}
-    kept_mask = np.zeros(len(df_sorted), dtype=bool)
-    min_dist_sq = min_dist_deg ** 2
+    sampled = []
+    for i in range(rows):
+        for j in range(cols):
+            cell = df[
+                df["centroid_lat"].between(lat_bins[i], lat_bins[i + 1])
+                & df["centroid_lng"].between(lng_bins[j], lng_bins[j + 1])
+            ]
+            if len(cell) == 0:
+                continue
+            top = cell.nlargest(per_cell // 2, sort_col)
+            remainder = cell[~cell.index.isin(top.index)]
+            rest = (
+                remainder.sample(min(per_cell // 2, len(remainder)), random_state=42)
+                if len(remainder) > 0
+                else pd.DataFrame()
+            )
+            sampled.append(pd.concat([top, rest]))
 
-    for i in range(len(df_sorted)):
-        lng, lat = coords[i]
-        cx = int(lng / min_dist_deg)
-        cy = int(lat / min_dist_deg)
-
-        too_close = False
-        for dx in (-1, 0, 1):
-            if too_close:
-                break
-            for dy in (-1, 0, 1):
-                for klng, klat in grid.get((cx + dx, cy + dy), []):
-                    if (lng - klng) ** 2 + (lat - klat) ** 2 < min_dist_sq:
-                        too_close = True
-                        break
-                if too_close:
-                    break
-
-        if not too_close:
-            kept_mask[i] = True
-            cell = (cx, cy)
-            if cell not in grid:
-                grid[cell] = []
-            grid[cell].append((lng, lat))
-
-    return df_sorted[kept_mask]
-
-
-def grid_sample(df: pd.DataFrame, sort_col: str, n_cells: int = GRID_CELLS, max_per_cell: int = MAX_PER_CELL) -> pd.DataFrame:
-    """Cap segments per cell in an n_cells×n_cells geographic grid.
-
-    Ensures remote regions (Niagara, Kawartha) aren't squeezed out by
-    the denser Oakville-area stream network even after spatial dedup.
-    """
-    lng_min, lng_max = df["centroid_lng"].min(), df["centroid_lng"].max()
-    lat_min, lat_max = df["centroid_lat"].min(), df["centroid_lat"].max()
-    lng_step = (lng_max - lng_min) / n_cells or 1.0
-    lat_step = (lat_max - lat_min) / n_cells or 1.0
-
-    df = df.copy()
-    df["_cx"] = ((df["centroid_lng"] - lng_min) / lng_step).clip(0, n_cells - 1).astype(int)
-    df["_cy"] = ((df["centroid_lat"] - lat_min) / lat_step).clip(0, n_cells - 1).astype(int)
-
-    result = (
-        df.sort_values(sort_col, ascending=False)
-        .groupby(["_cx", "_cy"], sort=False)
-        .head(max_per_cell)
-    )
-    return result.drop(columns=["_cx", "_cy"])
+    if not sampled:
+        return df.head(0)
+    return pd.concat(sampled).drop_duplicates(subset="ogf_id")
 
 
 def _run_predictions(features_df: pd.DataFrame) -> pd.DataFrame:
@@ -237,9 +214,10 @@ def _run_predictions(features_df: pd.DataFrame) -> pd.DataFrame:
 # ── regional coverage helpers ─────────────────────────────────────────────────
 
 _REGIONS = {
-    "Niagara":  {"lat": (42.9, 43.3), "lng": (-79.6, -78.9)},
-    "Hamilton": {"lat": (43.1, 43.5), "lng": (-80.2, -79.6)},
-    "Kawartha": {"lat": (44.0, 45.5), "lng": (-79.5, -77.5)},
+    "Niagara":        {"lat": (42.9, 43.3), "lng": (-80.0, -79.0)},
+    "Hamilton":       {"lat": (43.2, 43.4), "lng": (-80.0, -79.7)},
+    "Toronto-Barrie": {"lat": (43.8, 44.2), "lng": (-79.8, -79.2)},
+    "Kawartha":       {"lat": (44.0, 45.5), "lng": (-79.5, -77.5)},
 }
 
 
@@ -315,19 +293,12 @@ def export_map_data(
     _has = lambda c: c in untapped.columns  # noqa: E731
     sort_col = "untapped_score_balanced" if _has("untapped_score_balanced") else "untapped_score"
 
-    # ── spatial deduplication at 200 m spacing ────────────────────────────────
-    n_before_dedup = len(untapped)
-    logger.info("Deduplicating %d segments at %.0f m spacing...", n_before_dedup, MIN_DIST_DEG * 111_000)
-    untapped = deduplicate_segments(untapped, sort_col, min_dist_deg=MIN_DIST_DEG)
-    n_after_dedup = len(untapped)
-    logger.info("After dedup: %d segments (removed %d duplicates)", n_after_dedup, n_before_dedup - n_after_dedup)
-
     # ── geographic grid sampling for regional coverage ─────────────────────────
     n_before_grid = len(untapped)
-    untapped = grid_sample(untapped, sort_col, n_cells=GRID_CELLS, max_per_cell=MAX_PER_CELL)
+    untapped = grid_sample(untapped, sort_col, rows=GRID_ROWS, cols=GRID_COLS, per_cell=GRID_PER_CELL)
     logger.info(
-        "After grid sample (%dx%d, max %d/cell): %d segments",
-        GRID_CELLS, GRID_CELLS, MAX_PER_CELL, len(untapped),
+        "After grid sample (%dx%d, max %d/cell): %d segments (from %d)",
+        GRID_ROWS, GRID_COLS, GRID_PER_CELL, len(untapped), n_before_grid,
     )
 
     regional = _region_counts(untapped)
@@ -458,7 +429,7 @@ def export_map_data(
     return {
         "segments": len(geojson_features),
         "non_fishable_removed": n_removed,
-        "dedup_removed": n_before_dedup - n_after_dedup,
+        "grid_input": n_before_grid,
         "regional": regional,
         "json_mb": round(json_mb, 1),
         "html_mb": round(html_output_path.stat().st_size / 1_048_576, 1) if html_out else None,
