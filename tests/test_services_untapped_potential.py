@@ -85,12 +85,13 @@ def test_compute_pressure_normalises_to_01():
     assert pressure.max() <= 1.0
 
 
-def test_compute_pressure_zero_density_is_zero():
+def test_compute_pressure_zero_density_gets_floor():
     fm = _make_feature_matrix(5)
     fm["observation_density_25km"] = 0.0
     pressure = _compute_pressure(fm)
-    # All zeros → constant → clipped to 0 (degenerate case)
-    assert (pressure == 0.0).all()
+    # All zeros → log1p(0)/ref = 0 → floored at 0.10
+    assert pressure.max() == pytest.approx(0.10)
+    assert pressure.min() == pytest.approx(0.10)
 
 
 def test_compute_pressure_preserves_index():
@@ -159,9 +160,10 @@ def test_untapped_formula_high_habitat_low_pressure_good_access(tmp_path: Path, 
 
     df = compute_untapped_potential(db, fm)
 
-    # Segment 1: habitat=1.0, pressure=0.0, access=1.0, density=0 → remoteness=1.5 → score=1.5
+    # Segment 1: habitat=1.0, density=0 → pressure=0.10 (floor), remoteness=1.5
+    # balanced: 1.0 × (1-0.10) × struct=1.0 × 1.5 = 1.35
     seg1 = df[df["ogf_id"] == 1].iloc[0]
-    assert seg1["untapped_score"] == pytest.approx(1.5)
+    assert seg1["untapped_score"] == pytest.approx(1.35)
 
     # Segment 2: habitat=0.5, pressure>0, access=0.5 → lower
     seg2 = df[df["ogf_id"] == 2].iloc[0]

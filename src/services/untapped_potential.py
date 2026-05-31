@@ -180,6 +180,20 @@ def compute_untapped_potential(
 
     result = base.reset_index().sort_values("untapped_score", ascending=False)
 
+    # Pressure sanity check — log Oakville-area stats (lat 43.3-43.6, lng -80.0 to -79.4)
+    oak_mask = (
+        result["centroid_lat"].between(43.3, 43.6)
+        & result["centroid_lng"].between(-80.0, -79.4)
+    )
+    if oak_mask.any():
+        oak = result[oak_mask]
+        logger.info(
+            "Oakville area (%d segs): pressure mean=%.3f  balanced_score mean=%.4f",
+            int(oak_mask.sum()),
+            float(oak["observation_pressure"].mean()),
+            float(oak["untapped_score_balanced"].mean()),
+        )
+
     _PARQUET_PATH.parent.mkdir(parents=True, exist_ok=True)
     result.to_parquet(_PARQUET_PATH, index=False)
     logger.info("Untapped potential written to %s", _PARQUET_PATH)
@@ -1102,21 +1116,35 @@ def _load_habitat_scores(db, species: str | None) -> pd.Series:
     return habitat
 
 
-def _compute_pressure(feature_matrix: pd.DataFrame) -> pd.Series:
-    """Normalise observation_density_25km to [0, 1] using log scale.
+_SATURATED_DENSITY = 10_000.0
+"""Reference density treated as fully sampled.
 
-    Log normalization compresses the urban/rural gap: a 100× density difference
-    (rural=5 vs urban=500) becomes ~3× on log scale, giving rural segments more
-    credit for their genuinely low pressure instead of treating them as near-zero.
+Normalising against the dataset maximum (max ≈ 1837) crushed Oakville-area
+segments (density ≈ 1289, 99th percentile) to pressure ≈ 0.95, making their
+untapped scores approach zero. Using a fixed reference above the dataset max
+maps Oakville to pressure ≈ 0.78, rural areas to ≈ 0.50, and wilderness to
+≈ 0.10 (floor) — meaningful differentiation at every density level.
+"""
+
+
+def _compute_pressure(feature_matrix: pd.DataFrame) -> pd.Series:
+    """Normalise observation_density_25km to [0.10, 1.0] using a fixed log reference.
+
+    pressure = log1p(density) / log1p(SATURATED_DENSITY)
+    clipped to [0.10, 1.0].
+
+    Oakville (density ≈ 1289) → 0.78 pressure → (1-p) = 0.22 (was ≈ 0.05).
+    Rural stream (density ≈ 100) → 0.50 pressure → (1-p) = 0.50.
+    Wilderness (density = 0) → 0.10 pressure floor → (1-p) = 0.90.
+
+    Floor at 0.10 prevents the remoteness bonus from over-inflating data-void
+    segments relative to well-surveyed rural streams.
     """
     import numpy as np
 
     col = feature_matrix.set_index("ogf_id")["observation_density_25km"].fillna(0.0)
-    log_density = np.log1p(col)
-    log_max = float(log_density.max())
-    if log_max > 0:
-        return (log_density / log_max).rename("observation_pressure")
-    return col.clip(0.0, 1.0).rename("observation_pressure")
+    pressure = np.log1p(col) / np.log1p(_SATURATED_DENSITY)
+    return pressure.clip(lower=0.10, upper=1.0).rename("observation_pressure")
 
 
 # Species name resolution (mirrors sdm_predictions.py)
