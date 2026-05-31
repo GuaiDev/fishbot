@@ -352,6 +352,7 @@ def find_exploration_targets(
     mode: str = "balanced",
     min_stream_order: int = 3,
     limit: int = 5,
+    enable_vision: bool = True,
 ) -> str:
     """Agent-facing exploration tool with mode-based scoring and rich enrichment.
 
@@ -412,8 +413,24 @@ def find_exploration_targets(
             }
         )
 
+    # Vision pre-screening: verify open water, detect culverts and blocked access
+    candidates = top.to_dict("records")
+    if enable_vision:
+        from src.services.vision_screening import screen_candidates
+
+        candidates = screen_candidates(candidates, max_screens=10)
+        if not candidates:
+            return json.dumps(
+                {
+                    "result": (
+                        f"No targets found within {radius_km}km after satellite vision screening. "
+                        "Try a larger radius or run with enable_vision=False to skip screening."
+                    )
+                }
+            )
+
     named_seg_cache = _load_named_segments(db)
-    habitat_features = _load_habitat_features(top["ogf_id"].tolist())
+    habitat_features = _load_habitat_features([int(c["ogf_id"]) for c in candidates])
     crown_dict = _load_crown_dict()
 
     from dotenv import load_dotenv
@@ -424,7 +441,7 @@ def find_exploration_targets(
     from src.services.regulations import _estimate_fmz
 
     segments = []
-    for _, row in top.iterrows():
+    for row in candidates:
         seg_lat = float(row["centroid_lat"])
         seg_lng = float(row["centroid_lng"])
         seg_name = str(row["watercourse_name"]) if row.get("watercourse_name") else None
@@ -452,8 +469,8 @@ def find_exploration_targets(
         seg_type = str(row["watercourse_type"]) if row.get("watercourse_type") else None
         is_crown = bool(crown_dict.get(int(row["ogf_id"]), False))
         access_score_val = float(row["access_score"])
-        is_conf = bool(row.get("is_confluence_segment", False))
-        wb_conn = bool(row.get("connected_to_waterbody", False))
+        is_conf = bool(row.get("is_confluence_segment") or False)
+        wb_conn = bool(row.get("connected_to_waterbody") or False)
         wb_m_raw = row.get("nearest_waterbody_distance_m")
         wb_m = float(wb_m_raw) if wb_m_raw is not None and not pd.isna(wb_m_raw) else None
         conf_dist_raw = row.get("distance_to_nearest_confluence_km")
@@ -462,6 +479,33 @@ def find_exploration_targets(
             if conf_dist_raw is not None and not pd.isna(conf_dist_raw)
             else None
         )
+
+        vision_screening = row.get(
+            "vision_screening", {"screened": False, "verdict": "unverified"}
+        )
+
+        expl_note = _exploration_note(
+            seg_name,
+            named_stream_10km,
+            road_access,
+            osm_access,
+            float(row["habitat_score"]),
+            float(row["observation_pressure"]),
+            top_sp,
+            species,
+            is_confluence=is_conf,
+            connected_to_waterbody=wb_conn,
+            nearest_waterbody_m=wb_m,
+        )
+        if vision_screening.get("is_culvert_crossing"):
+            expl_note += (
+                " Culvert crossing detected — check both sides of the road "
+                "for outlet pools where fish stack."
+            )
+        if vision_screening.get("access_blocked_by_structures"):
+            expl_note += (
+                " Adjacent structures visible — access may be limited to road allowance only."
+            )
 
         segments.append(
             {
@@ -492,19 +536,8 @@ def find_exploration_targets(
                 "nearest_road_access": road_access,
                 "nearest_osm_access": osm_access,
                 "maps_urls": maps_urls,
-                "exploration_note": _exploration_note(
-                    seg_name,
-                    named_stream_10km,
-                    road_access,
-                    osm_access,
-                    float(row["habitat_score"]),
-                    float(row["observation_pressure"]),
-                    top_sp,
-                    species,
-                    is_confluence=is_conf,
-                    connected_to_waterbody=wb_conn,
-                    nearest_waterbody_m=wb_m,
-                ),
+                "exploration_note": expl_note,
+                "vision_screening": vision_screening,
             }
         )
 

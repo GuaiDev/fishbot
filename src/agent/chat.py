@@ -1385,6 +1385,8 @@ def _tools(profile: Any) -> list[dict]:
                 "connectivity note if the tributary connects to a productive named system, "
                 "one-sentence habitat summary (thermal regime, substrate, EPT quality), "
                 "and regulation zone (FMZ). "
+                "Results are pre-screened with satellite vision to verify open water and "
+                "identify structural features including culvert crossings. "
                 "Mode guidance: when user mentions driving, parking, easy access, day trip — "
                 "use mode='easy_access'. When user mentions adventure, remote, off the beaten "
                 "path, trekking, nobody fishes there — use mode='adventure'. "

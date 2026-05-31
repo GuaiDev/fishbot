@@ -202,7 +202,7 @@ def build_feature_matrix(db=None) -> pd.DataFrame:
 
     t = time.time()
     logger.info("Computing confluence features...")
-    is_confluence, confluence_distances = _compute_confluence_features(G, centroids)
+    is_confluence, confluence_distances = _compute_confluence_features(G, centroids, strahler)
     logger.info(
         "  confluence: %d confluence segments, %.1fs",
         sum(is_confluence.values()),
@@ -638,11 +638,14 @@ def _assign_stocking(
 def _compute_confluence_features(
     G: nx.DiGraph,
     centroids: dict[int, tuple[float, float]],
+    strahler: dict[int, int],
 ) -> tuple[dict[int, bool], dict[int, float | None]]:
     """Detect confluence segments and compute distance to nearest confluence node.
 
-    A confluence node has total degree >= 3 (multiple tributaries meeting).
-    Uses a deduplicated DAG to avoid inflating degree from bidirectional edges.
+    A confluence node requires degree >= 3 AND at least 2 connected segments with
+    stream_order >= 2. This filters minor ditch junctions while keeping meaningful
+    stream confluences. Uses a deduplicated DAG to avoid inflating degree from
+    bidirectional edges.
     """
     from scipy.spatial import cKDTree
 
@@ -657,9 +660,21 @@ def _compute_confluence_features(
         seen_ogf.add(ogf_id)
         dag.add_edge(u, v, **data)
 
-    confluence_nodes = {
-        n for n in dag.nodes() if dag.in_degree(n) + dag.out_degree(n) >= 3
-    }
+    confluence_nodes: set[str] = set()
+    for n in dag.nodes():
+        if dag.in_degree(n) + dag.out_degree(n) < 3:
+            continue
+        orders = []
+        for _, _, data in dag.in_edges(n, data=True):
+            ogf_id = data.get("ogf_id")
+            if ogf_id is not None:
+                orders.append(strahler.get(ogf_id, 1))
+        for _, _, data in dag.out_edges(n, data=True):
+            ogf_id = data.get("ogf_id")
+            if ogf_id is not None:
+                orders.append(strahler.get(ogf_id, 1))
+        if sum(1 for o in orders if o >= 2) >= 2:
+            confluence_nodes.add(n)
 
     # Map each ogf_id to its endpoint nodes
     ogf_to_nodes: dict[int, set[str]] = {}

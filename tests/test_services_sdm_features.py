@@ -547,7 +547,7 @@ def test_build_feature_matrix_integration(tmp_path: Path):
 
 
 def test_confluence_detection():
-    """A 3-way junction node makes its incident segments is_confluence_segment=True."""
+    """A 3-way junction with order-2+ tributaries makes incident segments is_confluence_segment=True."""
     # hub is shared by three streams: A→hub, B→hub, hub→C
     hub = _node(-79.5, 43.7)
     A = _node(-79.6, 43.7)
@@ -564,7 +564,8 @@ def test_confluence_detection():
         2: (43.75, -79.5),   # midpoint B→hub
         3: (43.65, -79.45),  # midpoint hub→C
     }
-    is_conf, _ = _compute_confluence_features(G, centroids)
+    strahler = {1: 2, 2: 2, 3: 3}  # two tributaries are order 2+ → real confluence
+    is_conf, _ = _compute_confluence_features(G, centroids, strahler)
 
     # Segments 1 and 2 share the hub endpoint → confluence
     assert is_conf[1] is True
@@ -584,10 +585,32 @@ def test_non_confluence_segment():
     G.add_edge(B, C, ogf_id=2, length_m=500.0)
 
     centroids = {1: (43.7, -79.55), 2: (43.7, -79.45)}
-    is_conf, dists = _compute_confluence_features(G, centroids)
+    strahler = {1: 2, 2: 2}
+    is_conf, dists = _compute_confluence_features(G, centroids, strahler)
 
     assert is_conf.get(1, False) is False
     assert is_conf.get(2, False) is False
+
+
+def test_confluence_ditch_junction_filtered():
+    """A 3-way junction where all segments are order-1 is NOT a confluence."""
+    hub = _node(-79.5, 43.7)
+    A = _node(-79.6, 43.7)
+    B = _node(-79.5, 43.8)
+    C = _node(-79.4, 43.6)
+
+    G = nx.DiGraph()
+    G.add_edge(A, hub, ogf_id=1, length_m=200.0)
+    G.add_edge(B, hub, ogf_id=2, length_m=200.0)
+    G.add_edge(hub, C, ogf_id=3, length_m=200.0)
+
+    centroids = {1: (43.7, -79.55), 2: (43.75, -79.5), 3: (43.65, -79.45)}
+    strahler = {1: 1, 2: 1, 3: 1}  # all order-1 ditches → not a real confluence
+    is_conf, _ = _compute_confluence_features(G, centroids, strahler)
+
+    assert is_conf.get(1, False) is False
+    assert is_conf.get(2, False) is False
+    assert is_conf.get(3, False) is False
 
 
 def test_confluence_distance():
@@ -610,7 +633,8 @@ def test_confluence_distance():
         3: (43.65, -79.45),
         4: (43.65, -79.2),  # far from hub
     }
-    _, dists = _compute_confluence_features(G, centroids)
+    strahler = {1: 2, 2: 2, 3: 3, 4: 1}
+    _, dists = _compute_confluence_features(G, centroids, strahler)
 
     # Segment 4 is far from the hub confluence → larger distance
     assert dists[4] > dists[1]

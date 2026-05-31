@@ -375,7 +375,7 @@ def test_find_exploration_targets_no_cache(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "missing.parquet")
 
     db = get_db(tmp_path / "test.db")
-    result = json.loads(find_exploration_targets(db, 43.65, -79.38))
+    result = json.loads(find_exploration_targets(db, 43.65, -79.38, enable_vision=False))
     assert "error" in result
 
 
@@ -396,7 +396,7 @@ def test_find_exploration_targets_balanced_mode(tmp_path: Path, monkeypatch):
     _insert_access_scores(tmp_path, {i: 0.7 for i in range(1, 6)})
     compute_untapped_potential(db, fm)
 
-    result = json.loads(find_exploration_targets(db, 43.75, -79.75, radius_km=200, mode="balanced"))
+    result = json.loads(find_exploration_targets(db, 43.75, -79.75, radius_km=200, mode="balanced", enable_vision=False))
 
     assert "segments" in result
     assert result.get("mode") == "balanced"
