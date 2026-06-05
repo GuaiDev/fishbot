@@ -400,6 +400,33 @@ def _execute_tool(name: str, inputs: dict) -> str:
                 "reason": reason,
             }
         )
+    if name == "log_trip":
+        from src.services.trip_logger import log_trip as _log_trip
+
+        result = _log_trip(
+            db=get_db(),
+            text=inputs["description"],
+            user_lat=inputs.get("user_lat"),
+            user_lng=inputs.get("user_lng"),
+        )
+        return json.dumps(
+            {
+                "trip_id": result["trip_id"],
+                "confirmation": result["confirmation"],
+                "segment_snapped": result["segment_snapped"],
+                "segment_name": result["segment_name"],
+                "insights_generated": result["insights_generated"],
+                "parsed": {
+                    k: v
+                    for k, v in result["parsed"].items()
+                    if k not in ("raw_text",)
+                },
+            }
+        )
+    if name == "get_my_fishing_summary":
+        from src.services.trip_logger import get_trip_summary
+
+        return json.dumps({"summary": get_trip_summary(get_db())})
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -1529,6 +1556,51 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": ["lat", "lng"],
+            },
+        },
+        {
+            "name": "log_trip",
+            "description": (
+                "Log a fishing trip from natural language. "
+                "The user can describe the trip conversationally — location, species caught, "
+                "conditions, habitat notes. The parser extracts all structured data automatically. "
+                "Examples: 'Fished Bronte Creek near Burloak this morning, caught 3 creek chubs "
+                "and saw a darter, water was low and clear' or 'Yesterday at the Credit River "
+                "confluence, nothing biting, water was blown out from the rain yesterday'. "
+                "Always call this when the user describes a trip or mentions what they caught. "
+                "After calling, confirm what was parsed and ask if anything needs correction."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "Natural language trip description from the user.",
+                    },
+                    "user_lat": {
+                        "type": "number",
+                        "description": "Optional latitude hint if the user's location is known.",
+                    },
+                    "user_lng": {
+                        "type": "number",
+                        "description": "Optional longitude hint if the user's location is known.",
+                    },
+                },
+                "required": ["description"],
+            },
+        },
+        {
+            "name": "get_my_fishing_summary",
+            "description": (
+                "Returns a summary of the user's logged fishing history — "
+                "species caught, productive spots, conditions that worked, patterns over time. "
+                "Call when the user asks about their history, what has worked for them, "
+                "their past trips, or their personal fishing patterns."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "required": [],
             },
         },
     ]

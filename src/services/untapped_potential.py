@@ -1171,9 +1171,11 @@ _SNAP_RADIUS_KM = 0.5  # 500m — trip location must be this close to snap to a 
 
 def _snap_trips_to_segments(db) -> list[int]:
     """Snap trip lat/lng locations to the nearest OHN segment centroid within 500m."""
-    if "trips" not in db.table_names():
-        return []
-    trips = list(db["trips"].rows_where("lat IS NOT NULL AND lng IS NOT NULL"))
+    raw_trips: list[dict] = []
+    for table in ("trips", "parsed_trips"):
+        if table in db.table_names():
+            raw_trips.extend(db[table].rows_where("lat IS NOT NULL AND lng IS NOT NULL"))
+    trips = raw_trips
     if not trips:
         return []
     if not _FEATURE_MATRIX_PATH.exists():

@@ -5,7 +5,14 @@ from datetime import date
 from src.models.catch import Catch
 from src.models.trip import Trip
 from src.storage.database import get_db
-from src.storage.trips import get_trip, insert_trip, recent_trips
+from src.storage.trips import (
+    get_parsed_trips,
+    get_productive_segments,
+    get_trip,
+    insert_parsed_trip,
+    insert_trip,
+    recent_trips,
+)
 
 
 def _trip(d: str, location: str, status: str = "completed") -> Trip:
@@ -65,3 +72,85 @@ def test_recent_excludes_planned_trips_by_default(tmp_path):
     locations = [t.location_name for t in recent_trips(db)]
     assert "Completed One" in locations
     assert "Planned One" not in locations
+
+
+# ── parsed_trips (NL logger) ──────────────────────────────────────────────────
+
+
+def _parsed_trip(**overrides) -> dict:
+    base = {
+        "date": "2026-06-01",
+        "location_description": "Bronte Creek near Burloak",
+        "waterbody_name": "Bronte Creek",
+        "lat": 43.45,
+        "lng": -79.70,
+        "ogf_id": 12345,
+        "distance_to_segment_m": 80.0,
+        "segment_stream_order": 3,
+        "segment_watercourse_name": "Bronte Creek",
+        "species_caught": ["Creek Chub", "White Sucker"],
+        "species_observed": ["Rainbow Darter"],
+        "species_targeted": "Creek Chub",
+        "conditions": {
+            "water_level": "low",
+            "water_clarity": "clear",
+            "water_temp_c": 14.5,
+            "weather": "sunny",
+            "flow_trend": "stable",
+        },
+        "habitat_notes": "riffle over cobble",
+        "spot_type": "riffle",
+        "fish_count": 5,
+        "was_productive": True,
+        "gear": "ultralight",
+        "notes": "great spot",
+        "raw_text": "test trip",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_insert_parsed_trip_returns_id(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    trip_id = insert_parsed_trip(db, _parsed_trip())
+    assert isinstance(trip_id, int)
+    assert trip_id > 0
+
+
+def test_insert_and_retrieve_parsed_trip(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    trip_id = insert_parsed_trip(db, _parsed_trip())
+    trips = get_parsed_trips(db, limit=10)
+    assert len(trips) == 1
+    t = trips[0]
+    assert t["trip_id"] == trip_id
+    assert t["waterbody_name"] == "Bronte Creek"
+    assert "Creek Chub" in t["species_caught"]
+    assert t["was_productive"] is True
+
+
+def test_get_parsed_trips_filter_by_species(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    insert_parsed_trip(db, _parsed_trip(species_caught=["Creek Chub"]))
+    insert_parsed_trip(db, _parsed_trip(species_caught=["Rainbow Trout"], waterbody_name="Credit River"))
+    chub_trips = get_parsed_trips(db, species="Creek Chub")
+    assert len(chub_trips) == 1
+    assert chub_trips[0]["waterbody_name"] == "Bronte Creek"
+
+
+def test_get_productive_segments(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    insert_parsed_trip(db, _parsed_trip(ogf_id=111, was_productive=True))
+    insert_parsed_trip(db, _parsed_trip(ogf_id=222, was_productive=False))
+    insert_parsed_trip(db, _parsed_trip(ogf_id=333, was_productive=None))
+    productive = get_productive_segments(db)
+    assert 111 in productive
+    assert 222 not in productive
+    assert 333 not in productive
+
+
+def test_get_productive_segments_deduplicates(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    insert_parsed_trip(db, _parsed_trip(ogf_id=42, was_productive=True))
+    insert_parsed_trip(db, _parsed_trip(ogf_id=42, was_productive=True))
+    assert get_productive_segments(db) == [42]

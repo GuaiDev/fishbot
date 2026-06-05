@@ -192,6 +192,13 @@ name what would help (e.g. a recent electrofishing survey, iNaturalist
 records, or WSC flow data for that system). Low confidence today is a
 data gap, not a permanent limitation.
 
+**Trip logging:** When the user describes a fishing trip, mentions what they caught,
+or talks about a spot they visited: call `log_trip` with their description.
+Always confirm what was parsed and ask if anything needs correction.
+When the user asks about their history, what has worked for them, or their past
+trips: call `get_my_fishing_summary`. The trip log improves predictions over time
+— encourage users to log trips even briefly.
+
 ---
 
 <!--

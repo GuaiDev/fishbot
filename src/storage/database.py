@@ -430,6 +430,41 @@ def ensure_schema(db: Database) -> None:
         )
 
 
+    if "parsed_trips" not in db.table_names():
+        db["parsed_trips"].create(
+            {
+                "trip_id": int,
+                "user_id": str,
+                "logged_at": str,
+                "trip_date": str,
+                "location_description": str,
+                "waterbody_name": str,
+                "lat": float,
+                "lng": float,
+                "ogf_id": int,
+                "distance_to_segment_m": float,
+                "species_caught": str,   # JSON array
+                "species_observed": str,  # JSON array
+                "species_targeted": str,
+                "water_level": str,
+                "water_clarity": str,
+                "water_temp_c": float,
+                "weather": str,
+                "flow_trend": str,
+                "habitat_notes": str,
+                "spot_type": str,
+                "fish_count": int,
+                "was_productive": int,   # 0/1/null
+                "gear": str,
+                "notes": str,
+                "raw_text": str,
+            },
+            pk="trip_id",
+        )
+        db["parsed_trips"].create_index(["ogf_id"], if_not_exists=True)
+        db["parsed_trips"].create_index(["trip_date"], if_not_exists=True)
+
+
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
     db.execute("DELETE FROM stream_gauge_readings WHERE reading_datetime < ?", [cutoff])
