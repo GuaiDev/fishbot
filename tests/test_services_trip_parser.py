@@ -10,7 +10,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.services.trip_parser import parse_trip_from_text, resolve_location, snap_to_segment
+from src.services.trip_parser import (
+    parse_session_from_text,
+    parse_trip_from_text,
+    resolve_location,
+    snap_to_segment,
+)
 from src.storage.database import get_db
 
 
@@ -204,13 +209,12 @@ def test_resolve_location_single_name_match(db_conn):
     assert result["lat"] is not None
     assert result["method"] in ("name_match", "landmark", "geocode_fallback")
     assert result["confidence"] >= 0.75
-    assert result["needs_user_input"] is False
+    assert result.get("ohn_segment_id") is not None
 
 
 @patch("src.services.trip_parser._nominatim_geocode")
 def test_resolve_location_by_name(mock_geo, db_conn):
     """Credit River (2 candidates) narrows via sub-location qualifier."""
-    # Nominatim returns coordinates near the Streetsville segment (1001)
     mock_geo.return_value = (43.58, -79.72)
 
     result = resolve_location("Credit River near Streetsville", db_conn)
@@ -218,7 +222,6 @@ def test_resolve_location_by_name(mock_geo, db_conn):
     assert result["lat"] is not None
     assert result["method"] in ("name_match", "landmark", "geocode_fallback")
     assert result["confidence"] > 0.5
-    assert result["needs_user_input"] is False
 
 
 @patch("src.services.trip_parser._nominatim_geocode")
@@ -230,16 +233,16 @@ def test_resolve_location_landmark_bridge(mock_geo, db_conn):
 
     assert result["lat"] is not None
     assert result["confidence"] >= 0.75
-    assert result["needs_user_input"] is False
 
 
 @patch("src.services.trip_parser._nominatim_geocode", return_value=None)
 def test_resolve_location_unresolved(mock_geo, db_conn):
-    """Completely unrecognisable location escalates to user."""
+    """Completely unrecognisable location returns text_only — never blocks."""
     result = resolve_location("some random ditch I found somewhere", db_conn)
-    assert result["needs_user_input"] is True
-    assert result["prompt_message"] is not None
     assert result["lat"] is None
+    assert result["method"] == "text_only"
+    assert result["confidence"] is None
+    assert result["ohn_segment_id"] is None
 
 
 @patch("src.services.trip_parser.snap_to_segment")
@@ -261,8 +264,8 @@ def test_parse_trip_with_fuzzy_location(mock_get_client, mock_get_model, mock_re
     mock_resolve.return_value = {
         "lat": 43.4750, "lng": -79.6700,
         "method": "name_match", "confidence": 0.85,
+        "ohn_segment_id": 2001,
         "candidates": [2001],
-        "needs_user_input": False, "prompt_message": None,
     }
     mock_snap.return_value = {
         "ogf_id": 2001,
@@ -285,22 +288,20 @@ def test_parse_trip_with_fuzzy_location(mock_get_client, mock_get_model, mock_re
 @patch("src.services.trip_parser.resolve_location")
 @patch("src.services.trip_parser.get_model", return_value="claude-sonnet-4-6")
 @patch("src.services.trip_parser.get_client")
-def test_parse_trip_returns_needs_location_when_unresolved(
+def test_parse_trip_unresolved_location_still_returns_result(
     mock_get_client, mock_get_model, mock_resolve, mock_snap, db_conn
 ):
-    """Unresolved location returns needs_location status without inserting a trip."""
+    """Unresolved location returns parsed data with no coordinates — never blocks."""
     mock_get_client.return_value = _mock_client(
         _api_payload(lat=None, lng=None, location_description="that one random ditch", waterbody_name=None)
     )
     mock_resolve.return_value = {
         "lat": None, "lng": None,
-        "method": "unresolved", "confidence": 0.0,
-        "candidates": [],
-        "needs_user_input": True,
-        "prompt_message": "I couldn't pin that location.",
+        "method": "text_only", "confidence": None,
+        "ohn_segment_id": None, "candidates": [],
     }
 
     result = parse_trip_from_text("caught something in a ditch", db=db_conn)
 
-    assert result.get("status") == "needs_location"
-    assert "message" in result
+    assert result.get("status") != "needs_location"
+    assert result.get("lat") is None

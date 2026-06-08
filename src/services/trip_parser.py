@@ -98,26 +98,21 @@ Return JSON with these fields:
 # ── species validation ────────────────────────────────────────────────────────
 
 
-def _validate_species(extracted: dict, original_text: str) -> dict:
-    """Remove any species from species_caught not traceable to the user's text."""
+def _validate_species(species_list: list, original_text: str) -> list:
+    """Remove any species not traceable to words in the user's text."""
     text_lower = original_text.lower()
     validated = []
-
-    for species in extracted.get("species_caught", []):
+    for species in species_list:
         if "unidentified" in species.lower():
             validated.append(species)
             continue
-
         clean = species.lower().replace("(uncertain)", "").strip()
         words = [w for w in clean.split() if len(w) > 3]
-
         if any(w in text_lower for w in words):
             validated.append(species)
         else:
             print(f"[VALIDATION REMOVED] '{species}' not found in user text — skipped")
-
-    extracted["species_caught"] = validated
-    return extracted
+    return validated
 
 
 # ── location resolution ───────────────────────────────────────────────────────
@@ -249,19 +244,17 @@ def _result(
     lat: float | None,
     lng: float | None,
     method: str,
-    confidence: float,
-    candidates: list[int],
-    needs_user_input: bool = False,
-    prompt_message: str | None = None,
+    confidence: float | None,
+    ohn_segment_id: int | None = None,
+    candidates: list[int] | None = None,
 ) -> dict:
     return {
         "lat": lat,
         "lng": lng,
         "method": method,
         "confidence": confidence,
-        "candidates": candidates,
-        "needs_user_input": needs_user_input,
-        "prompt_message": prompt_message,
+        "ohn_segment_id": ohn_segment_id,
+        "candidates": candidates or [],
     }
 
 
@@ -271,7 +264,7 @@ def resolve_location(location_text: str, db: Any) -> dict:
     Layer 1 — named waterbody lookup in stream_segments.
     Layer 2 — Nominatim geocode + closest-candidate selection (landmark anchor).
     Layer 3 — Nominatim geocode on the full query text.
-    Layer 4 — unresolved, escalate to user.
+    Layer 4 — always returns text_only; never blocks.
     """
     # ── Layer 1: Named waterbody lookup ──────────────────────────────────────
     waterbody_name = _extract_waterbody_name(location_text)
@@ -282,11 +275,9 @@ def resolve_location(location_text: str, db: Any) -> dict:
 
         if len(candidates) == 1:
             c = candidates[0]
-            return _result(c["lat"], c["lng"], "name_match", 0.85, [c["ogf_id"]])
+            return _result(c["lat"], c["lng"], "name_match", 0.85, ohn_segment_id=c["ogf_id"])
 
         if 2 <= len(candidates) <= 5:
-            # Try sub-location disambiguation via difflib against segment names,
-            # then fall back to centroid of candidates.
             qualifier_words = [
                 w
                 for w in location_text.split()
@@ -300,42 +291,39 @@ def resolve_location(location_text: str, db: Any) -> dict:
                 if best_names:
                     matched = next(c for c in candidates if c["name"] == best_names[0])
                     return _result(
-                        matched["lat"], matched["lng"], "name_match", 0.75, [matched["ogf_id"]]
+                        matched["lat"], matched["lng"], "name_match", 0.75,
+                        ohn_segment_id=matched["ogf_id"],
                     )
             avg_lat = sum(c["lat"] for c in candidates) / len(candidates)
             avg_lng = sum(c["lng"] for c in candidates) / len(candidates)
-            return _result(avg_lat, avg_lng, "name_match", 0.75, [c["ogf_id"] for c in candidates])
+            best = _pick_closest_candidate(candidates, avg_lat, avg_lng)
+            return _result(
+                avg_lat, avg_lng, "name_match", 0.75,
+                ohn_segment_id=best["ogf_id"],
+                candidates=[c["ogf_id"] for c in candidates],
+            )
 
         if len(candidates) >= 6:
             # ── Layer 2: Landmark anchor ──────────────────────────────────────
-            # Geocode the full location text (which may include landmark details)
-            # and pick the candidate closest to the result.
-            if _has_landmark(location_text) or True:  # always try for 6+ candidates
-                geo = _nominatim_geocode(location_text)
-                if geo:
-                    geo_lat, geo_lng = geo
-                    best = _pick_closest_candidate(candidates, geo_lat, geo_lng)
-                    dist = _haversine(geo_lat, geo_lng, best["lat"], best["lng"])
-                    if dist <= 15.0:
-                        method = "landmark" if _has_landmark(location_text) else "name_match"
-                        conf = 0.9 if method == "landmark" else 0.75
-                        return _result(best["lat"], best["lng"], method, conf, [best["ogf_id"]])
+            geo = _nominatim_geocode(location_text)
+            if geo:
+                geo_lat, geo_lng = geo
+                best = _pick_closest_candidate(candidates, geo_lat, geo_lng)
+                dist = _haversine(geo_lat, geo_lng, best["lat"], best["lng"])
+                if dist <= 15.0:
+                    method = "landmark" if _has_landmark(location_text) else "name_match"
+                    conf = 0.9 if method == "landmark" else 0.75
+                    return _result(
+                        best["lat"], best["lng"], method, conf,
+                        ohn_segment_id=best["ogf_id"],
+                    )
 
-            # Fall back: most-fished candidate or user prompt
+            # Fall back: most-fished candidate (no blocking)
             mf = _most_fished_candidate(candidates, db)
             if mf:
                 return _result(
-                    mf["lat"],
-                    mf["lng"],
-                    "name_match",
-                    0.4,
-                    [mf["ogf_id"]],
-                    needs_user_input=True,
-                    prompt_message=(
-                        f"I found {len(candidates)} '{waterbody_name}' segments but couldn't "
-                        "narrow it down. Could you add a landmark — road, bridge, or area? "
-                        "(e.g. 'Bronte Creek at Britannia Rd')"
-                    ),
+                    mf["lat"], mf["lng"], "name_match", 0.4,
+                    ohn_segment_id=mf["ogf_id"],
                 )
 
     # ── Layer 3: Nominatim geocode on full text ───────────────────────────────
@@ -343,22 +331,17 @@ def resolve_location(location_text: str, db: Any) -> dict:
     if geo:
         geo_lat, geo_lng = geo
         if _nearest_ohn_km(geo_lat, geo_lng) <= 2.0:
-            return _result(geo_lat, geo_lng, "geocode_fallback", 0.6, [])
+            return _result(geo_lat, geo_lng, "geocode_fallback", 0.6)
 
-    # ── Layer 4: Unresolved ────────────────────────────────────────────────────
-    return _result(
-        None,
-        None,
-        "unresolved",
-        0.0,
-        [],
-        needs_user_input=True,
-        prompt_message=(
-            f"I couldn't pin '{location_text}' to a specific stream segment. "
-            "Could you add one of: a road/bridge name, a nearby intersection, "
-            "or rough coordinates? (e.g. 'Bronte Creek at Britannia Rd')"
-        ),
-    )
+    # ── Layer 4: text_only — always returns, never blocks ─────────────────────
+    return {
+        "lat": None,
+        "lng": None,
+        "method": "text_only",
+        "confidence": None,
+        "ohn_segment_id": None,
+        "candidates": [],
+    }
 
 
 # ── cKDTree snap ──────────────────────────────────────────────────────────────
@@ -415,7 +398,103 @@ def snap_to_segment(lat: float, lng: float) -> dict:
     }
 
 
-# ── main entry point ──────────────────────────────────────────────────────────
+# ── session extraction prompt ─────────────────────────────────────────────────
+
+_SESSION_SYSTEM_PROMPT = """\
+You are a fishing trip log parser. Extract structured data from the user's fishing
+session description. A session is one day out fishing, which may include multiple stops
+at different locations.
+
+Return a JSON object with this exact structure:
+{
+  "date": "YYYY-MM-DD or null if unknown",
+  "date_approx": "human readable date if exact is unknown, else null",
+  "overall_notes": "anything that applies to the whole day, or null",
+  "stops": [
+    {
+      "location_text": "exact location description as the user wrote it",
+      "location_name": "cleaned display name if you can determine one, else null",
+      "species_caught": [],
+      "was_productive": true or false,
+      "technique": "fishing technique used, or null",
+      "gear": "bait/lure/tackle used, or null",
+      "water_level": "low/normal/high/flooded or null",
+      "water_clarity": "clear/slightly turbid/turbid or null",
+      "weather_notes": "any weather or conditions notes, or null",
+      "notes": "anything else specific to this stop, or null"
+    }
+  ]
+}
+
+STOP SPLITTING RULES:
+- Create a separate stop for each distinct location the user visited
+- If the user went somewhere and left because conditions were bad, that is still a stop
+  (was_productive: false, notes: reason they left)
+- If the user mentions multiple spots on the same water body but clearly moved around,
+  use your judgment — err toward separate stops
+
+SPECIES EXTRACTION — STRICT RULES (these override everything):
+1. Only extract species the user explicitly named
+2. Vague group names → "unidentified [group] sp." e.g. "unidentified shiner sp."
+3. Uncertain IDs → "species name (uncertain)"
+4. Never add species from your knowledge of what lives in that area
+5. Never add species the user only observed but did not catch
+6. Caught nothing → empty list []
+7. Do not guess, infer, or helpfully fill in any species
+
+LOCATION RULES:
+- location_text must always be populated — copy the user's words exactly
+- location_name is your best attempt at a clean display name
+- Do not add lat/lng — the system resolves coordinates separately
+
+PRODUCTIVITY RULES:
+- was_productive is about THIS STOP specifically, not the overall day
+- A stop where the user caught nothing is was_productive: false
+- A stop where a friend caught something but the user caught nothing:
+  was_productive: false (log from the user's perspective)
+- A stop cut short due to conditions: was_productive: false\
+"""
+
+
+# ── main entry points ─────────────────────────────────────────────────────────
+
+
+def parse_session_from_text(text: str, db_conn: Any) -> dict:
+    """Parse a natural-language fishing session description into structured data.
+
+    Calls Claude to extract a session with one or more stops, validates species
+    for each stop, and resolves location for each stop independently.
+    Never blocks — unresolvable locations use method="text_only".
+    """
+    client = get_client()
+    model = get_model()
+
+    response = client.messages.create(
+        model=model,
+        max_tokens=2048,
+        system=_SESSION_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": text}],
+    )
+
+    raw = response.content[0].text.strip()
+    if raw.startswith("```"):
+        parts = raw.split("```")
+        raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
+
+    parsed: dict = json.loads(raw)
+
+    for stop in parsed.get("stops", []):
+        stop["species_caught"] = _validate_species(
+            stop.get("species_caught") or [], text
+        )
+        loc = resolve_location(stop.get("location_text") or text, db_conn)
+        stop["lat"] = loc.get("lat")
+        stop["lng"] = loc.get("lng")
+        stop["ohn_segment_id"] = str(loc["ohn_segment_id"]) if loc.get("ohn_segment_id") else None
+        stop["location_method"] = loc.get("method", "text_only")
+        stop["location_confidence"] = loc.get("confidence")
+
+    return parsed
 
 
 def parse_trip_from_text(
@@ -424,15 +503,9 @@ def parse_trip_from_text(
     user_lng: float | None = None,
     db: Any = None,
 ) -> dict:
-    """Call Claude to extract structured trip data, resolve location, snap to OHN segment.
+    """DEPRECATED — use parse_session_from_text instead.
 
-    When db is provided and Claude doesn't return coordinates, resolve_location() is
-    called to infer lat/lng from the location description. Returns a special
-    {"status": "needs_location", "message": ...} dict when location is genuinely
-    unresolvable and no lat/lng hint is available.
-
-    Returns a dict with all parsed fields plus ogf_id, distance_to_segment_m,
-    segment_stream_order, segment_watercourse_name when a segment is found.
+    Calls Claude to extract structured trip data, resolves location, snaps to OHN segment.
     """
     client = get_client()
     model = get_model()
@@ -450,18 +523,15 @@ def parse_trip_from_text(
         raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
 
     parsed: dict = json.loads(raw)
-    parsed = _validate_species(parsed, text)
+    parsed["species_caught"] = _validate_species(parsed.get("species_caught") or [], text)
 
     lat = parsed.get("lat") or user_lat
     lng = parsed.get("lng") or user_lng
     loc_meta: dict = {}
 
-    # Layer resolution when Claude didn't infer coordinates
     if (lat is None or lng is None) and db is not None:
         location_text = parsed.get("waterbody_name") or parsed.get("location_description") or text
         loc = resolve_location(location_text, db)
-        if loc["needs_user_input"] and loc["lat"] is None:
-            return {"status": "needs_location", "message": loc["prompt_message"]}
         if loc["lat"] is not None:
             lat = loc["lat"]
             lng = loc["lng"]

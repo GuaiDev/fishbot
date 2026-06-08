@@ -3,6 +3,7 @@
 Orchestrates: NL parsing → segment snapping → DB insert → insight generation.
 """
 
+import json
 import logging
 from collections import Counter
 from datetime import datetime
@@ -15,7 +16,54 @@ from src.storage.trips import get_parsed_trips, insert_parsed_trip
 logger = logging.getLogger(__name__)
 
 
-def log_trip(
+def log_session(parsed_session: dict, db_conn: Database) -> dict:
+    """Insert a parsed session and all its stops into the database.
+
+    Returns {"session_id": int, "stops_logged": int}
+    """
+    session_id = db_conn["sessions"].insert(
+        {
+            "date": parsed_session.get("date"),
+            "date_approx": parsed_session.get("date_approx"),
+            "overall_notes": parsed_session.get("overall_notes"),
+        }
+    ).last_pk
+
+    stops_logged = 0
+    for stop in parsed_session.get("stops", []):
+        db_conn["stops"].insert(
+            {
+                "session_id": session_id,
+                "location_text": stop.get("location_text") or "",
+                "location_name": stop.get("location_name"),
+                "lat": stop.get("lat"),
+                "lng": stop.get("lng"),
+                "ohn_segment_id": stop.get("ohn_segment_id"),
+                "location_method": stop.get("location_method", "text_only"),
+                "location_confidence": stop.get("location_confidence"),
+                "species_caught": json.dumps(stop.get("species_caught") or []),
+                "was_productive": 1 if stop.get("was_productive") else 0,
+                "technique": stop.get("technique"),
+                "gear": stop.get("gear"),
+                "water_level": stop.get("water_level"),
+                "water_clarity": stop.get("water_clarity"),
+                "water_temp_c": stop.get("water_temp_c"),
+                "weather_notes": stop.get("weather_notes"),
+                "notes": stop.get("notes"),
+            }
+        )
+        stops_logged += 1
+
+        if not stop.get("was_productive") and stop.get("ohn_segment_id"):
+            try:
+                _penalise_segment(db_conn, int(stop["ohn_segment_id"]))
+            except (ValueError, TypeError):
+                pass
+
+    return {"session_id": session_id, "stops_logged": stops_logged}
+
+
+def log_trip(  # DEPRECATED — use log_session / parse_session_from_text instead
     db: Database,
     text: str,
     user_lat: float | None = None,
@@ -68,54 +116,70 @@ def log_trip(
 
 def get_trip_summary(db: Database) -> str:
     """Return a natural-language summary of all logged trips for agent context."""
-    if "parsed_trips" not in db.table_names():
+    has_stops = "stops" in db.table_names()
+    has_parsed = "parsed_trips" in db.table_names()
+
+    if not has_stops and not has_parsed:
         return "No trips logged yet."
 
-    trips = get_parsed_trips(db, limit=500)
-    if not trips:
-        return "No trips logged yet."
-
-    n = len(trips)
-
-    # Species counts
     caught_counter: Counter = Counter()
-    waterbody_counter: Counter = Counter()
-    productive_conditions: list[str] = []
+    location_counter: Counter = Counter()
+    dates: list[str] = []
+    n_stops = 0
+    n_sessions = 0
 
-    for t in trips:
-        for sp in t.get("species_caught") or []:
-            if sp:
-                caught_counter[sp] += 1
-        wb = t.get("waterbody_name") or t.get("location_description", "")
-        if wb:
-            waterbody_counter[wb] += 1
-        if t.get("was_productive") and t.get("flow_trend"):
-            productive_conditions.append(t["flow_trend"])
+    if has_stops:
+        stops = list(db["stops"].rows)
+        n_stops = len(stops)
+        n_sessions = db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        for stop in stops:
+            species = json.loads(stop.get("species_caught") or "[]")
+            for sp in species:
+                if sp:
+                    caught_counter[sp] += 1
+            loc = stop.get("location_name") or stop.get("location_text") or ""
+            if loc:
+                location_counter[loc[:50]] += 1
 
-    parts = [f"You have logged {n} trip{'s' if n != 1 else ''}."]
+        session_dates = list(db.execute(
+            "SELECT date FROM sessions WHERE date IS NOT NULL"
+        ).fetchall())
+        dates = [r[0] for r in session_dates]
+
+    elif has_parsed:
+        trips = get_parsed_trips(db, limit=500)
+        n_stops = len(trips)
+        n_sessions = n_stops
+        for t in trips:
+            for sp in t.get("species_caught") or []:
+                if sp:
+                    caught_counter[sp] += 1
+            loc = t.get("waterbody_name") or t.get("location_description", "")
+            if loc:
+                location_counter[loc[:50]] += 1
+            d = t.get("trip_date") or t.get("logged_at", "")[:10]
+            if d:
+                dates.append(d)
+
+    if n_stops == 0 and n_sessions == 0:
+        return "No trips logged yet."
+
+    parts = [
+        f"You have logged {n_sessions} session{'s' if n_sessions != 1 else ''} "
+        f"({n_stops} stop{'s' if n_stops != 1 else ''})."
+    ]
 
     if caught_counter:
         top = caught_counter.most_common(3)
-        sp_str = ", ".join(f"{sp} ({c} trip{'s' if c != 1 else ''})" for sp, c in top)
-        parts.append(f"Most-caught species: {sp_str}.")
+        sp_str = ", ".join(f"{sp} ({c}×)" for sp, c in top)
+        parts.append(f"Most-caught: {sp_str}.")
     else:
         parts.append("No fish caught yet in the log.")
 
-    if waterbody_counter:
-        top_wb = waterbody_counter.most_common(1)[0][0]
-        parts.append(f"Most-visited water: {top_wb}.")
+    if location_counter:
+        top_loc = location_counter.most_common(1)[0][0]
+        parts.append(f"Most-visited: {top_loc}.")
 
-    if productive_conditions:
-        flow_counts = Counter(productive_conditions)
-        best_flow = flow_counts.most_common(1)[0][0]
-        parts.append(f"Best conditions: flow {best_flow}.")
-
-    # Recent trip date
-    dates = [
-        t.get("trip_date") or t.get("logged_at", "")[:10]
-        for t in trips
-        if t.get("trip_date") or t.get("logged_at")
-    ]
     if dates:
         parts.append(f"Last logged: {max(dates)}.")
 

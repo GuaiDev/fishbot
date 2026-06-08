@@ -430,6 +430,42 @@ def ensure_schema(db: Database) -> None:
         )
 
 
+    if "sessions" not in db.table_names():
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                date        TEXT,
+                date_approx TEXT,
+                overall_notes TEXT,
+                created_at  TEXT DEFAULT (datetime('now'))
+            )
+        """)
+
+    if "stops" not in db.table_names():
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS stops (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id          INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                location_text       TEXT NOT NULL,
+                location_name       TEXT,
+                lat                 REAL,
+                lng                 REAL,
+                ohn_segment_id      TEXT,
+                location_method     TEXT,
+                location_confidence REAL,
+                species_caught      TEXT,
+                was_productive      INTEGER,
+                technique           TEXT,
+                gear                TEXT,
+                water_level         TEXT,
+                water_clarity       TEXT,
+                water_temp_c        REAL,
+                weather_notes       TEXT,
+                notes               TEXT,
+                created_at          TEXT DEFAULT (datetime('now'))
+            )
+        """)
+
     if "parsed_trips" not in db.table_names():
         db["parsed_trips"].create(
             {

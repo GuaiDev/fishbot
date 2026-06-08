@@ -401,26 +401,32 @@ def _execute_tool(name: str, inputs: dict) -> str:
             }
         )
     if name == "log_trip":
-        from src.services.trip_logger import log_trip as _log_trip
+        from src.services.trip_logger import log_session
+        from src.services.trip_parser import parse_session_from_text
 
-        result = _log_trip(
-            db=get_db(),
-            text=inputs["description"],
-            user_lat=inputs.get("user_lat"),
-            user_lng=inputs.get("user_lng"),
-        )
+        db = get_db()
+        parsed = parse_session_from_text(inputs["description"], db)
+        result = log_session(parsed, db)
+        stops_summary = [
+            {
+                "location": s.get("location_text"),
+                "species_caught": s.get("species_caught", []),
+                "was_productive": s.get("was_productive"),
+                "location_method": s.get("location_method"),
+            }
+            for s in parsed.get("stops", [])
+        ]
         return json.dumps(
             {
-                "trip_id": result["trip_id"],
-                "confirmation": result["confirmation"],
-                "segment_snapped": result["segment_snapped"],
-                "segment_name": result["segment_name"],
-                "insights_generated": result["insights_generated"],
-                "parsed": {
-                    k: v
-                    for k, v in result["parsed"].items()
-                    if k not in ("raw_text",)
-                },
+                "session_id": result["session_id"],
+                "stops_logged": result["stops_logged"],
+                "date": parsed.get("date"),
+                "date_approx": parsed.get("date_approx"),
+                "stops": stops_summary,
+                "confirmation": (
+                    f"Session #{result['session_id']} logged with "
+                    f"{result['stops_logged']} stop(s)."
+                ),
             }
         )
     if name == "get_my_fishing_summary":
