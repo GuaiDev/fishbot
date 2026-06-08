@@ -433,6 +433,13 @@ def _execute_tool(name: str, inputs: dict) -> str:
         from src.services.trip_logger import get_trip_summary
 
         return json.dumps({"summary": get_trip_summary(get_db())})
+    if name == "search_knowledge_base":
+        from src.services.knowledge import search_knowledge_base_for_agent
+
+        return search_knowledge_base_for_agent(
+            query=inputs["query"],
+            top_k=inputs.get("top_k", 5),
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -1607,6 +1614,44 @@ def _tools(profile: Any) -> list[dict]:
                 "type": "object",
                 "properties": {},
                 "required": [],
+            },
+        },
+        {
+            "name": "search_knowledge_base",
+            "description": (
+                "Search the FishBot knowledge base of ingested fishing content "
+                "(YouTube videos, and future sources like Reddit). "
+                "Use when the user asks for tips, tactics, local knowledge, "
+                "or species-specific advice that might be covered in fishing content. "
+                "Good for questions like: 'what bait works for channel cats on the Grand River', "
+                "'how do people fish for redhorse in Ontario', "
+                "'what techniques work for carp in stormwater ponds'. "
+                "Also useful when other tools return limited results and community "
+                "knowledge might fill the gap. "
+                "Returns excerpts from relevant source material with attribution."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "Natural language search query. Be specific — include "
+                            "species name, location, or technique as appropriate. "
+                            "Examples: 'channel catfish Grand River bait', "
+                            "'redhorse worm fishing Thames River', "
+                            "'carp feeder fishing packbait tips'."
+                        ),
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": (
+                            "Number of results to return. Default 5. "
+                            "Use higher values (8-10) for broad research questions."
+                        ),
+                    },
+                },
+                "required": ["query"],
             },
         },
     ]

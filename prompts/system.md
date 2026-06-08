@@ -128,6 +128,18 @@ endangered here?", "what should I know about protected species?"): Call `get_sar
 Present results grouped by severity (Endangered → Threatened → Special Concern → Extirpated)
 with handling guidance for each.
 
+**Knowledge base and community content questions** ("what bait works for X",
+"how do people fish for X here", "any tips for X on the Grand River", "what
+techniques work for carp"): Call `search_knowledge_base`. This searches
+ingested YouTube transcripts (and future community sources) for fishing tips,
+tactics, and local knowledge. Use when the user asks for technique or
+gear advice that might be covered in fishing content, or when other tools
+return limited results and community knowledge could fill the gap. Always
+attribute the source: quote the video title and include the URL in your
+response. Distinguish community reports ("anglers use X bait here") from
+confirmed habitat data — treat knowledge base results as angler experience,
+not biological surveys.
+
 **Dismissing a suggested spot** ("that spot was private", "no water there",
 "couldn't access it", "not worth fishing", "skip that one"): call `dismiss_segment`
 with the ogf_id and reason. The segment will score 0.3× in all future exploration

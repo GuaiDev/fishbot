@@ -512,6 +512,42 @@ def ensure_schema(db: Database) -> None:
                     pass
 
 
+    if "knowledge_sources" not in db.table_names():
+        db["knowledge_sources"].create(
+            {
+                "id": int,
+                "source_type": str,
+                "source_id": str,
+                "title": str,
+                "url": str,
+                "channel_name": str,
+                "published_at": str,
+                "search_query": str,
+                "transcript_raw": str,
+                "ingested_at": str,
+            },
+            pk="id",
+        )
+        db["knowledge_sources"].create_index(
+            ["source_type", "source_id"], unique=True, if_not_exists=True
+        )
+
+    if "knowledge_chunks" not in db.table_names():
+        db["knowledge_chunks"].create(
+            {
+                "id": int,
+                "source_id": int,
+                "chunk_index": int,
+                "chunk_text": str,
+                "created_at": str,
+            },
+            pk="id",
+            foreign_keys=[("source_id", "knowledge_sources", "id")],
+        )
+        db["knowledge_chunks"].create_index(["source_id"], if_not_exists=True)
+        db["knowledge_chunks"].enable_fts(["chunk_text"], create_triggers=True)
+
+
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
     db.execute("DELETE FROM stream_gauge_readings WHERE reading_datetime < ?", [cutoff])

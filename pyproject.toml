@@ -5,6 +5,7 @@ description = "Personal fishing exploration bot — jurisdiction-aware, Ontario 
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.103.1",
+    "google-api-python-client>=2.197.0",
     "httpx>=0.28.1",
     "joblib>=1.5.3",
     "networkx>=3.6.1",
@@ -19,6 +20,7 @@ dependencies = [
     "shapely>=2.1.2",
     "sqlite-utils>=3.39",
     "typer>=0.25.1",
+    "youtube-transcript-api>=1.2.4",
 ]
 
 [project.scripts]
