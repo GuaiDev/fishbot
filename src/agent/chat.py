@@ -16,6 +16,56 @@ from src.storage.trips import recent_trips
 EXIT_COMMANDS = {"/exit", "/quit", "exit", "quit"}
 
 
+def run_chat_api(messages: list[dict]) -> dict:
+    """Non-streaming agentic loop for API use.
+
+    Takes a messages list with the user turn already appended.
+    Returns {"reply": str, "tool_calls": list[str], "messages": list[dict]}.
+    Mutates messages in-place (tool-call turns are appended for full context).
+    """
+    try:
+        client = get_client()
+    except RuntimeError as e:
+        return {"reply": str(e), "tool_calls": [], "messages": messages}
+
+    profile = load_profile()
+    db = get_db()
+    trips = recent_trips(db, limit=5)
+    home = get_jurisdiction(profile.home_jurisdiction)
+    system_prompt = assemble(load_template(), profile, trips, home)
+    model = get_model()
+    tools = _tools(profile)
+    tool_calls_made: list[str] = []
+
+    while True:
+        resp = client.messages.create(
+            model=model,
+            max_tokens=2048,
+            system=system_prompt,
+            messages=messages,
+            tools=tools,
+        )
+        content_blocks = resp.content
+        tool_use_blocks = [b for b in content_blocks if b.type == "tool_use"]
+
+        if not tool_use_blocks:
+            reply = "".join(b.text for b in content_blocks if b.type == "text")
+            messages.append({"role": "assistant", "content": reply})
+            return {"reply": reply, "tool_calls": tool_calls_made, "messages": messages}
+
+        assistant_content = [_normalize_block(b) for b in content_blocks]
+        messages.append({"role": "assistant", "content": assistant_content})
+
+        tool_results: list[dict] = []
+        for block in tool_use_blocks:
+            tool_calls_made.append(block.name)
+            result = _execute_tool(block.name, block.input)
+            tool_results.append(
+                {"type": "tool_result", "tool_use_id": block.id, "content": result}
+            )
+        messages.append({"role": "user", "content": tool_results})
+
+
 def run_chat() -> None:
     console = Console()
 

@@ -26,6 +26,18 @@ def run() -> None:
 
 
 @app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", "--host", help="Bind address"),
+    port: int = typer.Option(8000, "--port", "-p", help="Port to listen on"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload (dev only)"),
+) -> None:
+    """Start the FishBot API server."""
+    import uvicorn
+
+    uvicorn.run("src.api.main:app", host=host, port=port, reload=reload)
+
+
+@app.command()
 def log() -> None:
     """Interactively log a fishing trip."""
     profile = load_profile()

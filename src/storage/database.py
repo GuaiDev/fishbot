@@ -1,11 +1,13 @@
 """SQLite database setup for trips and future tables."""
 
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlite_utils import Database
 
-DB_PATH = Path("data/fishing.db")
+# Respect DATA_DIR env var for Railway persistent volumes; default to local data/
+DB_PATH = Path(os.environ.get("DATA_DIR", "data")) / "fishing.db"
 
 
 def get_db(path: Path | None = None) -> Database:
