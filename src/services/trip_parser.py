@@ -26,14 +26,47 @@ logger = logging.getLogger(__name__)
 _FEATURE_MATRIX_PATH = Path("data/processed/sdm_feature_matrix.parquet")
 _SNAP_RADIUS_KM = 5.0  # generous radius for user-described locations
 
-_SYSTEM_PROMPT = (
-    "You are a fishing trip parser. "
-    "Extract structured data from natural language fishing trip descriptions. "
-    "Always respond with valid JSON only. "
-    "If information is not mentioned, use null. "
-    "Be generous with inference — if someone says 'near the bridge on Bronte Creek' "
-    "infer it's likely in the Oakville/Burlington area."
-)
+_SYSTEM_PROMPT = """\
+You are a fishing trip parser. Extract structured data from natural language fishing
+trip descriptions. Always respond with valid JSON only. If information is not mentioned,
+use null.
+
+SPECIES EXTRACTION — STRICT RULES:
+
+You are extracting what the user explicitly said they caught. You are not a fishing
+guide, you are a transcription tool. Follow these rules without exception:
+
+1. ONLY include species the user explicitly named in their message.
+   - "caught a carp" → ["common carp"]
+   - "caught redhorse" → ["redhorse sp. (unidentified)"]
+   - "caught shorthead redhorse" → ["shorthead redhorse"]
+
+2. If the user names a group but not a species, use "unidentified [group] sp."
+   - "shiners" → ["unidentified shiner sp."]
+   - "chubs" → ["unidentified chub sp."]
+   - "suckers" → ["unidentified sucker sp."]
+   - "panfish" → ["unidentified panfish sp."]
+   - "catfish" → ["unidentified catfish sp."]
+
+3. If the user expresses uncertainty, flag it:
+   - "I think it was a smallmouth" → ["smallmouth bass (uncertain)"]
+   - "probably a golden redhorse" → ["golden redhorse (uncertain)"]
+
+4. NEVER add species based on:
+   - What you know lives in that river or lake
+   - What species are common in that region
+   - What species were caught there historically
+   - iNaturalist, GBIF, or any other observation database
+   - What makes ecological sense for that habitat
+
+5. NEVER add species the user only observed but did not catch, unless the user
+   explicitly says "observed" or "saw" AND there is a separate species_observed field.
+
+6. If the user caught nothing, species_caught must be an empty list [].
+
+7. Do not infer, guess, suggest, or helpfully fill in any species information.
+   Only transcribe what the user wrote.\
+"""
 
 _USER_PROMPT_TEMPLATE = """Parse this fishing trip log: {text}
 
@@ -44,8 +77,8 @@ Return JSON with these fields:
   "waterbody_name": "string or null",
   "lat": null,
   "lng": null,
-  "species_caught": ["list of species"],
-  "species_observed": ["list of species"],
+  "species_caught": ["list of species explicitly named by the user — see STRICT RULES"],
+  "species_observed": ["species user saw but did not catch"],
   "species_targeted": "string or null",
   "conditions": {{
     "water_level": "low/normal/high/null",
@@ -62,6 +95,31 @@ Return JSON with these fields:
   "notes": "string or null"
 }}"""
 
+# ── species validation ────────────────────────────────────────────────────────
+
+
+def _validate_species(extracted: dict, original_text: str) -> dict:
+    """Remove any species from species_caught not traceable to the user's text."""
+    text_lower = original_text.lower()
+    validated = []
+
+    for species in extracted.get("species_caught", []):
+        if "unidentified" in species.lower():
+            validated.append(species)
+            continue
+
+        clean = species.lower().replace("(uncertain)", "").strip()
+        words = [w for w in clean.split() if len(w) > 3]
+
+        if any(w in text_lower for w in words):
+            validated.append(species)
+        else:
+            print(f"[VALIDATION REMOVED] '{species}' not found in user text — skipped")
+
+    extracted["species_caught"] = validated
+    return extracted
+
+
 # ── location resolution ───────────────────────────────────────────────────────
 
 _WATERBODY_RE = re.compile(
@@ -72,9 +130,19 @@ _WATERBODY_RE = re.compile(
 _LAKE_RE = re.compile(r"\bLake\s+([A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+)*)\b", re.IGNORECASE)
 
 _LANDMARK_KEYWORDS = {
-    "bridge", "dam", "beaver dam", "confluence", "falls", "weir",
-    "culvert", "crossing", "pool below", "riffle at", "upstream of",
-    "below the", "above the",
+    "bridge",
+    "dam",
+    "beaver dam",
+    "confluence",
+    "falls",
+    "weir",
+    "culvert",
+    "crossing",
+    "pool below",
+    "riffle at",
+    "upstream of",
+    "below the",
+    "above the",
 }
 
 
@@ -220,7 +288,8 @@ def resolve_location(location_text: str, db: Any) -> dict:
             # Try sub-location disambiguation via difflib against segment names,
             # then fall back to centroid of candidates.
             qualifier_words = [
-                w for w in location_text.split()
+                w
+                for w in location_text.split()
                 if len(w) > 4 and w.lower() not in waterbody_name.lower().split()
             ]
             if qualifier_words:
@@ -231,8 +300,7 @@ def resolve_location(location_text: str, db: Any) -> dict:
                 if best_names:
                     matched = next(c for c in candidates if c["name"] == best_names[0])
                     return _result(
-                        matched["lat"], matched["lng"], "name_match", 0.75,
-                        [matched["ogf_id"]]
+                        matched["lat"], matched["lng"], "name_match", 0.75, [matched["ogf_id"]]
                     )
             avg_lat = sum(c["lat"] for c in candidates) / len(candidates)
             avg_lng = sum(c["lng"] for c in candidates) / len(candidates)
@@ -257,7 +325,11 @@ def resolve_location(location_text: str, db: Any) -> dict:
             mf = _most_fished_candidate(candidates, db)
             if mf:
                 return _result(
-                    mf["lat"], mf["lng"], "name_match", 0.4, [mf["ogf_id"]],
+                    mf["lat"],
+                    mf["lng"],
+                    "name_match",
+                    0.4,
+                    [mf["ogf_id"]],
                     needs_user_input=True,
                     prompt_message=(
                         f"I found {len(candidates)} '{waterbody_name}' segments but couldn't "
@@ -275,7 +347,11 @@ def resolve_location(location_text: str, db: Any) -> dict:
 
     # ── Layer 4: Unresolved ────────────────────────────────────────────────────
     return _result(
-        None, None, "unresolved", 0.0, [],
+        None,
+        None,
+        "unresolved",
+        0.0,
+        [],
         needs_user_input=True,
         prompt_message=(
             f"I couldn't pin '{location_text}' to a specific stream segment. "
@@ -374,6 +450,7 @@ def parse_trip_from_text(
         raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
 
     parsed: dict = json.loads(raw)
+    parsed = _validate_species(parsed, text)
 
     lat = parsed.get("lat") or user_lat
     lng = parsed.get("lng") or user_lng
@@ -381,11 +458,7 @@ def parse_trip_from_text(
 
     # Layer resolution when Claude didn't infer coordinates
     if (lat is None or lng is None) and db is not None:
-        location_text = (
-            parsed.get("waterbody_name")
-            or parsed.get("location_description")
-            or text
-        )
+        location_text = parsed.get("waterbody_name") or parsed.get("location_description") or text
         loc = resolve_location(location_text, db)
         if loc["needs_user_input"] and loc["lat"] is None:
             return {"status": "needs_location", "message": loc["prompt_message"]}
