@@ -1,7 +1,8 @@
 """Tests for trip_parser service.
 
 Claude API calls are mocked via the anthropic client. Snap-to-segment is
-tested via direct mock of snap_to_segment.
+tested via direct mock of snap_to_segment. resolve_location tests use a
+seeded in-memory test DB.
 """
 
 import json
@@ -9,7 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.services.trip_parser import parse_trip_from_text, snap_to_segment
+from src.services.trip_parser import parse_trip_from_text, resolve_location, snap_to_segment
+from src.storage.database import get_db
 
 
 def _mock_client(payload: dict) -> MagicMock:
@@ -135,3 +137,170 @@ def test_snap_to_segment_called_with_parsed_coords(mock_get_client, mock_get_mod
     mock_snap.assert_called_once_with(43.45, -79.70)
     assert result["ogf_id"] == 999
     assert result["distance_to_segment_m"] == 120.0
+
+
+# ── resolve_location tests ────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def db_conn(tmp_path):
+    """Test DB seeded with a handful of realistic Ontario stream segments."""
+    db = get_db(path=tmp_path / "test.db")
+    db["stream_segments"].insert_all(
+        [
+            {  # Credit River near Streetsville
+                "ogf_id": 1001,
+                "watercourse_type": "River",
+                "name": "Credit River",
+                "flow_verified": 1,
+                "permanency": "perennial",
+                "flow_classification": "regular",
+                "length_m": 500.0,
+                "geom_wkt": "POINT (-79.7200 43.5800)",
+                "start_node": "A1",
+                "end_node": "A2",
+                "jurisdiction": "CA-ON",
+                "ingested_at": "2026-01-01",
+            },
+            {  # Credit River — upstream segment (Brampton area)
+                "ogf_id": 1002,
+                "watercourse_type": "River",
+                "name": "Credit River",
+                "flow_verified": 1,
+                "permanency": "perennial",
+                "flow_classification": "regular",
+                "length_m": 450.0,
+                "geom_wkt": "POINT (-79.8000 43.6500)",
+                "start_node": "B1",
+                "end_node": "B2",
+                "jurisdiction": "CA-ON",
+                "ingested_at": "2026-01-01",
+            },
+            {  # Bronte Creek near Britannia Rd / west Oakville
+                "ogf_id": 2001,
+                "watercourse_type": "Creek",
+                "name": "Bronte Creek",
+                "flow_verified": 1,
+                "permanency": "perennial",
+                "flow_classification": "regular",
+                "length_m": 300.0,
+                "geom_wkt": "POINT (-79.6700 43.4750)",
+                "start_node": "C1",
+                "end_node": "C2",
+                "jurisdiction": "CA-ON",
+                "ingested_at": "2026-01-01",
+            },
+        ],
+        pk="ogf_id",
+        ignore=True,
+    )
+    db["stream_segments"].create_index(["name"], if_not_exists=True)
+    return db
+
+
+def test_resolve_location_single_name_match(db_conn):
+    """Single matching segment returns immediately with high confidence."""
+    result = resolve_location("Bronte Creek near the bridge", db_conn)
+    assert result["lat"] is not None
+    assert result["method"] in ("name_match", "landmark", "geocode_fallback")
+    assert result["confidence"] >= 0.75
+    assert result["needs_user_input"] is False
+
+
+@patch("src.services.trip_parser._nominatim_geocode")
+def test_resolve_location_by_name(mock_geo, db_conn):
+    """Credit River (2 candidates) narrows via sub-location qualifier."""
+    # Nominatim returns coordinates near the Streetsville segment (1001)
+    mock_geo.return_value = (43.58, -79.72)
+
+    result = resolve_location("Credit River near Streetsville", db_conn)
+
+    assert result["lat"] is not None
+    assert result["method"] in ("name_match", "landmark", "geocode_fallback")
+    assert result["confidence"] > 0.5
+    assert result["needs_user_input"] is False
+
+
+@patch("src.services.trip_parser._nominatim_geocode")
+def test_resolve_location_landmark_bridge(mock_geo, db_conn):
+    """Bridge keyword + single segment produces high-confidence result."""
+    mock_geo.return_value = None  # Nominatim not needed for single match
+
+    result = resolve_location("Bronte Creek at Britannia Rd bridge", db_conn)
+
+    assert result["lat"] is not None
+    assert result["confidence"] >= 0.75
+    assert result["needs_user_input"] is False
+
+
+@patch("src.services.trip_parser._nominatim_geocode", return_value=None)
+def test_resolve_location_unresolved(mock_geo, db_conn):
+    """Completely unrecognisable location escalates to user."""
+    result = resolve_location("some random ditch I found somewhere", db_conn)
+    assert result["needs_user_input"] is True
+    assert result["prompt_message"] is not None
+    assert result["lat"] is None
+
+
+@patch("src.services.trip_parser.snap_to_segment")
+@patch("src.services.trip_parser.resolve_location")
+@patch("src.services.trip_parser.get_model", return_value="claude-sonnet-4-6")
+@patch("src.services.trip_parser.get_client")
+def test_parse_trip_with_fuzzy_location(mock_get_client, mock_get_model, mock_resolve, mock_snap, db_conn):
+    """Location without Claude-inferred coords falls through to resolve_location."""
+    mock_get_client.return_value = _mock_client(
+        _api_payload(
+            lat=None,
+            lng=None,
+            location_description="Bronte Creek at the 5 Side Rd bridge",
+            waterbody_name="Bronte Creek",
+            species_caught=["Rainbow Darter", "Creek Chub"],
+            conditions={"water_level": None, "water_clarity": "clear", "water_temp_c": None, "weather": None, "flow_trend": None},
+        )
+    )
+    mock_resolve.return_value = {
+        "lat": 43.4750, "lng": -79.6700,
+        "method": "name_match", "confidence": 0.85,
+        "candidates": [2001],
+        "needs_user_input": False, "prompt_message": None,
+    }
+    mock_snap.return_value = {
+        "ogf_id": 2001,
+        "distance_to_segment_m": 55.0,
+        "segment_stream_order": 3,
+        "segment_watercourse_name": "Bronte Creek",
+    }
+
+    result = parse_trip_from_text(
+        "Caught darters on Bronte Creek at the 5 Side Rd bridge, clear water",
+        db=db_conn,
+    )
+
+    assert result.get("status") != "needs_location"
+    assert result.get("ogf_id") == 2001
+    mock_resolve.assert_called_once()
+
+
+@patch("src.services.trip_parser.snap_to_segment", return_value={})
+@patch("src.services.trip_parser.resolve_location")
+@patch("src.services.trip_parser.get_model", return_value="claude-sonnet-4-6")
+@patch("src.services.trip_parser.get_client")
+def test_parse_trip_returns_needs_location_when_unresolved(
+    mock_get_client, mock_get_model, mock_resolve, mock_snap, db_conn
+):
+    """Unresolved location returns needs_location status without inserting a trip."""
+    mock_get_client.return_value = _mock_client(
+        _api_payload(lat=None, lng=None, location_description="that one random ditch", waterbody_name=None)
+    )
+    mock_resolve.return_value = {
+        "lat": None, "lng": None,
+        "method": "unresolved", "confidence": 0.0,
+        "candidates": [],
+        "needs_user_input": True,
+        "prompt_message": "I couldn't pin that location.",
+    }
+
+    result = parse_trip_from_text("caught something in a ditch", db=db_conn)
+
+    assert result.get("status") == "needs_location"
+    assert "message" in result

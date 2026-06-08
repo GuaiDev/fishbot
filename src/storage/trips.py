@@ -107,6 +107,8 @@ def insert_parsed_trip(db: Any, trip_dict: dict) -> int:
         "gear": trip_dict.get("gear"),
         "notes": trip_dict.get("notes"),
         "raw_text": trip_dict.get("raw_text", ""),
+        "location_method": trip_dict.get("location_method"),
+        "location_confidence": trip_dict.get("location_confidence"),
     }
     return db["parsed_trips"].insert(row).last_pk  # type: ignore[return-value]
 

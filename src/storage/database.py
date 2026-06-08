@@ -443,7 +443,7 @@ def ensure_schema(db: Database) -> None:
                 "lng": float,
                 "ogf_id": int,
                 "distance_to_segment_m": float,
-                "species_caught": str,   # JSON array
+                "species_caught": str,    # JSON array
                 "species_observed": str,  # JSON array
                 "species_targeted": str,
                 "water_level": str,
@@ -454,15 +454,26 @@ def ensure_schema(db: Database) -> None:
                 "habitat_notes": str,
                 "spot_type": str,
                 "fish_count": int,
-                "was_productive": int,   # 0/1/null
+                "was_productive": int,    # 0/1/null
                 "gear": str,
                 "notes": str,
                 "raw_text": str,
+                "location_method": str,
+                "location_confidence": float,
             },
             pk="trip_id",
         )
         db["parsed_trips"].create_index(["ogf_id"], if_not_exists=True)
         db["parsed_trips"].create_index(["trip_date"], if_not_exists=True)
+    else:
+        # Migrate: add location resolution columns if absent
+        pt_cols = {c.name for c in db["parsed_trips"].columns}
+        for col, col_type in [("location_method", "TEXT"), ("location_confidence", "REAL")]:
+            if col not in pt_cols:
+                try:
+                    db.execute(f"ALTER TABLE parsed_trips ADD COLUMN {col} {col_type}")
+                except Exception:
+                    pass
 
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:

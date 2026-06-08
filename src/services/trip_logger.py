@@ -26,9 +26,19 @@ def log_trip(
     Returns a summary dict with trip_id, parsed data, snap info, and a
     human-readable confirmation string.
     """
-    parsed = parse_trip_from_text(text, user_lat=user_lat, user_lng=user_lng)
-    parsed["raw_text"] = text
+    parsed = parse_trip_from_text(text, user_lat=user_lat, user_lng=user_lng, db=db)
 
+    if parsed.get("status") == "needs_location":
+        return {
+            "trip_id": None,
+            "parsed": {},
+            "segment_snapped": False,
+            "segment_name": "",
+            "insights_generated": 0,
+            "confirmation": parsed["message"],
+        }
+
+    parsed["raw_text"] = text
     trip_id = insert_parsed_trip(db, parsed)
 
     ogf_id = parsed.get("ogf_id")
