@@ -57,6 +57,15 @@ chat window.
   the feedback loop between trip logs and recommendations — a confirmed catch at
   Willoway Park should bump insight #34 from medium → high confidence automatically.
 
+- **Blank trip contradiction matching** — when a user logs an unproductive stop
+  ("blanked on channel catfish"), the parser correctly sets `species_caught=[]`
+  and `was_productive=False`. But `enrich_session` matches insights by species
+  caught — so a blank stop never triggers a contradiction against existing insights,
+  even if the spot has a high-confidence "good here" insight.
+  Fix: in `match_insights_to_stop()`, also match by location proximity alone for
+  unproductive stops, even when `species_caught` is empty. This way blanking at
+  Willoway Park still challenges insight #34.
+
 ---
 
 ## Agent Behaviour
@@ -106,6 +115,15 @@ chat window.
   server. Required before EXIF photo logging, voice logging, and public access
   are meaningful. Not yet started.
 
+- **Fishing derby — hosted version** — the derby widget currently runs as a local
+  browser artifact. Build a proper hosted version with:
+  - Shared live leaderboard (all players see each other's catches in real time)
+  - Each player opens the Railway URL on their own phone
+  - Photo submission stored server-side
+  - Session management (create derby → share code → friends join)
+  Backend: new `/derby` endpoints on the Railway FastAPI server.
+  Frontend: simple mobile web page served from Railway.
+
 ---
 
 ## Infrastructure
@@ -126,6 +144,20 @@ chat window.
   is being populated. Build a dashboard or reporting tool to understand cost per
   query over time. Foundation for future per-user billing in commercial version.
 
+- **Test isolation — production DB pollution** — verification scripts that call
+  `log_session()` directly write to `data/fishing.db` (production). Need a `--db`
+  flag or `DATA_DIR` environment variable override for all verification and manual
+  test scripts so they never touch the production database. Add
+  `DATA_DIR=data/test.db uv run python scripts/...` pattern to CLAUDE.md as the
+  standard approach for manual testing.
+
+- **Derby scoring — data-driven rarity** — the fishing derby widget uses hardcoded
+  point values. The real version should query iNaturalist + GBIF observation counts
+  for species near the derby location and derive relative rarity scores from actual
+  data. Blocked on local database being populated for target areas (Grand River /
+  Dunnville not yet ingested). Backend endpoint: `POST /derby/scores` with species
+  list + lat/lng → returns point table. Build after ingest is run for target areas.
+
 ---
 
 ## Known Bugs
@@ -136,4 +168,4 @@ chat window.
 
 ---
 
-*Last updated: Session — recommendation ledger, conflict detection, rolling context*
+*Last updated: Session — trip enrichment, confidence escalation, fishing derby*
