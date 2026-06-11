@@ -348,6 +348,20 @@ def _execute_tool(name: str, inputs: dict) -> str:
             source_detail=inputs["source_detail"],
             evidence_count=inputs["evidence_count"],
             jurisdiction=inputs.get("jurisdiction"),
+            lat=inputs.get("lat"),
+            lng=inputs.get("lng"),
+            recommendation=inputs.get("recommendation"),
+            condition_season=inputs.get("condition_season"),
+            location_name=inputs.get("location_name"),
+        )
+    if name == "check_recommendation_conflicts":
+        from src.services.insights import check_conflicts_for_agent_service
+
+        return check_conflicts_for_agent_service(
+            species=inputs["species"],
+            lat=inputs.get("lat"),
+            lng=inputs.get("lng"),
+            condition_season=inputs.get("condition_season"),
         )
     if name == "get_gbif_observations":
         from src.services.gbif import query_for_agent as gbif_query_for_agent
@@ -578,7 +592,8 @@ def _execute_tool(name: str, inputs: dict) -> str:
             }
             for s in parsed.get("stops", [])
         ]
-        return json.dumps(
+
+        response_parts = [json.dumps(
             {
                 "session_id": result["session_id"],
                 "stops_logged": result["stops_logged"],
@@ -590,7 +605,16 @@ def _execute_tool(name: str, inputs: dict) -> str:
                     f"{result['stops_logged']} stop(s)."
                 ),
             }
-        )
+        )]
+
+        questions = result.get("followup_questions", [])
+        if questions:
+            response_parts.append(
+                "\n\nOne quick question to improve future recommendations: "
+                + questions[0]["question"]
+            )
+
+        return "\n".join(response_parts)
     if name == "get_my_fishing_summary":
         from src.services.trip_logger import get_trip_summary
 
@@ -808,6 +832,27 @@ def _tools(profile: Any) -> list[dict]:
                             "(e.g. 'CA-ON'). Omit if it applies globally."
                         ),
                     },
+                    "lat": {
+                        "type": "number",
+                        "description": "Latitude of the location this insight applies to.",
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": "Longitude of the location this insight applies to.",
+                    },
+                    "recommendation": {
+                        "type": "string",
+                        "description": "Concise actionable advice (1-2 sentences).",
+                    },
+                    "condition_season": {
+                        "type": "string",
+                        "enum": ["spring", "summer", "fall", "winter", "any"],
+                        "description": "Season this insight applies to.",
+                    },
+                    "location_name": {
+                        "type": "string",
+                        "description": "Human-readable location name, e.g. 'Willoway Park, Grand River'.",
+                    },
                 },
                 "required": [
                     "species",
@@ -819,6 +864,39 @@ def _tools(profile: Any) -> list[dict]:
                     "source_detail",
                     "evidence_count",
                 ],
+            },
+        },
+        {
+            "name": "check_recommendation_conflicts",
+            "description": (
+                "Check whether a planned recommendation conflicts with existing stored insights. "
+                "Call this BEFORE making any location-specific or species-specific tactical "
+                "recommendation. If conflicts are found, review them and either reinforce the "
+                "existing insight or explicitly revise it using record_behavioral_insight. "
+                "Never make a recommendation that silently contradicts a stored insight."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "species": {
+                        "type": "string",
+                        "description": "Species being discussed e.g. 'channel catfish'",
+                    },
+                    "lat": {
+                        "type": "number",
+                        "description": "Latitude of the location being discussed (optional)",
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": "Longitude of the location being discussed (optional)",
+                    },
+                    "condition_season": {
+                        "type": "string",
+                        "enum": ["spring", "summer", "fall", "winter", "any"],
+                        "description": "Season relevant to the recommendation (optional)",
+                    },
+                },
+                "required": ["species"],
             },
         },
         {

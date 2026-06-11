@@ -83,6 +83,11 @@ def record_behavioral_insight_for_agent(
     source_detail: str,
     evidence_count: int,
     jurisdiction: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+    recommendation: str | None = None,
+    condition_season: str | None = None,
+    location_name: str | None = None,
 ) -> str:
     if confidence == "unverified":
         return json.dumps(
@@ -104,6 +109,11 @@ def record_behavioral_insight_for_agent(
         source_detail=source_detail,
         evidence_count=evidence_count,
         jurisdiction=jurisdiction,
+        lat=lat,
+        lng=lng,
+        recommendation=recommendation,
+        condition_season=condition_season,
+        location_name=location_name,
     )
 
     db = get_db()
@@ -119,3 +129,15 @@ def record_behavioral_insight_for_agent(
             "confidence": confidence,
         }
     )
+
+
+def check_conflicts_for_agent_service(
+    species: str,
+    lat: float | None = None,
+    lng: float | None = None,
+    condition_season: str | None = None,
+) -> str:
+    from src.storage.insights import check_conflicts_for_agent
+
+    db = get_db()
+    return check_conflicts_for_agent(db, species, lat, lng, condition_season)

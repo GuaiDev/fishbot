@@ -60,7 +60,20 @@ def log_session(parsed_session: dict, db_conn: Database) -> dict:
             except (ValueError, TypeError):
                 pass
 
-    return {"session_id": session_id, "stops_logged": stops_logged}
+    followup_questions = []
+    try:
+        from src.agent.client import get_client
+        from src.services.trip_enrichment import enrich_session
+        client = get_client()
+        followup_questions = enrich_session(db_conn, session_id, client)
+    except Exception as e:
+        print(f"[ENRICHMENT] Non-fatal error: {e}")
+
+    return {
+        "session_id": session_id,
+        "stops_logged": stops_logged,
+        "followup_questions": followup_questions,
+    }
 
 
 def log_trip(  # DEPRECATED — use log_session / parse_session_from_text instead

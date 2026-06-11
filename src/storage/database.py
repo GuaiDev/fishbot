@@ -15,7 +15,27 @@ def get_db(path: Path | None = None) -> Database:
     p.parent.mkdir(parents=True, exist_ok=True)
     db = Database(p)
     ensure_schema(db)
+    migrate_behavioral_insights(db)
     return db
+
+
+def migrate_behavioral_insights(db: Database) -> None:
+    """Add location and recommendation fields to behavioral_insights.
+
+    Safe to run multiple times — skips columns that already exist.
+    """
+    new_columns = [
+        ("lat", "REAL"),
+        ("lng", "REAL"),
+        ("recommendation", "TEXT"),
+        ("condition_season", "TEXT"),
+        ("location_name", "TEXT"),
+    ]
+    for col_name, col_type in new_columns:
+        try:
+            db.execute(f"ALTER TABLE behavioral_insights ADD COLUMN {col_name} {col_type}")
+        except Exception:
+            pass
 
 
 def ensure_schema(db: Database) -> None:
@@ -128,6 +148,11 @@ def ensure_schema(db: Database) -> None:
                 "contradicted_by": int,
                 "user_verified": int,
                 "jurisdiction": str,
+                "lat": float,
+                "lng": float,
+                "recommendation": str,
+                "condition_season": str,
+                "location_name": str,
                 "last_validated": str,
                 "created_at": str,
             },

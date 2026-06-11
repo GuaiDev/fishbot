@@ -31,6 +31,11 @@ class BehavioralInsight(BaseModel):
     contradicted_by: int | None = None
     user_verified: bool = False
     jurisdiction: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+    recommendation: str | None = None
+    condition_season: str | None = None
+    location_name: str | None = None
     last_validated: datetime = Field(default_factory=datetime.now)
     created_at: datetime = Field(default_factory=datetime.now)
 

@@ -1,5 +1,6 @@
 """Behavioral insights CRUD via sqlite-utils."""
 
+import math
 from datetime import datetime
 from typing import Any
 
@@ -77,6 +78,11 @@ def _to_row(insight: BehavioralInsight) -> dict[str, Any]:
         "contradicted_by": insight.contradicted_by,
         "user_verified": 1 if insight.user_verified else 0,
         "jurisdiction": insight.jurisdiction,
+        "lat": insight.lat,
+        "lng": insight.lng,
+        "recommendation": insight.recommendation,
+        "condition_season": insight.condition_season,
+        "location_name": insight.location_name,
         "last_validated": insight.last_validated.isoformat(),
         "created_at": insight.created_at.isoformat(),
     }
@@ -89,3 +95,87 @@ def _row_to_insight(row: dict[str, Any]) -> BehavioralInsight:
     d["last_validated"] = datetime.fromisoformat(d["last_validated"])
     d["created_at"] = datetime.fromisoformat(d["created_at"])
     return BehavioralInsight.model_validate(d)
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Approximate distance in km between two lat/lng points."""
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
+         * math.sin(dlng / 2) ** 2)
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+def check_conflicts(
+    db: Database,
+    species: str,
+    lat: float | None = None,
+    lng: float | None = None,
+    condition_season: str | None = None,
+    radius_km: float = 1.0,
+) -> list[BehavioralInsight]:
+    """Find existing current insights that might conflict with a new recommendation.
+
+    Matches on species + proximity (if lat/lng provided) + season (if provided).
+    """
+    candidates = query_insights(db, species=species, current_only=True)
+    if not candidates:
+        return []
+
+    conflicts = []
+    for insight in candidates:
+        if lat is not None and lng is not None:
+            if insight.lat is not None and insight.lng is not None:
+                dist = _haversine_km(lat, lng, insight.lat, insight.lng)
+                if dist > radius_km:
+                    continue
+            # No location on stored insight → treat as general, always include
+
+        if condition_season and insight.condition_season:
+            if (insight.condition_season != condition_season
+                    and insight.condition_season != "any"
+                    and condition_season != "any"):
+                continue
+
+        conflicts.append(insight)
+
+    return conflicts
+
+
+def check_conflicts_for_agent(
+    db: Database,
+    species: str,
+    lat: float | None = None,
+    lng: float | None = None,
+    condition_season: str | None = None,
+) -> str:
+    """Agent-facing conflict check. Returns JSON describing any conflicts found."""
+    import json
+
+    conflicts = check_conflicts(db, species, lat, lng, condition_season)
+    if not conflicts:
+        return json.dumps({"conflicts": [], "safe_to_recommend": True})
+
+    return json.dumps({
+        "conflicts": [
+            {
+                "id": c.id,
+                "condition_type": c.condition_type,
+                "condition_context": c.condition_context,
+                "recommendation": c.recommendation,
+                "conclusion": c.conclusion[:300],
+                "confidence": c.confidence,
+                "user_verified": c.user_verified,
+                "location_name": c.location_name,
+                "condition_season": c.condition_season,
+            }
+            for c in conflicts
+        ],
+        "safe_to_recommend": False,
+        "note": (
+            f"Found {len(conflicts)} existing insight(s) for {species} "
+            "at or near this location/season. Review before making new recommendations."
+        ),
+    })
