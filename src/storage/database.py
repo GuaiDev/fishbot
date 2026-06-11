@@ -563,6 +563,41 @@ def ensure_schema(db: Database) -> None:
         )
     """)
 
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            session_id      TEXT PRIMARY KEY,
+            started_at      TEXT DEFAULT (datetime('now')),
+            ended_at        TEXT,
+            turn_count      INTEGER DEFAULT 0,
+            summary         TEXT
+        )
+    """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id      TEXT NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+            role            TEXT NOT NULL,
+            content         TEXT NOT NULL,
+            turn_index      INTEGER NOT NULL,
+            created_at      TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_session
+            ON chat_messages(session_id)
+    """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS angler_context (
+            id              INTEGER PRIMARY KEY CHECK (id = 1),
+            content         TEXT NOT NULL DEFAULT '',
+            last_updated    TEXT DEFAULT (datetime('now')),
+            session_count   INTEGER DEFAULT 0
+        )
+    """)
+
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()

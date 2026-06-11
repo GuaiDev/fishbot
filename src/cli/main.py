@@ -557,6 +557,54 @@ def compute_untapped(
 
 
 @app.command()
+def context(clear: bool = typer.Option(False, "--clear", help="Clear the angler context")) -> None:
+    """View or clear the persistent angler context document."""
+    from src.storage.angler_context import load_context, save_context
+
+    db = get_db()
+
+    if clear:
+        save_context(db, "")
+        console.print("[green]Angler context cleared.[/green]")
+        return
+
+    ctx = load_context(db)
+    if not ctx:
+        console.print("[dim]No angler context yet. Start chatting and it will build up automatically.[/dim]")
+        return
+
+    console.print("\n=== FishBot knows this about you ===\n")
+    console.print(ctx)
+    console.print("\n====================================")
+    console.print("[dim]Run 'fishbot context --clear' to reset.[/dim]")
+
+
+@app.command()
+def history(sessions: int = typer.Option(5, "--sessions", "-n", help="Number of sessions to show")) -> None:
+    """Show recent chat sessions."""
+    db = get_db()
+    rows = list(db.execute("""
+        SELECT session_id, started_at, turn_count, summary
+        FROM chat_sessions
+        WHERE turn_count > 1
+        ORDER BY started_at DESC
+        LIMIT ?
+    """, [sessions]).fetchall())
+
+    if not rows:
+        console.print("[dim]No chat sessions yet.[/dim]")
+        return
+
+    for session_id, started_at, turn_count, summary in rows:
+        console.print(f"\n{'=' * 60}")
+        console.print(f"Session: {started_at[:16]}  ({turn_count} turns)")
+        if summary:
+            console.print(f"\n{summary}")
+        else:
+            console.print("[dim](no summary yet)[/dim]")
+
+
+@app.command()
 def usage(days: int = typer.Option(7, "--days", "-d", help="Number of days to show")) -> None:
     """Show API usage summary for the last N days."""
     db = get_db()

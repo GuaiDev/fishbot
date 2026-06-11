@@ -10,6 +10,8 @@ from rich.console import Console
 from src.agent.client import get_client, get_model
 from src.agent.system_prompt import assemble, load_template
 from src.jurisdictions.registry import get_jurisdiction
+from src.storage.angler_context import format_context_for_prompt, load_context
+from src.storage.conversations import close_and_update_context, save_turn, start_session
 from src.storage.database import get_db
 from src.storage.profile import load_profile
 from src.storage.trips import recent_trips
@@ -78,6 +80,10 @@ def run_chat_api(messages: list[dict], session_id: str | None = None) -> dict:
     trips = recent_trips(db, limit=5)
     home = get_jurisdiction(profile.home_jurisdiction)
     system_prompt = assemble(load_template(), profile, trips, home)
+    start_session(db, session_id)
+    angler_context = load_context(db)
+    if angler_context:
+        system_prompt = system_prompt + "\n\n" + format_context_for_prompt(angler_context)
     model = get_model()
     tools = _tools(profile)
     tool_calls_made: list[str] = []
@@ -110,6 +116,19 @@ def run_chat_api(messages: list[dict], session_id: str | None = None) -> dict:
         if not tool_use_blocks:
             reply = "".join(b.text for b in content_blocks if b.type == "text")
             messages.append({"role": "assistant", "content": reply})
+
+            # Save the last user + assistant turn
+            user_msgs = [m for m in messages if m["role"] == "user" and isinstance(m.get("content"), str)]
+            if user_msgs:
+                save_turn(db, session_id, "user", user_msgs[-1]["content"], len(user_msgs) - 1)
+            save_turn(db, session_id, "assistant", reply, len(user_msgs))
+
+            # Lazy context update after 15 turns
+            session_row = db["chat_sessions"].get(session_id)
+            if session_row and (session_row.get("turn_count") or 0) >= 15:
+                if not session_row.get("summary"):
+                    close_and_update_context(db, session_id, messages, client)
+
             return {"reply": reply, "tool_calls": tool_calls_made, "messages": messages}
 
         assistant_content = [_normalize_block(b) for b in content_blocks]
@@ -136,9 +155,16 @@ def run_chat() -> None:
 
     profile = load_profile()
     db = get_db()
+    session_id = datetime.now().isoformat()
+    start_session(db, session_id)
+
     trips = recent_trips(db, limit=5)
     home = get_jurisdiction(profile.home_jurisdiction)
     system_prompt = assemble(load_template(), profile, trips, home)
+    angler_context = load_context(db)
+    if angler_context:
+        system_prompt = system_prompt + "\n\n" + format_context_for_prompt(angler_context)
+
     model = get_model()
 
     console.print(f"[dim]fishbot — {model} — type /exit to quit[/dim]")
@@ -146,13 +172,15 @@ def run_chat() -> None:
 
     messages: list[dict] = []
     tools = _tools(profile)
-    session_id = datetime.now().isoformat()
+    turn_index = 0
 
     while True:
         try:
             user_input = console.input("[bold cyan]> [/bold cyan]").strip()
         except (EOFError, KeyboardInterrupt):
             console.print()
+            close_and_update_context(db, session_id, messages, client)
+            console.print("[dim]Session saved.[/dim]")
             console.print("[dim]bye[/dim]")
             return
 
@@ -160,10 +188,13 @@ def run_chat() -> None:
             continue
 
         if user_input.lower() in EXIT_COMMANDS:
+            close_and_update_context(db, session_id, messages, client)
+            console.print("[dim]Session saved.[/dim]")
             console.print("[dim]bye[/dim]")
             return
 
         messages.append({"role": "user", "content": user_input})
+        save_turn(db, session_id, "user", user_input, turn_index)
 
         try:
             _agentic_loop(client, model, system_prompt, messages, tools, console, session_id=session_id)
@@ -176,6 +207,11 @@ def run_chat() -> None:
             console.print("[dim](interrupted)[/dim]")
             messages.pop()
             continue
+
+        # Save assistant reply (last message after agentic loop resolves)
+        if messages and isinstance(messages[-1].get("content"), str):
+            save_turn(db, session_id, "assistant", messages[-1]["content"], turn_index)
+        turn_index += 1
 
 
 def _agentic_loop(
