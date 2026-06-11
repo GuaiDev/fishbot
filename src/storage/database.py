@@ -549,6 +549,20 @@ def ensure_schema(db: Database) -> None:
         db["knowledge_chunks"].create_index(["source_id"], if_not_exists=True)
         db["knowledge_chunks"].enable_fts(["chunk_text"], create_triggers=True)
 
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS api_usage (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id      TEXT,
+            timestamp       TEXT DEFAULT (datetime('now')),
+            model           TEXT,
+            input_tokens    INTEGER,
+            output_tokens   INTEGER,
+            total_tokens    INTEGER,
+            tool_calls_made INTEGER DEFAULT 0,
+            endpoint        TEXT DEFAULT 'chat'
+        )
+    """)
+
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()

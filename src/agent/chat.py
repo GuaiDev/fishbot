@@ -1,6 +1,7 @@
 """Interactive chat loop using the Anthropic SDK + rich for terminal I/O."""
 
 import json
+from datetime import datetime
 from typing import Any
 
 from anthropic import Anthropic, APIError
@@ -15,8 +16,49 @@ from src.storage.trips import recent_trips
 
 EXIT_COMMANDS = {"/exit", "/quit", "exit", "quit"}
 
+MAX_TURNS_BEFORE_SUMMARY = 10
 
-def run_chat_api(messages: list[dict]) -> dict:
+
+def _summarize_history(messages: list[dict], client) -> list[dict]:
+    """Summarize the oldest half of conversation history once it exceeds MAX_TURNS_BEFORE_SUMMARY.
+
+    Keeps the most recent 6 turns verbatim for immediate context.
+    """
+    if len(messages) < MAX_TURNS_BEFORE_SUMMARY * 2:
+        return messages
+
+    keep_recent = 12  # 6 turns = 12 messages
+    to_summarize = messages[:-keep_recent]
+    to_keep = messages[-keep_recent:]
+
+    summary_prompt = (
+        "Summarize this fishing conversation history into a compact context block. "
+        "Keep: species discussed, locations mentioned, tactics covered, any confirmed "
+        "patterns or insights, and any trip data logged. "
+        "Discard: filler, greetings, anything redundant. "
+        "Output as a brief bulleted list under the heading '## Conversation context'.\n\n"
+        + "\n".join(
+            f"{m['role'].upper()}: {m['content'][:500]}"
+            for m in to_summarize
+            if isinstance(m.get("content"), str)
+        )
+    )
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=500,
+        messages=[{"role": "user", "content": summary_prompt}],
+    )
+
+    summary_text = response.content[0].text
+
+    return [
+        {"role": "user", "content": summary_text},
+        {"role": "assistant", "content": "Understood, I have the context from our earlier conversation."},
+    ] + to_keep
+
+
+def run_chat_api(messages: list[dict], session_id: str | None = None) -> dict:
     """Non-streaming agentic loop for API use.
 
     Takes a messages list with the user turn already appended.
@@ -28,6 +70,9 @@ def run_chat_api(messages: list[dict]) -> dict:
     except RuntimeError as e:
         return {"reply": str(e), "tool_calls": [], "messages": messages}
 
+    if session_id is None:
+        session_id = datetime.now().isoformat()
+
     profile = load_profile()
     db = get_db()
     trips = recent_trips(db, limit=5)
@@ -38,6 +83,8 @@ def run_chat_api(messages: list[dict]) -> dict:
     tool_calls_made: list[str] = []
 
     while True:
+        messages = _summarize_history(messages, client)
+
         resp = client.messages.create(
             model=model,
             max_tokens=2048,
@@ -45,6 +92,18 @@ def run_chat_api(messages: list[dict]) -> dict:
             messages=messages,
             tools=tools,
         )
+
+        usage = resp.usage
+        db["api_usage"].insert({
+            "session_id": session_id,
+            "model": resp.model,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "total_tokens": usage.input_tokens + usage.output_tokens,
+            "tool_calls_made": len([b for b in resp.content if b.type == "tool_use"]),
+            "endpoint": "chat",
+        })
+
         content_blocks = resp.content
         tool_use_blocks = [b for b in content_blocks if b.type == "tool_use"]
 
@@ -87,6 +146,7 @@ def run_chat() -> None:
 
     messages: list[dict] = []
     tools = _tools(profile)
+    session_id = datetime.now().isoformat()
 
     while True:
         try:
@@ -106,7 +166,7 @@ def run_chat() -> None:
         messages.append({"role": "user", "content": user_input})
 
         try:
-            _agentic_loop(client, model, system_prompt, messages, tools, console)
+            _agentic_loop(client, model, system_prompt, messages, tools, console, session_id=session_id)
         except APIError as e:
             console.print(f"[red]API error: {e}[/red]")
             messages.pop()
@@ -125,9 +185,14 @@ def _agentic_loop(
     messages: list[dict],
     tools: list[dict],
     console: Console,
+    session_id: str | None = None,
 ) -> None:
     """Stream a response, handle tool calls, loop until end_turn."""
+    db = get_db()
+
     while True:
+        messages[:] = _summarize_history(messages, client)
+
         content_blocks: list[Any] = []
 
         with client.messages.stream(
@@ -141,6 +206,17 @@ def _agentic_loop(
                 console.print(text, end="", markup=False, highlight=False, soft_wrap=True)
             final_msg = stream.get_final_message()
             content_blocks = final_msg.content
+
+        usage = final_msg.usage
+        db["api_usage"].insert({
+            "session_id": session_id,
+            "model": final_msg.model,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "total_tokens": usage.input_tokens + usage.output_tokens,
+            "tool_calls_made": len([b for b in content_blocks if b.type == "tool_use"]),
+            "endpoint": "chat",
+        })
 
         tool_use_blocks = [b for b in content_blocks if b.type == "tool_use"]
 
