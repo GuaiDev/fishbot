@@ -41,6 +41,15 @@ chat window.
   parse-for-review step and the actual log step call the parser twice, so what you
   review isn't guaranteed to match what gets stored. Fix when review mode is next used.
 
+- **User vs. friend catch distinction** — the trip parser lumps all anglers'
+  techniques and catches into shared stop fields (technique, gear, notes) without
+  tracking what each technique actually produced. This causes ambiguous memory
+  responses — "friends were using bottom rigs" gets interpreted as "friends caught
+  fish on bottom rigs" when they may have caught nothing. Fix: add
+  `user_species_caught` separate from party-wide `species_caught`, or flag friend
+  catches explicitly in the notes field during parsing. The parser should ask "what
+  did YOU personally catch" vs "what did your group catch" as distinct fields.
+
 ---
 
 ## Personal Model
@@ -66,6 +75,19 @@ chat window.
   unproductive stops, even when `species_caught` is empty. This way blanking at
   Willoway Park still challenges insight #34.
 
+- **Lake-run timing tracker — Grand River / Dunnville** — no data exists on when
+  lake-run channel catfish push up the Grand River from Lake Erie. Build a
+  lightweight tracker: log date + fish size + water temp for every Dunnville
+  session. After several sessions across different months, a timing pattern will
+  emerge from real data rather than general Great Lakes knowledge. Currently flagged
+  as an open research question in angler context.
+
+- **Kool-aid vs natural cutbait comparison** — one friend caught a smallmouth on
+  kool-aid soaked cutbait at Willoway. Not enough data to draw conclusions. Design
+  a controlled side-by-side: same location, same rig, one rod natural cutbait, one
+  rod kool-aid soaked, track strikes per rod. Run deliberately at Byng or Willoway
+  next session. Currently stored as low-confidence note in behavioral insights.
+
 ---
 
 ## Agent Behaviour
@@ -87,6 +109,30 @@ chat window.
   water databases (OHN, OSM) have incomplete coverage — user firsthand knowledge is
   more reliable for specific spots. Partially addressed in system prompt but needs
   ongoing attention.
+
+- **Synthesis cache — wire into tools** — the `segment_synthesis` table and
+  `synthesis_cache.py` service are built and ready. The next step is wiring the
+  cache check/store into the heaviest synthesis tools — likely
+  `get_species_habitat_predictions` or wherever watershed/geology cross-referencing
+  happens. On cache miss: run full synthesis and store. On cache hit: return stored
+  result. This makes the expensive Willoway-style analysis free after the first query.
+
+- **Router — synthesis cache integration for Willoway-style questions** — when the
+  router classifies a message as "synthesis" and the query is about a
+  named/coordinate location, check `segment_synthesis` cache first before invoking
+  the full pipeline. If hit, answer from cache with Haiku (very cheap). If miss,
+  run full pipeline and store result. This is the key step to making synthesis mode
+  cheap at runtime.
+
+- **Free vs premium tier boundary** — the router mode field (`reflex` / `synthesis`
+  / `memory`) flowing through `api_usage` is the foundation of the free/premium
+  split. Design still pending:
+  - Free tier: reflex only. Generic fishing knowledge, Haiku, no tools.
+  - Premium tier: synthesis + memory. Full pipeline, personal data access.
+  - Taster: first synthesis result shown free, deeper analysis gated.
+  - Leading questions: reflex answers offer synthesis upgrade ("want me to find
+    similar spots?") as the free→premium conversion mechanism.
+  Build when ready to think about launching.
 
 ---
 
@@ -158,6 +204,13 @@ chat window.
   Dunnville not yet ingested). Backend endpoint: `POST /derby/scores` with species
   list + lat/lng → returns point table. Build after ingest is run for target areas.
 
+- **Ingest target fishing areas** — the iNaturalist/GBIF database is sparse for
+  the areas actually being fished (Grand River/Dunnville, Credit River, Bronte
+  Creek). Run targeted ingest for these areas so observation-based features (rarity
+  scoring, species presence, piscivore activity) work with real local data rather
+  than returning empty results. Priority areas: Grand River at Dunnville, Credit
+  River Mississauga/Streetsville, Bronte Creek Oakville.
+
 ---
 
 ## Known Bugs
@@ -168,4 +221,4 @@ chat window.
 
 ---
 
-*Last updated: Session — trip enrichment, confidence escalation, fishing derby*
+*Last updated: Session — cost router, synthesis cache, location trip memory, backlog refresh*
