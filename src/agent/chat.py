@@ -20,6 +20,8 @@ EXIT_COMMANDS = {"/exit", "/quit", "exit", "quit"}
 
 MAX_TURNS_BEFORE_SUMMARY = 10
 
+HAIKU = "claude-haiku-4-5-20251001"
+
 
 def _summarize_history(messages: list[dict], client) -> list[dict]:
     """Summarize the oldest half of conversation history once it exceeds MAX_TURNS_BEFORE_SUMMARY.
@@ -60,20 +62,14 @@ def _summarize_history(messages: list[dict], client) -> list[dict]:
     ] + to_keep
 
 
-def run_chat_api(messages: list[dict], session_id: str | None = None) -> dict:
-    """Non-streaming agentic loop for API use.
-
-    Takes a messages list with the user turn already appended.
-    Returns {"reply": str, "tool_calls": list[str], "messages": list[dict]}.
-    Mutates messages in-place (tool-call turns are appended for full context).
-    """
+def _run_full_pipeline(
+    messages: list[dict], session_id: str, mode: str = "synthesis"
+) -> dict:
+    """Non-streaming agentic loop. The synthesis path and fallback for all modes."""
     try:
         client = get_client()
     except RuntimeError as e:
         return {"reply": str(e), "tool_calls": [], "messages": messages}
-
-    if session_id is None:
-        session_id = datetime.now().isoformat()
 
     profile = load_profile()
     db = get_db()
@@ -144,6 +140,86 @@ def run_chat_api(messages: list[dict], session_id: str | None = None) -> dict:
         messages.append({"role": "user", "content": tool_results})
 
 
+def run_chat_api(
+    messages: list[dict],
+    session_id: str | None = None,
+    routing_enabled: bool = True,
+) -> dict:
+    """Routed entry point. Classifies the latest user message and dispatches to the
+    cheapest capable path. Falls back to the full pipeline on synthesis or any uncertainty.
+    """
+    if session_id is None:
+        session_id = datetime.now().isoformat()
+
+    # Extract the latest user message text
+    latest_user = None
+    for m in reversed(messages):
+        if m["role"] == "user" and isinstance(m.get("content"), str):
+            latest_user = m["content"]
+            break
+
+    if not routing_enabled or latest_user is None:
+        return _run_full_pipeline(messages, session_id)
+
+    from src.agent.router import classify_message, handle_reflex
+
+    recent = " ".join(
+        m["content"][:200] for m in messages[-4:]
+        if isinstance(m.get("content"), str)
+    )
+
+    classification = classify_message(latest_user, recent)
+    mode = classification["mode"]
+
+    _log_routing(session_id, mode, classification.get("router_tokens", 0))
+
+    if mode == "reflex":
+        result = handle_reflex(latest_user, classification.get("leading_question"))
+        messages.append({"role": "assistant", "content": result["reply"]})
+        _log_mode_usage(session_id, "reflex", result.get("tokens", 0))
+        return {
+            "reply": result["reply"],
+            "tool_calls": [],
+            "messages": messages,
+            "mode": "reflex",
+        }
+
+    # memory and synthesis both go through the full pipeline
+    return _run_full_pipeline(messages, session_id, mode=mode)
+
+
+def _log_routing(session_id: str, mode: str, tokens: int) -> None:
+    try:
+        db = get_db()
+        db["api_usage"].insert({
+            "session_id": session_id,
+            "model": HAIKU,
+            "input_tokens": tokens,
+            "output_tokens": 0,
+            "total_tokens": tokens,
+            "tool_calls_made": 0,
+            "endpoint": f"router:{mode}",
+        })
+    except Exception:
+        pass
+
+
+def _log_mode_usage(session_id: str, mode: str, tokens: int) -> None:
+    try:
+        db = get_db()
+        db["api_usage"].insert({
+            "session_id": session_id,
+            "model": HAIKU,
+            "input_tokens": 0,
+            "output_tokens": tokens,
+            "total_tokens": tokens,
+            "tool_calls_made": 0,
+            "endpoint": f"mode:{mode}",
+        })
+    except Exception:
+        pass
+
+
 def run_chat() -> None:
     console = Console()
 
@@ -192,6 +268,30 @@ def run_chat() -> None:
             console.print("[dim]Session saved.[/dim]")
             console.print("[dim]bye[/dim]")
             return
+
+        from src.agent.router import classify_message, handle_reflex
+
+        recent = " ".join(
+            m["content"][:200] for m in messages[-4:]
+            if isinstance(m.get("content"), str)
+        )
+        classification = classify_message(user_input, recent)
+        mode = classification["mode"]
+        _log_routing(session_id, mode, classification.get("router_tokens", 0))
+
+        if mode == "reflex":
+            result = handle_reflex(user_input, classification.get("leading_question"))
+            reply = result["reply"]
+            console.print(reply, markup=False, highlight=False, soft_wrap=True)
+            console.print()
+            console.print()
+            messages.append({"role": "user", "content": user_input})
+            save_turn(db, session_id, "user", user_input, turn_index)
+            messages.append({"role": "assistant", "content": reply})
+            save_turn(db, session_id, "assistant", reply, turn_index)
+            _log_mode_usage(session_id, "reflex", result.get("tokens", 0))
+            turn_index += 1
+            continue
 
         messages.append({"role": "user", "content": user_input})
         save_turn(db, session_id, "user", user_input, turn_index)
@@ -619,6 +719,15 @@ def _execute_tool(name: str, inputs: dict) -> str:
         from src.services.trip_logger import get_trip_summary
 
         return json.dumps({"summary": get_trip_summary(get_db())})
+    if name == "get_trips_at_location":
+        from src.services.trip_logger import get_trips_at_location
+
+        return get_trips_at_location(
+            get_db(),
+            location_query=inputs.get("location_query"),
+            lat=inputs.get("lat"),
+            lng=inputs.get("lng"),
+        )
     if name == "search_knowledge_base":
         from src.services.knowledge import search_knowledge_base_for_agent
 
@@ -1853,6 +1962,36 @@ def _tools(profile: Any) -> list[dict]:
             "input_schema": {
                 "type": "object",
                 "properties": {},
+                "required": [],
+            },
+        },
+        {
+            "name": "get_trips_at_location",
+            "description": (
+                "Look up the user's OWN logged fishing history at a specific location. "
+                "Use this for questions like 'what did I catch at Byng Island', "
+                "'how did I do at Willoway last time', 'have I fished here before'. "
+                "Matches by location name or coordinates. Returns past catches, dates, "
+                "and techniques used at that spot. "
+                "Do NOT use get_my_fishing_summary for location-specific questions — "
+                "that only returns global totals."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "location_query": {
+                        "type": "string",
+                        "description": "Location name to search for, e.g. 'Byng Island'.",
+                    },
+                    "lat": {
+                        "type": "number",
+                        "description": "Latitude for proximity search (optional).",
+                    },
+                    "lng": {
+                        "type": "number",
+                        "description": "Longitude for proximity search (optional).",
+                    },
+                },
                 "required": [],
             },
         },

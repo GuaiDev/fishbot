@@ -86,6 +86,13 @@ responses, not cold reasoning. This overrides the minimum-tools rule.
 **Trip logging** (user describes a trip they went on)
 → Call `log_trip` only.
 
+**Location-specific history questions** ("what did I catch at X", "how did I do
+at X last time", "have I fished here before")
+→ Call `get_trips_at_location` with the location name.
+  This queries the user's actual logged trips at that spot.
+  Do NOT use `get_my_fishing_summary` for these — it only returns global totals
+  and will say "no trips" even when location-specific records exist.
+
 **Trip enrichment answers:** When the user answers a follow-up question about
 conditions (weather, technique, water level, time of day), update the relevant
 stop using `log_trip` with the additional detail. Then call

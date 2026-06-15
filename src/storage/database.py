@@ -624,6 +624,29 @@ def ensure_schema(db: Database) -> None:
     """)
 
 
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS segment_synthesis (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            cache_key       TEXT UNIQUE NOT NULL,
+            lat             REAL,
+            lng             REAL,
+            location_name   TEXT,
+            synthesis       TEXT NOT NULL,
+            data_sources    TEXT,
+            computed_at     TEXT DEFAULT (datetime('now')),
+            hit_count       INTEGER DEFAULT 0
+        )
+    """)
+    db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_segment_synthesis_key
+            ON segment_synthesis(cache_key)
+    """)
+    db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_segment_synthesis_loc
+            ON segment_synthesis(lat, lng)
+    """)
+
+
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
     db.execute("DELETE FROM stream_gauge_readings WHERE reading_datetime < ?", [cutoff])

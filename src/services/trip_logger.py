@@ -199,6 +199,83 @@ def get_trip_summary(db: Database) -> str:
     return " ".join(parts)
 
 
+def get_trips_at_location(
+    db: Database,
+    location_query: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+    radius_km: float = 2.0,
+) -> str:
+    """Return a summary of the user's logged stops at a specific location.
+
+    Matches by location name (fuzzy) OR by proximity if lat/lng given.
+    """
+    import math
+
+    if "stops" not in db.table_names():
+        return "No trips logged yet."
+
+    stops = list(db["stops"].rows)
+    if not stops:
+        return "No trips logged yet."
+
+    def haversine(la1, ln1, la2, ln2):
+        R = 6371
+        dlat = math.radians(la2 - la1)
+        dlng = math.radians(ln2 - ln1)
+        a = (math.sin(dlat / 2) ** 2 + math.cos(math.radians(la1)) *
+             math.cos(math.radians(la2)) * math.sin(dlng / 2) ** 2)
+        return R * 2 * math.asin(math.sqrt(a))
+
+    matched = []
+    for stop in stops:
+        loc = stop.get("location_name") or stop.get("location_text") or ""
+
+        name_match = bool(location_query and location_query.lower() in loc.lower())
+
+        prox_match = False
+        if lat is not None and lng is not None and stop.get("lat") and stop.get("lng"):
+            if haversine(lat, lng, stop["lat"], stop["lng"]) <= radius_km:
+                prox_match = True
+
+        if name_match or prox_match:
+            matched.append(stop)
+
+    if not matched:
+        target = location_query or f"{lat},{lng}"
+        return f"No logged trips found at {target}."
+
+    lines = []
+    for stop in matched:
+        try:
+            session = db["sessions"].get(stop["session_id"]) if stop.get("session_id") else None
+        except Exception:
+            session = None
+        date = (session.get("date") or session.get("date_approx")) if session else None
+        species = json.loads(stop.get("species_caught") or "[]")
+
+        date_str = date or "undated"
+        catch_str = ", ".join(species) if species else "no fish (blank)"
+
+        detail_bits = []
+        if stop.get("technique"):
+            detail_bits.append(stop["technique"])
+        if stop.get("gear"):
+            detail_bits.append(stop["gear"])
+        if stop.get("water_level"):
+            detail_bits.append(f"{stop['water_level']} water")
+        detail = f" — {'; '.join(detail_bits)}" if detail_bits else ""
+
+        lines.append(f"{date_str}: {catch_str}{detail}")
+
+    location_label = (
+        matched[0].get("location_name") or matched[0].get("location_text") or location_query
+    )
+    visit_count = len(matched)
+    header = f"Your logged trips at {location_label} ({visit_count} visit{'s' if visit_count != 1 else ''}):"
+    return header + "\n" + "\n".join(f"- {line}" for line in lines)
+
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
