@@ -1,5 +1,7 @@
 """User profile for the angler."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from src.models.jurisdiction import JurisdictionCode
@@ -21,6 +23,7 @@ class UserProfile(BaseModel):
     skill_level: str = "intermediate"
     fishing_style: str = ""
     preferences: str = ""
+    updated_at: datetime | None = None
 
     @classmethod
     def default(cls) -> "UserProfile":

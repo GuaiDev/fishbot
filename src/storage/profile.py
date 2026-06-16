@@ -1,5 +1,6 @@
 """User profile load/save (JSON-backed at data/user_profile.json)."""
 
+from datetime import datetime
 from pathlib import Path
 
 from src.models.profile import UserProfile
@@ -19,4 +20,5 @@ def load_profile(path: Path | None = None) -> UserProfile:
 def save_profile(profile: UserProfile, path: Path | None = None) -> None:
     p = path or PROFILE_PATH
     p.parent.mkdir(parents=True, exist_ok=True)
+    profile = profile.model_copy(update={"updated_at": datetime.now()})
     p.write_text(profile.model_dump_json(indent=2))

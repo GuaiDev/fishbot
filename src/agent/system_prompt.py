@@ -4,6 +4,7 @@ The template at prompts/system.md holds the bot's persona and rules. The runtime
 appends three sections per conversation: profile, recent trips, active jurisdiction.
 """
 
+from datetime import datetime
 from pathlib import Path
 
 from src.jurisdictions.base import Jurisdiction
@@ -57,6 +58,25 @@ def _format_profile(profile: UserProfile) -> str:
     if profile.gear:
         gear_summary = "; ".join(", ".join(f"{k}: {v}" for k, v in g.items()) for g in profile.gear)
         lines.append(f"- Gear: {gear_summary}")
+    profile_note = ""
+    if profile.updated_at:
+        days_old = (datetime.now() - profile.updated_at).days
+        if days_old > 90:
+            profile_note = (
+                f"\n⚠️ Profile last updated {days_old} days ago — "
+                "angler context document is more reliable for current preferences."
+            )
+    else:
+        profile_note = (
+            "\n(Profile has no update timestamp — "
+            "defer to angler context document for current preferences.)"
+        )
+    if profile_note:
+        lines.append(profile_note)
+    lines.append(
+        "Note: The angler context document below reflects actual fishing activity "
+        "and takes precedence over this profile for species preferences and patterns."
+    )
     return "\n".join(lines)
 
 

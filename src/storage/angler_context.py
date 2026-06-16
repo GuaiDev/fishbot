@@ -26,8 +26,12 @@ Update the document below by merging in the new session summary.
 
 RULES:
 1. Keep all four sections: "Active plans", "Spots on the radar", "Learned patterns", "Species intel"
-2. Active plans: add new trips being planned. Mark completed trips as done and remove them
-   after 2 weeks. Keep future plans no matter how far out.
+2. Active plans: add new trips being planned. When a trip has been LOGGED
+   (appears in the user's trip history) or the date has clearly passed,
+   move it from Active plans to a one-line "Completed trips" note, then
+   remove it after 2 weeks. A plan that already happened should never stay
+   in Active plans. If unsure whether a plan was completed, check if a
+   matching session exists in Recent trips context.
 3. Spots on the radar: add any new locations mentioned with coordinates if available.
    Include brief notes on what makes each spot notable. Keep indefinitely.
 4. Learned patterns: add any confirmed fishing insights (what worked, what didn't,
