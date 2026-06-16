@@ -42,6 +42,7 @@ def log_session(parsed_session: dict, db_conn: Database) -> dict:
                 "location_method": stop.get("location_method", "text_only"),
                 "location_confidence": stop.get("location_confidence"),
                 "species_caught": json.dumps(stop.get("species_caught") or []),
+                "party_species_caught": json.dumps(stop.get("party_species_caught") or []),
                 "was_productive": 1 if stop.get("was_productive") else 0,
                 "technique": stop.get("technique"),
                 "gear": stop.get("gear"),
@@ -252,10 +253,19 @@ def get_trips_at_location(
         except Exception:
             session = None
         date = (session.get("date") or session.get("date_approx")) if session else None
-        species = json.loads(stop.get("species_caught") or "[]")
+        user_species = json.loads(stop.get("species_caught") or "[]")
+        party_species = json.loads(stop.get("party_species_caught") or "[]")
 
         date_str = date or "undated"
-        catch_str = ", ".join(species) if species else "no fish (blank)"
+        if user_species:
+            catch_str = f"you caught: {', '.join(user_species)}"
+            party_only = [s for s in party_species if s not in user_species]
+            if party_only:
+                catch_str += f" (others in party: {', '.join(party_only)})"
+        elif party_species:
+            catch_str = f"blanked personally (party caught: {', '.join(party_species)})"
+        else:
+            catch_str = "no fish (blank)"
 
         detail_bits = []
         if stop.get("technique"):

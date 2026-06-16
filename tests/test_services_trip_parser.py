@@ -305,3 +305,76 @@ def test_parse_trip_unresolved_location_still_returns_result(
 
     assert result.get("status") != "needs_location"
     assert result.get("lat") is None
+
+
+# ── parse_session_from_text tests ─────────────────────────────────────────────
+
+
+def _session_payload(**stop_overrides) -> dict:
+    """Base session payload for parse_session_from_text mocks."""
+    stop = {
+        "location_text": "Byng Island, Grand River",
+        "location_name": "Byng Island",
+        "species_caught": ["channel catfish"],
+        "party_species_caught": ["channel catfish"],
+        "was_productive": True,
+        "technique": None,
+        "gear": None,
+        "water_level": None,
+        "water_clarity": None,
+        "weather_notes": None,
+        "notes": None,
+    }
+    stop.update(stop_overrides)
+    return {"date": "2026-06-15", "date_approx": None, "overall_notes": None, "stops": [stop]}
+
+
+@patch("src.services.trip_parser.resolve_location", return_value={
+    "lat": None, "lng": None, "method": "text_only", "confidence": None,
+    "ohn_segment_id": None, "candidates": [],
+})
+@patch("src.services.trip_parser.get_model", return_value="claude-sonnet-4-6")
+@patch("src.services.trip_parser.get_client")
+def test_user_vs_party_distinction(mock_get_client, mock_get_model, mock_resolve, db_conn):
+    """Parser keeps friend catches out of species_caught but puts them in party_species_caught."""
+    payload = _session_payload(
+        species_caught=["channel catfish"],
+        party_species_caught=["channel catfish", "freshwater drum"],
+    )
+    mock_get_client.return_value = _mock_client(payload)
+
+    result = parse_session_from_text(
+        "I caught a channel catfish at Byng Island. My friend caught a freshwater drum on a worm.",
+        db_conn,
+    )
+
+    stop = result["stops"][0]
+    assert "channel catfish" in stop["species_caught"]
+    assert "freshwater drum" not in stop["species_caught"]
+    assert "freshwater drum" in stop.get("party_species_caught", [])
+
+
+@patch("src.services.trip_parser.resolve_location", return_value={
+    "lat": None, "lng": None, "method": "text_only", "confidence": None,
+    "ohn_segment_id": None, "candidates": [],
+})
+@patch("src.services.trip_parser.get_model", return_value="claude-sonnet-4-6")
+@patch("src.services.trip_parser.get_client")
+def test_blank_user_productive_party(mock_get_client, mock_get_model, mock_resolve, db_conn):
+    """User blank = was_productive false even if friend caught fish."""
+    payload = _session_payload(
+        species_caught=[],
+        party_species_caught=["common carp"],
+        was_productive=False,
+    )
+    mock_get_client.return_value = _mock_client(payload)
+
+    result = parse_session_from_text(
+        "My friend caught a nice carp but I blanked all day at Osprey Marsh.",
+        db_conn,
+    )
+
+    stop = result["stops"][0]
+    assert stop["was_productive"] is False
+    assert stop["species_caught"] == []
+    assert "common carp" in stop.get("party_species_caught", [])

@@ -5,7 +5,7 @@ import json
 from sqlite_utils import Database
 
 from src.models.behavioral_insight import BehavioralInsight
-from src.storage.database import ensure_schema, migrate_behavioral_insights
+from src.storage.database import ensure_schema, migrate_behavioral_insights, migrate_stops
 from src.storage.insights import get_insight, insert_insight
 
 
@@ -13,6 +13,7 @@ def _make_db(tmp_path) -> Database:
     db = Database(tmp_path / "test.db")
     ensure_schema(db)
     migrate_behavioral_insights(db)
+    migrate_stops(db)
     return db
 
 
@@ -298,6 +299,37 @@ def test_enrich_session_returns_question_for_known_spot(tmp_path):
     q = questions[0]["question"]
     assert "channel catfish" in q.lower() or "catfish" in q.lower()
     assert "weather" in q.lower() or "rain" in q.lower()
+
+
+def test_blank_trip_matches_by_location(tmp_path):
+    """Blank stop at a known location triggers contradiction matching by proximity."""
+    from src.services.trip_enrichment import match_insights_to_stop
+
+    db = _make_db(tmp_path)
+
+    insight = BehavioralInsight(
+        species="channel catfish",
+        condition_type="temporal",
+        condition_context="midday-summer",
+        conclusion="Good midday spot",
+        confidence="high",
+        source_type="agent_synthesis",
+        source_detail="test",
+        lat=42.917,
+        lng=-79.774,
+    )
+    insert_insight(db, insight)
+
+    stop = {
+        "session_id": None,
+        "species_caught": "[]",
+        "party_species_caught": "[]",
+        "was_productive": 0,
+        "lat": 42.917,
+        "lng": -79.774,
+    }
+    matched = match_insights_to_stop(db, stop)
+    assert len(matched) >= 1
 
 
 def test_enrich_session_no_match_returns_empty(tmp_path):

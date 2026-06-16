@@ -415,6 +415,7 @@ Return a JSON object with this exact structure:
       "location_text": "exact location description as the user wrote it",
       "location_name": "cleaned display name if you can determine one, else null",
       "species_caught": [],
+      "party_species_caught": [],
       "was_productive": true or false,
       "technique": "fishing technique used, or null",
       "gear": "bait/lure/tackle used, or null",
@@ -441,6 +442,30 @@ SPECIES EXTRACTION — STRICT RULES (these override everything):
 5. Never add species the user only observed but did not catch
 6. Caught nothing → empty list []
 7. Do not guess, infer, or helpfully fill in any species
+
+PARTY vs. USER DISTINCTION — CRITICAL:
+- species_caught: ONLY what the first-person narrator ("I", "me", "my rod")
+  explicitly caught. If the user says "my friend caught a drum", that drum goes
+  in party_species_caught only, NOT in species_caught.
+- party_species_caught: Everything caught by anyone in the group, including the
+  user. This is the superset. If only the user caught fish, party_species_caught
+  equals species_caught.
+- was_productive: true only if the USER personally caught fish, not just the party.
+  "My friend caught a 10lb cat but I got nothing" = was_productive: false.
+
+Examples:
+  "I caught a channel cat, my friend caught a drum" →
+    species_caught: ["channel catfish"]
+    party_species_caught: ["channel catfish", "freshwater drum"]
+
+  "Between us we caught 3 redhorse" (unclear who caught what) →
+    species_caught: ["shorthead redhorse (uncertain)"]
+    party_species_caught: ["shorthead redhorse"]
+
+  "My friend got a bowfin, I blanked" →
+    species_caught: []
+    party_species_caught: ["bowfin"]
+    was_productive: false
 
 LOCATION RULES:
 - location_text must always be populated — copy the user's words exactly
@@ -486,6 +511,9 @@ def parse_session_from_text(text: str, db_conn: Any) -> dict:
     for stop in parsed.get("stops", []):
         stop["species_caught"] = _validate_species(
             stop.get("species_caught") or [], text
+        )
+        stop["party_species_caught"] = _validate_species(
+            stop.get("party_species_caught") or [], text
         )
         loc = resolve_location(stop.get("location_text") or text, db_conn)
         stop["lat"] = loc.get("lat")

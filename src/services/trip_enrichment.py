@@ -9,7 +9,13 @@ from datetime import datetime
 from sqlite_utils import Database
 
 from src.models.behavioral_insight import BehavioralInsight
-from src.storage.insights import check_conflicts, get_insight, refine_insight
+from src.storage.insights import (
+    _haversine_km,
+    _row_to_insight,
+    check_conflicts,
+    get_insight,
+    refine_insight,
+)
 
 # How many confirmations needed to escalate confidence
 CONFIRMATIONS_TO_ESCALATE = {
@@ -35,12 +41,14 @@ def get_season(month: int) -> str:
 def match_insights_to_stop(db: Database, stop: dict) -> list:
     """Find behavioral insights that match this stop.
 
-    Matches on: species caught + location proximity + season.
+    Productive stops: match by species + location proximity + season.
+    Blank stops with coordinates: match by location only to flag contradictions.
     Returns list of matching insight dicts.
     """
     species_list = json.loads(stop.get("species_caught") or "[]")
     lat = stop.get("lat")
     lng = stop.get("lng")
+    was_productive = bool(stop.get("was_productive"))
 
     session_id = stop.get("session_id")
     season = None
@@ -56,20 +64,35 @@ def match_insights_to_stop(db: Database, stop: dict) -> list:
             pass
 
     matched = []
-    for species in species_list:
-        clean_species = species.replace("(uncertain)", "").strip()
-        conflicts = check_conflicts(
-            db, clean_species,
-            lat=lat, lng=lng,
-            condition_season=season,
-            radius_km=1.0,
-        )
-        for insight in conflicts:
-            matched.append({
-                "insight": insight,
-                "species": clean_species,
-                "season": season,
-            })
+
+    if species_list:
+        for species in species_list:
+            clean_species = species.replace("(uncertain)", "").strip()
+            conflicts = check_conflicts(
+                db, clean_species,
+                lat=lat, lng=lng,
+                condition_season=season,
+                radius_km=1.0,
+            )
+            for insight in conflicts:
+                matched.append({
+                    "insight": insight,
+                    "species": clean_species,
+                    "season": season,
+                })
+    elif not was_productive and lat is not None and lng is not None:
+        # Blank stop with known coords — check for location-based contradictions
+        all_insights = list(db["behavioral_insights"].rows_where(
+            "is_current = 1 AND lat IS NOT NULL AND lng IS NOT NULL"
+        ))
+        for row in all_insights:
+            if _haversine_km(lat, lng, row["lat"], row["lng"]) <= 1.0:
+                insight = _row_to_insight(row)
+                matched.append({
+                    "insight": insight,
+                    "species": insight.species,
+                    "season": season,
+                })
 
     return matched
 

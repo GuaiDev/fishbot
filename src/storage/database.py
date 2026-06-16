@@ -16,7 +16,16 @@ def get_db(path: Path | None = None) -> Database:
     db = Database(p)
     ensure_schema(db)
     migrate_behavioral_insights(db)
+    migrate_stops(db)
     return db
+
+
+def migrate_stops(db: Database) -> None:
+    """Add party_species_caught column to stops. Idempotent."""
+    try:
+        db.execute("ALTER TABLE stops ADD COLUMN party_species_caught TEXT")
+    except Exception:
+        pass  # column already exists
 
 
 def migrate_behavioral_insights(db: Database) -> None:
@@ -481,6 +490,7 @@ def ensure_schema(db: Database) -> None:
                 location_method     TEXT,
                 location_confidence REAL,
                 species_caught      TEXT,
+                party_species_caught TEXT,
                 was_productive      INTEGER,
                 technique           TEXT,
                 gear                TEXT,
