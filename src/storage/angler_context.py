@@ -40,8 +40,18 @@ RULES:
    in conversation. Permanent.
 6. If a section has nothing yet, write "(none yet)"
 7. Be concise — each entry should be 1-2 lines max
-8. Do not add timestamps or dates unless they are part of an active plan
-9. Output ONLY the updated document — no preamble, no explanation
+8. LOCATION NAMES: You may include river or water body names when they are
+   explicitly stated in the session summary. "Byng Island, Grand River" is
+   correct if "Grand River" was mentioned. Do NOT invent or infer river names
+   from your general knowledge — if the river wasn't stated in the summary,
+   write just the location name without a river qualifier. A wrong river name
+   is worse than no river name.
+9. COORDINATES: If the session summary includes coordinates for a spot, include
+   them in the spot entry in parentheses e.g. "Willoway Park, Grand River
+   (42.917, -79.774)". Coordinates are unambiguous and more useful than names
+   alone for large rivers with many distinct sections.
+10. Do not add timestamps or dates unless they are part of an active plan
+11. Output ONLY the updated document — no preamble, no explanation
 
 EXISTING DOCUMENT:
 {existing}
@@ -81,6 +91,49 @@ def save_context(db: Database, content: str) -> None:
         pass
 
 
+def correct_context(db: Database) -> None:
+    """One-time correction for known wrong entries in the angler context document.
+
+    Safe to run multiple times — only writes if a change is found.
+    """
+    current = load_context(db)
+    if not current:
+        return
+
+    corrections = [
+        ("Dunnville Dam tailwater, Welland River", "Dunnville Dam tailwater, Grand River"),
+        ("Byng Island, Welland River", "Byng Island, Grand River"),
+        ("Willoway Park, Welland River", "Willoway Park, Grand River"),
+    ]
+
+    updated = current
+    changed = False
+    for wrong, right in corrections:
+        if wrong in updated:
+            updated = updated.replace(wrong, right)
+            changed = True
+
+    if changed:
+        save_context(db, updated)
+        print("Angler context corrected.")
+
+
+def _validate_context(context: str, session_summary: str) -> list[str]:
+    """Check for river names in context that weren't in the session summary."""
+    import re
+    warnings = []
+    river_pattern = re.compile(r',\s*([\w\s]+River)', re.IGNORECASE)
+    context_rivers = set(m.lower() for m in river_pattern.findall(context))
+    summary_rivers = set(m.lower() for m in river_pattern.findall(session_summary))
+    hallucinated = context_rivers - summary_rivers
+    if hallucinated:
+        warnings.append(
+            f"River names in context not found in session summary: {hallucinated}. "
+            "Verify these are correct."
+        )
+    return warnings
+
+
 def update_context(db: Database, session_summary: str, client) -> str:
     """Merge a new session summary into the existing angler context document.
 
@@ -98,6 +151,9 @@ def update_context(db: Database, session_summary: str, client) -> str:
 
     updated = response.content[0].text.strip()
     save_context(db, updated)
+    warnings = _validate_context(updated, session_summary)
+    for w in warnings:
+        print(f"[CONTEXT WARNING] {w}")
     return updated
 
 
