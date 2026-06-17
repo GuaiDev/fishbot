@@ -118,14 +118,15 @@ def correct_context(db: Database) -> None:
         print("Angler context corrected.")
 
 
-def _validate_context(context: str, session_summary: str) -> list[str]:
-    """Check for river names in context that weren't in the session summary."""
+def _validate_context(context: str, session_summary: str, existing: str = "") -> list[str]:
+    """Check for river names in context that weren't in the session summary or existing context."""
     import re
     warnings = []
     river_pattern = re.compile(r',\s*([\w\s]+River)', re.IGNORECASE)
     context_rivers = set(m.lower() for m in river_pattern.findall(context))
     summary_rivers = set(m.lower() for m in river_pattern.findall(session_summary))
-    hallucinated = context_rivers - summary_rivers
+    existing_rivers = set(m.lower() for m in river_pattern.findall(existing))
+    hallucinated = context_rivers - summary_rivers - existing_rivers
     if hallucinated:
         warnings.append(
             f"River names in context not found in session summary: {hallucinated}. "
@@ -151,7 +152,7 @@ def update_context(db: Database, session_summary: str, client) -> str:
 
     updated = response.content[0].text.strip()
     save_context(db, updated)
-    warnings = _validate_context(updated, session_summary)
+    warnings = _validate_context(updated, session_summary, existing)
     for w in warnings:
         print(f"[CONTEXT WARNING] {w}")
     return updated
