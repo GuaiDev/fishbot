@@ -62,11 +62,14 @@ def log_session(parsed_session: dict, db_conn: Database) -> dict:
                 pass
 
     followup_questions = []
+    proactive_coaching = None
     try:
         from src.agent.client import get_client
         from src.services.trip_enrichment import enrich_session
         client = get_client()
-        followup_questions = enrich_session(db_conn, session_id, client)
+        enrichment = enrich_session(db_conn, session_id, client)
+        followup_questions = enrichment.get("followup_questions", [])
+        proactive_coaching = enrichment.get("proactive_coaching")
     except Exception as e:
         print(f"[ENRICHMENT] Non-fatal error: {e}")
 
@@ -74,6 +77,7 @@ def log_session(parsed_session: dict, db_conn: Database) -> dict:
         "session_id": session_id,
         "stops_logged": stops_logged,
         "followup_questions": followup_questions,
+        "proactive_coaching": proactive_coaching,
     }
 
 

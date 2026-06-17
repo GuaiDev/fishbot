@@ -294,7 +294,8 @@ def test_enrich_session_returns_question_for_known_spot(tmp_path):
         "notes": None,
     })
 
-    questions = enrich_session(db, session_id, client=None)
+    result = enrich_session(db, session_id, client=None)
+    questions = result["followup_questions"]
     assert len(questions) == 1
     q = questions[0]["question"]
     assert "channel catfish" in q.lower() or "catfish" in q.lower()
@@ -354,7 +355,7 @@ def test_enrich_session_no_match_returns_empty(tmp_path):
         "notes": None,
     })
 
-    questions = enrich_session(db, session_id, client=None)
-    assert questions == []
+    result = enrich_session(db, session_id, client=None)
+    assert result["followup_questions"] == []
 
 

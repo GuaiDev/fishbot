@@ -270,15 +270,15 @@ def enrich_session(
     db: Database,
     session_id: int,
     client,
-) -> list[dict]:
+) -> dict:
     """Main entry point. Called after a session is logged.
 
-    Returns a list of follow-up questions (max 1 — the most important overall).
+    Returns dict with followup_questions (max 1) and proactive_coaching (or None).
     """
     stops = list(db["stops"].rows_where("session_id = ?", [session_id]))
 
     if not stops:
-        return []
+        return {"followup_questions": [], "proactive_coaching": None}
 
     questions = []
 
@@ -305,4 +305,213 @@ def enrich_session(
         0 if "blanked" in q["question"].lower() or "no " in q["question"].lower() else 1
     ))
 
-    return questions[:1]
+    # Proactive coaching — check for cross-session patterns
+    proactive = None
+    try:
+        current_stops_dicts = [dict(s) for s in stops]
+        proactive = detect_proactive_patterns(db, current_stops_dicts)
+    except Exception:
+        pass  # Non-fatal — never block enrichment for coaching errors
+
+    return {
+        "followup_questions": questions[:1],
+        "proactive_coaching": proactive,
+    }
+
+
+# ── Proactive coaching thresholds ─────────────────────────────────────────────
+
+_MIN_SESSIONS_FOR_PATTERNS = 3
+_SPECIES_ATTEMPT_THRESHOLD = 3
+_SLUMP_THRESHOLD = 2
+_LOW_SUCCESS_RATE = 0.40
+
+
+def _get_all_stops_summary(db: Database) -> list[dict]:
+    """Return a lightweight summary of all logged stops for pattern analysis."""
+    rows = list(db.execute("""
+        SELECT st.location_name, st.location_text, st.species_caught,
+               st.was_productive, st.technique, st.lat, st.lng,
+               s.date, s.date_approx
+        FROM stops st
+        JOIN sessions s ON st.session_id = s.id
+        ORDER BY s.date DESC, st.id DESC
+    """).fetchall())
+
+    stops = []
+    for r in rows:
+        stops.append({
+            "location_name": r[0] or r[1] or "unknown",
+            "species_caught": json.loads(r[2] or "[]"),
+            "was_productive": bool(r[3]),
+            "technique": r[4],
+            "lat": r[5],
+            "lng": r[6],
+            "date": r[7] or r[8] or "unknown",
+        })
+    return stops
+
+
+def _detect_species_gap(stops: list[dict]) -> dict | None:
+    """Detect species in behavioral insights that the user has never personally caught."""
+    species_caught_count: dict[str, int] = {}
+    total_stops = len(stops)
+
+    for stop in stops:
+        for sp in stop["species_caught"]:
+            clean = sp.replace("(uncertain)", "").strip().lower()
+            if "unidentified" not in clean:
+                species_caught_count[clean] = species_caught_count.get(clean, 0) + 1
+
+    try:
+        from src.storage.database import get_db
+        db = get_db()
+        targeted_species = list(db.execute("""
+            SELECT DISTINCT LOWER(species) FROM behavioral_insights
+            WHERE is_current = 1
+        """).fetchall())
+        targeted = {r[0] for r in targeted_species}
+    except Exception:
+        targeted = set()
+
+    never_caught = [sp for sp in targeted if sp not in species_caught_count]
+
+    if never_caught and total_stops >= _SPECIES_ATTEMPT_THRESHOLD:
+        priority = [s for s in never_caught if s not in
+                    ("unidentified shiner sp.", "unidentified chub sp.")]
+        target = priority[0] if priority else never_caught[0]
+        return {
+            "type": "species_gap",
+            "species": target,
+            "total_stops": total_stops,
+            "message": (
+                f"You've discussed {target} in previous sessions but haven't "
+                f"logged a personal catch yet across {total_stops} logged stops. "
+                f"Want me to diagnose what might be missing?"
+            ),
+        }
+    return None
+
+
+def _detect_location_slump(stops: list[dict], current_session_stops: list[dict]) -> dict | None:
+    """Detect consecutive unproductive stops at a previously productive location.
+
+    Only fires if the current session included a stop at that location.
+    """
+    current_locations = set(
+        s.get("location_name", "").lower()
+        for s in current_session_stops
+        if s.get("location_name")
+    )
+
+    if not current_locations:
+        return None
+
+    for location in current_locations:
+        if location == "unknown" or len(location) < 3:
+            continue
+
+        location_stops = [
+            s for s in stops
+            if location in s["location_name"].lower()
+        ]
+
+        if len(location_stops) < _SLUMP_THRESHOLD + 1:
+            continue
+
+        productive_stops = [s for s in location_stops if s["was_productive"]]
+        recent_stops = location_stops[:_SLUMP_THRESHOLD + 1]
+        recent_unproductive = [s for s in recent_stops if not s["was_productive"]]
+
+        if productive_stops and len(recent_unproductive) >= _SLUMP_THRESHOLD:
+            success_rate = len(productive_stops) / len(location_stops)
+            return {
+                "type": "location_slump",
+                "location": location_stops[0]["location_name"],
+                "recent_blanks": len(recent_unproductive),
+                "total_visits": len(location_stops),
+                "historical_success_rate": round(success_rate, 2),
+                "message": (
+                    f"You've blanked at {location_stops[0]['location_name']} "
+                    f"{len(recent_unproductive)} times recently, though historically "
+                    f"it's been productive ({int(success_rate * 100)}% success rate "
+                    f"across {len(location_stops)} visits). "
+                    f"Want me to look at what's changed?"
+                ),
+            }
+    return None
+
+
+def _detect_technique_pattern(stops: list[dict]) -> dict | None:
+    """Detect techniques that appear only in productive stops."""
+    if len(stops) < 5:
+        return None
+
+    productive = [s for s in stops if s["was_productive"] and s.get("technique")]
+    unproductive = [s for s in stops if not s["was_productive"] and s.get("technique")]
+
+    if not productive or not unproductive:
+        return None
+
+    prod_techniques: dict[str, int] = {}
+    for s in productive:
+        t = s["technique"].lower()[:50]
+        prod_techniques[t] = prod_techniques.get(t, 0) + 1
+
+    unprod_techniques: dict[str, int] = {}
+    for s in unproductive:
+        t = s["technique"].lower()[:50]
+        unprod_techniques[t] = unprod_techniques.get(t, 0) + 1
+
+    productive_only = [
+        t for t, count in prod_techniques.items()
+        if count >= 2 and t not in unprod_techniques
+    ]
+
+    if productive_only:
+        top_technique = max(productive_only, key=lambda t: prod_techniques[t])
+        return {
+            "type": "technique_pattern",
+            "technique": top_technique,
+            "productive_count": prod_techniques[top_technique],
+            "message": (
+                f"Looking at your logs, '{top_technique}' has only appeared "
+                f"in productive sessions ({prod_techniques[top_technique]}× success, "
+                f"0× blanks). Want me to look at when and where it works best?"
+            ),
+        }
+    return None
+
+
+def detect_proactive_patterns(
+    db: Database,
+    current_session_stops: list[dict],
+) -> dict | None:
+    """Check for meaningful patterns across all trip history.
+
+    Returns ONE pattern dict if a threshold is crossed, else None.
+    Priority: slump > species gap > technique pattern.
+    """
+    try:
+        session_count = db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+    except Exception:
+        return None
+
+    if session_count < _MIN_SESSIONS_FOR_PATTERNS:
+        return None
+
+    all_stops = _get_all_stops_summary(db)
+
+    slump = _detect_location_slump(all_stops, current_session_stops)
+    if slump:
+        return slump
+
+    gap = _detect_species_gap(all_stops)
+    if gap:
+        return gap
+
+    technique = _detect_technique_pattern(all_stops)
+    if technique:
+        return technique
+
+    return None

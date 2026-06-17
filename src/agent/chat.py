@@ -841,6 +841,12 @@ def _execute_tool(name: str, inputs: dict) -> str:
                 + questions[0]["question"]
             )
 
+        proactive = result.get("proactive_coaching")
+        if proactive:
+            response_parts.append(
+                "\n\n---\n**Pattern detected:** " + proactive["message"]
+            )
+
         return "\n".join(response_parts)
     if name == "get_my_fishing_summary":
         from src.services.trip_logger import get_trip_summary
