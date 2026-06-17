@@ -185,6 +185,8 @@ def ingest(
     days_back: int = typer.Option(
         90, "--days", help="How many days of iNaturalist history to pull"
     ),  # noqa: E501
+    lat: float = typer.Option(None, "--lat", help="Override center latitude"),
+    lng: float = typer.Option(None, "--lng", help="Override center longitude"),
 ) -> None:
     """Pull fish observations from iNaturalist and GBIF near your home location."""
     from src.services.gbif import fetch_and_store as gbif_fetch_and_store
@@ -193,35 +195,40 @@ def ingest(
     from src.services.stream_gauge import fetch_and_store as wsc_fetch_and_store
 
     profile = load_profile()
-    if not profile.home_location:
+
+    if lat is not None and lng is not None:
+        center_lat, center_lng = lat, lng
+        center_name = f"({lat}, {lng})"
+    elif profile.home_location:
+        center_lat, center_lng = profile.home_location.lat, profile.home_location.lng
+        center_name = profile.home_location.name
+    else:
         console.print(
-            "[red]Home location not set. Run `fishbot profile` and enter your coordinates.[/red]"
+            "[red]Home location not set. Run `fishbot profile` or pass --lat/--lng.[/red]"
         )
         raise typer.Exit(1)
 
-    loc = profile.home_location
-
     console.print(
-        f"[dim]Fetching iNaturalist observations within {radius_km}km of {loc.name}, "
+        f"[dim]Fetching iNaturalist observations within {radius_km}km of {center_name}, "
         f"last {days_back} days…[/dim]"
     )
-    inat_count = inat_fetch_and_store(loc.lat, loc.lng, radius_km=radius_km, days_back=days_back)
+    inat_count = inat_fetch_and_store(center_lat, center_lng, radius_km=radius_km, days_back=days_back)
 
     console.print(
         f"[dim]Fetching GBIF institutional records (museum specimens, surveys) "
-        f"within {radius_km}km of {loc.name}…[/dim]"
+        f"within {radius_km}km of {center_name}…[/dim]"
     )
-    gbif_count = gbif_fetch_and_store(loc.lat, loc.lng, radius_km=radius_km)
+    gbif_count = gbif_fetch_and_store(center_lat, center_lng, radius_km=radius_km)
 
     console.print(
-        f"[dim]Fetching WSC stream gauge readings within {radius_km:.0f}km of {loc.name}…[/dim]"
+        f"[dim]Fetching WSC stream gauge readings within {radius_km:.0f}km of {center_name}…[/dim]"
     )
-    wsc_count = wsc_fetch_and_store(loc.lat, loc.lng, radius_km=radius_km)
+    wsc_count = wsc_fetch_and_store(center_lat, center_lng, radius_km=radius_km)
 
     console.print(
-        f"[dim]Fetching OSM water features (50km) and access points (25km) near {loc.name}…[/dim]"
+        f"[dim]Fetching OSM water features (50km) and access points (25km) near {center_name}…[/dim]"
     )
-    osm_water_count, osm_access_count = osm_fetch_and_store(loc.lat, loc.lng)
+    osm_water_count, osm_access_count = osm_fetch_and_store(center_lat, center_lng)
 
     console.print("[dim]Downloading MNRF fish stocking records (30-day cache)…[/dim]")
     from src.services.stocking import ingest_stocking_data
@@ -244,7 +251,7 @@ def ingest(
     )
     from src.services.hydrology import ingest_hydro_network
 
-    ohn_seg_count, ohn_barrier_count = ingest_hydro_network(loc.lat, loc.lng, radius_km)
+    ohn_seg_count, ohn_barrier_count = ingest_hydro_network(center_lat, center_lng, radius_km)
 
     console.print(
         "[dim]Downloading and parsing MNRF Fishing Regulations Summary (annual PDF)…[/dim]"
@@ -265,41 +272,41 @@ def ingest(
 
     console.print(
         f"[dim]Fetching Ontario surficial geology tiles (MRD 128) within "
-        f"{radius_km:.0f}km of {loc.name}…[/dim]"
+        f"{radius_km:.0f}km of {center_name}…[/dim]"
     )
     from src.services.geology import ingest_geology_data
 
-    geology_count = ingest_geology_data(loc.lat, loc.lng, radius_km)
+    geology_count = ingest_geology_data(center_lat, center_lng, radius_km)
 
     console.print(
-        f"[dim]Fetching eBird piscivore observations within {radius_km:.0f}km of {loc.name}…[/dim]"
+        f"[dim]Fetching eBird piscivore observations within {radius_km:.0f}km of {center_name}…[/dim]"
     )
     from src.services.ebird import fetch_and_store as ebird_fetch_and_store
 
-    ebird_count = ebird_fetch_and_store(loc.lat, loc.lng, radius_km)
+    ebird_count = ebird_fetch_and_store(center_lat, center_lng, radius_km)
 
     console.print("[dim]Seeding waterfowl dispersal behavioral insights…[/dim]")
     from src.services.insights import seed_dispersal_insights
 
     seed_dispersal_insights()
 
-    console.print(f"[dim]Fetching Ontario Provincial Parks within 200km of {loc.name}…[/dim]")
+    console.print(f"[dim]Fetching Ontario Provincial Parks within 200km of {center_name}…[/dim]")
     import importlib as _importlib
 
     _parks_mod = _importlib.import_module("src.ingest.global.provincial_parks")
-    parks_count = _parks_mod.fetch_and_store(get_db(), loc.lat, loc.lng, radius_km=200.0)
+    parks_count = _parks_mod.fetch_and_store(get_db(), center_lat, center_lng, radius_km=200.0)
 
     console.print(
-        f"[dim]Fetching Conservation Authority boundaries within 200km of {loc.name}…[/dim]"
+        f"[dim]Fetching Conservation Authority boundaries within 200km of {center_name}…[/dim]"
     )
     _ca_mod = _importlib.import_module("src.ingest.global.ca_boundaries")
-    ca_count = _ca_mod.fetch_and_store(get_db(), loc.lat, loc.lng, radius_km=200.0)
+    ca_count = _ca_mod.fetch_and_store(get_db(), center_lat, center_lng, radius_km=200.0)
 
     console.print(
-        f"[dim]Fetching Ontario Crown Land boundaries within 100km of {loc.name}…[/dim]"
+        f"[dim]Fetching Ontario Crown Land boundaries within 100km of {center_name}…[/dim]"
     )
     _crown_mod = _importlib.import_module("src.ingest.global.crown_land")
-    crown_count = _crown_mod.fetch_and_store(get_db(), loc.lat, loc.lng, radius_km=100.0)
+    crown_count = _crown_mod.fetch_and_store(get_db(), center_lat, center_lng, radius_km=100.0)
 
     from src.storage.database import get_db as _get_db
     from src.storage.stream_temperature import is_data_loaded as _temp_loaded
