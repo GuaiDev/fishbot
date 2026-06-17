@@ -79,6 +79,13 @@ responses, not cold reasoning. This overrides the minimum-tools rule.
 **"Where should I fish / find me somewhere new?"** (exploration)
 → Call `find_exploration_targets` only.
 
+**Coaching and improvement questions** ("what am I doing wrong", "why can't
+I catch X", "how do I improve", "what should I do differently"): call
+`get_coaching` with coaching_type="species" or "location" as appropriate.
+This tool analyzes the user's actual trip log data — it gives personalized
+advice, not generic fishing tips. Always note what the data shows AND what
+it doesn't show (sparse logs = honest uncertainty).
+
 **"Where can I find species X / does this location suit species X?"** (species habitat)
 → Call `get_species_habitat_predictions`.
 Available for 9 species: Creek Chub, Pumpkinseed, Yellow Perch, Brown Bullhead,

@@ -735,6 +735,23 @@ def _execute_tool(name: str, inputs: dict) -> str:
             query=inputs["query"],
             top_k=inputs.get("top_k", 5),
         )
+    if name == "get_coaching":
+        from src.services.coaching import get_location_coaching, get_species_coaching
+
+        db = get_db()
+        coaching_type = inputs.get("coaching_type", "species")
+        question = inputs.get("question")
+
+        if coaching_type == "location":
+            location = inputs.get("location")
+            if not location:
+                return "Please specify a location for location coaching."
+            return get_location_coaching(db, location, question)
+        else:
+            species = inputs.get("species")
+            if not species:
+                return "Please specify a species for species coaching."
+            return get_species_coaching(db, species, question)
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -2031,6 +2048,45 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": ["query"],
+            },
+        },
+        {
+            "name": "get_coaching",
+            "description": (
+                "Analyze the user's personal fishing log to diagnose why they're "
+                "struggling with a specific species or location, and suggest "
+                "concrete improvements grounded in their own data. "
+                "Use when the user asks: 'what am I doing wrong for X', "
+                "'why can't I catch X', 'how do I improve at X', "
+                "'what should I do differently at Y', 'why do I blank at Y'. "
+                "This tool only works with logged trip data — it cannot coach "
+                "on species or locations with no history in the log."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "coaching_type": {
+                        "type": "string",
+                        "enum": ["species", "location"],
+                        "description": (
+                            "'species' for species-specific coaching, "
+                            "'location' for location-specific coaching"
+                        ),
+                    },
+                    "species": {
+                        "type": "string",
+                        "description": "Species to diagnose e.g. 'madtom', 'channel catfish'",
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Location name to diagnose e.g. 'Byng Island'",
+                    },
+                    "question": {
+                        "type": "string",
+                        "description": "The user's specific question or concern",
+                    },
+                },
+                "required": ["coaching_type"],
             },
         },
     ]
