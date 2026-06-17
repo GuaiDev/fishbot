@@ -101,6 +101,42 @@ def classify_message(message: str, conversation_context: str = "") -> dict:
         }
 
 
+def extract_location_from_message(message: str) -> dict:
+    """
+    Extract location information from a synthesis-mode message.
+    Returns dict with lat, lng, location_name (all nullable).
+    Uses Haiku — cheap and fast.
+    Falls back to empty dict on any error.
+    """
+    try:
+        client = get_client()
+        resp = client.messages.create(
+            model=HAIKU,
+            max_tokens=100,
+            system="""Extract location from a fishing question. Return ONLY JSON, no other text.
+If the message mentions coordinates, a named place, or a specific water body: extract it.
+If no specific location: return nulls.
+Output: {"lat": number or null, "lng": number or null, "location_name": "string or null"}
+Examples:
+"Why does Willoway Park hold catfish?" → {"lat": null, "lng": null, "location_name": "Willoway Park"}
+"What's at 42.917, -79.774?" → {"lat": 42.917, "lng": -79.774, "location_name": null}
+"What bait for bass?" → {"lat": null, "lng": null, "location_name": null}
+"Credit River near Streetsville" → {"lat": null, "lng": null, "location_name": "Credit River Streetsville"}""",
+            messages=[{"role": "user", "content": message}],
+        )
+        text = "".join(b.text for b in resp.content if b.type == "text").strip()
+        text = text.replace("```json", "").replace("```", "").strip()
+        result = json.loads(text)
+        return {
+            "lat": result.get("lat"),
+            "lng": result.get("lng"),
+            "location_name": result.get("location_name"),
+            "extraction_tokens": resp.usage.input_tokens + resp.usage.output_tokens,
+        }
+    except Exception:
+        return {"lat": None, "lng": None, "location_name": None, "extraction_tokens": 0}
+
+
 def handle_reflex(message: str, leading_question: str | None = None) -> dict:
     """
     Answer a reflex (generic knowledge) question with a cheap model, no tools.

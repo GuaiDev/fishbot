@@ -70,6 +70,29 @@ def get_cached_synthesis(
                     "cache_hit": True,
                 }
 
+    # Fuzzy name match: one name is a subset of words of the other
+    if location_name:
+        try:
+            all_entries = list(db["segment_synthesis"].rows_where(
+                "location_name IS NOT NULL"
+            ))
+        except Exception:
+            all_entries = []
+        query_words = set(location_name.strip().lower().split())
+        for c in all_entries:
+            c_words = set((c["location_name"] or "").strip().lower().split())
+            if query_words and c_words and (query_words <= c_words or c_words <= query_words):
+                db.execute(
+                    "UPDATE segment_synthesis SET hit_count = hit_count + 1 WHERE id = ?",
+                    [c["id"]],
+                )
+                return {
+                    "synthesis": c["synthesis"],
+                    "location_name": c.get("location_name"),
+                    "computed_at": c.get("computed_at"),
+                    "cache_hit": True,
+                }
+
     return None
 
 
@@ -100,6 +123,7 @@ def store_synthesis(
             datetime.now().isoformat(),
         ],
     )
+    db.conn.commit()
 
 
 def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:

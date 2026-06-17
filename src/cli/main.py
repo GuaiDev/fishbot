@@ -702,6 +702,59 @@ def usage(days: int = typer.Option(7, "--days", "-d", help="Number of days to sh
     console.print("(Based on Claude Sonnet pricing — verify current rates at console.anthropic.com)")
 
 
+@app.command(name="cache-status")
+def cache_status() -> None:
+    """Show synthesis cache contents and hit rates."""
+    db = get_db()
+    try:
+        rows = list(db.execute("""
+            SELECT location_name, cache_key, hit_count, computed_at,
+                   LENGTH(synthesis) as synthesis_chars
+            FROM segment_synthesis
+            ORDER BY hit_count DESC, computed_at DESC
+        """).fetchall())
+    except Exception:
+        console.print("No synthesis cache entries yet.")
+        return
+
+    if not rows:
+        console.print("Synthesis cache is empty.")
+        return
+
+    from rich.table import Table
+
+    tbl = Table(title=f"Synthesis Cache — {len(rows)} entries")
+    tbl.add_column("Location", min_width=35)
+    tbl.add_column("Hits", justify="right")
+    tbl.add_column("Size", justify="right")
+    tbl.add_column("Computed")
+
+    for row in rows:
+        name = str(row[0] or row[1] or "unknown")[:34]
+        hits = str(row[2] or 0)
+        chars = str(row[4] or 0)
+        computed = str(row[3] or "")[:19]
+        tbl.add_row(name, hits, chars, computed)
+
+    console.print(tbl)
+    total_hits = sum(r[2] or 0 for r in rows)
+    console.print(f"\nTotal cache hits: {total_hits}")
+    console.print("[dim]Run 'fishbot cache-clear' to reset the cache.[/dim]")
+
+
+@app.command(name="cache-clear")
+def cache_clear() -> None:
+    """Clear the synthesis cache (forces fresh analysis on next query)."""
+    db = get_db()
+    try:
+        count = db.execute("SELECT COUNT(*) FROM segment_synthesis").fetchone()[0]
+        db.execute("DELETE FROM segment_synthesis")
+        db.conn.commit()
+        console.print(f"Cleared {count} cache entries.")
+    except Exception as e:
+        console.print(f"[red]Error clearing cache: {e}[/red]")
+
+
 def _print_profile(p: UserProfile) -> None:
     home = p.home_location
     home_str = f"{home.name} ({home.lat}, {home.lng})" if home else "(not set)"

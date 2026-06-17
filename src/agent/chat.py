@@ -184,7 +184,76 @@ def run_chat_api(
             "mode": "reflex",
         }
 
-    # memory and synthesis both go through the full pipeline
+    if mode == "memory":
+        return _run_full_pipeline(messages, session_id, mode="memory")
+
+    # synthesis mode — check cache first
+    if mode == "synthesis":
+        from src.agent.router import extract_location_from_message
+        from src.services.synthesis_cache import get_cached_synthesis, store_synthesis
+        from src.storage.database import get_db as _get_db
+
+        db = _get_db()
+
+        loc = extract_location_from_message(latest_user)
+        lat = loc.get("lat")
+        lng = loc.get("lng")
+        location_name = loc.get("location_name")
+
+        if lat is not None or location_name is not None:
+            cached = get_cached_synthesis(db, lat=lat, lng=lng,
+                                          location_name=location_name)
+            if cached:
+                cache_prompt = (
+                    f"The user asked: {latest_user}\n\n"
+                    f"Here is the stored synthesis for this location "
+                    f"(computed {cached.get('computed_at', 'previously')}):\n\n"
+                    f"{cached['synthesis']}\n\n"
+                    f"Answer the user's question using this synthesis. "
+                    f"Be concise and directly address what they asked. "
+                    f"If the synthesis doesn't fully answer the question, "
+                    f"say so and offer to run a fresh analysis."
+                )
+                client = get_client()
+                resp = client.messages.create(
+                    model=HAIKU,
+                    max_tokens=600,
+                    messages=[{"role": "user", "content": cache_prompt}],
+                )
+                reply = "".join(
+                    b.text for b in resp.content if b.type == "text"
+                ).strip()
+                reply += "\n\n*(Answer from synthesis cache)*"
+                messages.append({"role": "assistant", "content": reply})
+                _log_routing(session_id, "synthesis_cache_hit",
+                             resp.usage.input_tokens + resp.usage.output_tokens)
+                return {
+                    "reply": reply,
+                    "tool_calls": [],
+                    "messages": messages,
+                    "mode": "synthesis_cache_hit",
+                }
+
+        # Cache miss (or no location) — run full pipeline
+        result = _run_full_pipeline(messages, session_id, mode="synthesis")
+
+        # Store result in cache if we have a location
+        if (lat is not None or location_name is not None) and result.get("reply"):
+            try:
+                store_synthesis(
+                    db,
+                    synthesis=result["reply"],
+                    lat=lat,
+                    lng=lng,
+                    location_name=location_name,
+                    data_sources=result.get("tool_calls", []),
+                )
+            except Exception:
+                pass  # Non-fatal
+
+        return result
+
+    # Fallback — full pipeline
     return _run_full_pipeline(messages, session_id, mode=mode)
 
 
@@ -296,6 +365,50 @@ def run_chat() -> None:
         messages.append({"role": "user", "content": user_input})
         save_turn(db, session_id, "user", user_input, turn_index)
 
+        # Synthesis cache check
+        cache_loc: dict = {}
+        if mode == "synthesis":
+            from src.agent.router import extract_location_from_message
+            from src.services.synthesis_cache import get_cached_synthesis, store_synthesis
+
+            cache_loc = extract_location_from_message(user_input)
+            c_lat = cache_loc.get("lat")
+            c_lng = cache_loc.get("lng")
+            c_name = cache_loc.get("location_name")
+
+            if c_lat is not None or c_name is not None:
+                cached = get_cached_synthesis(db, lat=c_lat, lng=c_lng,
+                                              location_name=c_name)
+                if cached:
+                    cache_prompt = (
+                        f"The user asked: {user_input}\n\n"
+                        f"Here is the stored synthesis for this location "
+                        f"(computed {cached.get('computed_at', 'previously')}):\n\n"
+                        f"{cached['synthesis']}\n\n"
+                        f"Answer the user's question using this synthesis. "
+                        f"Be concise and directly address what they asked. "
+                        f"If the synthesis doesn't fully answer the question, "
+                        f"say so and offer to run a fresh analysis."
+                    )
+                    resp = client.messages.create(
+                        model=HAIKU,
+                        max_tokens=600,
+                        messages=[{"role": "user", "content": cache_prompt}],
+                    )
+                    reply = "".join(
+                        b.text for b in resp.content if b.type == "text"
+                    ).strip()
+                    reply += "\n\n*(Answer from synthesis cache)*"
+                    console.print(reply, markup=False, highlight=False, soft_wrap=True)
+                    console.print()
+                    console.print()
+                    messages.append({"role": "assistant", "content": reply})
+                    save_turn(db, session_id, "assistant", reply, turn_index)
+                    _log_routing(session_id, "synthesis_cache_hit",
+                                 resp.usage.input_tokens + resp.usage.output_tokens)
+                    turn_index += 1
+                    continue
+
         try:
             _agentic_loop(client, model, system_prompt, messages, tools, console, session_id=session_id)
         except APIError as e:
@@ -308,9 +421,23 @@ def run_chat() -> None:
             messages.pop()
             continue
 
-        # Save assistant reply (last message after agentic loop resolves)
+        # Save assistant reply and store to synthesis cache
         if messages and isinstance(messages[-1].get("content"), str):
-            save_turn(db, session_id, "assistant", messages[-1]["content"], turn_index)
+            reply = messages[-1]["content"]
+            save_turn(db, session_id, "assistant", reply, turn_index)
+
+            if mode == "synthesis" and reply:
+                c_lat = cache_loc.get("lat")
+                c_lng = cache_loc.get("lng")
+                c_name = cache_loc.get("location_name")
+                if c_lat is not None or c_name is not None:
+                    try:
+                        from src.services.synthesis_cache import store_synthesis
+                        store_synthesis(db, synthesis=reply, lat=c_lat, lng=c_lng,
+                                        location_name=c_name)
+                    except Exception:
+                        pass  # Non-fatal
+
         turn_index += 1
 
 
