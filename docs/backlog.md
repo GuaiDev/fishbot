@@ -133,6 +133,23 @@ chat window.
   presence records). Currently requires manual `uv run fishbot train-sdm`. Add to
   scheduled refresh.
 
+- **Trip logs as SDM training data** ✅ — Built and wired. `species_mapping.py` with
+  ~70 species common↔scientific. `_get_presence_points()` now pulls from stops table
+  (productive stops with valid coordinates only). `sdm-contributions` CLI shows
+  breakdown per model. Creek chub: 2 trip log records. White sucker: 1. Grows
+  automatically with every logged trip.
+
+- **SDM retraining trigger** — currently requires manual `uv run fishbot train-sdm`.
+  Should trigger automatically when trip log presence records grow meaningfully for a
+  species (suggested threshold: new trip log points exceed 20% of existing iNat+GBIF
+  count for that species). Add as part of ingest scheduling work.
+
+- **Species mapping expansion** — `species_mapping.py` covers ~70 species. As new
+  species appear in trip logs that aren't mapped, they silently don't contribute to
+  SDM training. Add a warning when a common name from a stop can't be mapped to a
+  scientific name — log it so the mapping can be expanded. Also consider auto-lookup
+  via GBIF species API for unmapped names.
+
 ---
 
 ## Agent Behaviour
@@ -208,12 +225,14 @@ chat window.
   automatically. Add a GitHub Actions workflow or Railway cron job to run
   `fishbot ingest --lat X --lng Y --radius Z` for each target area weekly.
 
-- **Trip logs as SDM training data** — every species catch logged by users is an
-  unbiased presence record that improves SDM accuracy in undersampled areas. Build a
-  pipeline that periodically extracts confirmed species catches from the `stops` table
-  and adds them to the SDM feature matrix as presence records before retraining. This
-  is the data flywheel that improves predictions in rural/remote areas where citizen
-  science is sparse.
+- **Trip logs as SDM training data** ✅ — see Personal Model section.
+
+- **SDM contribution tracking as a product metric** — `uv run fishbot sdm-contributions`
+  shows iNat/GBIF/TripLog breakdown per model. When FishBot has users, total trip log
+  contributions across all users becomes a meaningful data asset metric: "X,000
+  angler-confirmed catches informing Ontario species predictions." Track this over time.
+  Eventually surface in the UI as a trust signal ("predictions informed by your catches
+  + X community catches").
 
 ---
 
@@ -287,4 +306,4 @@ chat window.
 
 ---
 
-*Last updated: Session — SDM retrain (bias features removed), on-demand coaching layer, SDM confidence framing, proactive coaching, SDM roadmap*
+*Last updated: Session — Trip log SDM flywheel (species_mapping.py, sdm-contributions CLI, data flywheel wired)*
