@@ -85,8 +85,12 @@ def train_species_model(
     mdir = models_dir or _MODELS_DIR
     mdir.mkdir(parents=True, exist_ok=True)
 
-    # Collect + snap presence points
+    # Collect + snap presence points (source-tagged 4-tuples)
     points = _get_presence_points(species, db)
+    n_inat = sum(1 for p in points if p[3] == "inat")
+    n_gbif = sum(1 for p in points if p[3] == "gbif")
+    n_trip_log = sum(1 for p in points if p[3] == "trip_log")
+    logger.info("%s: %d iNat, %d GBIF, %d trip log", species, n_inat, n_gbif, n_trip_log)
     if len(points) < _MIN_PRESENCE:
         logger.debug("%s: %d raw presence points — skipping", species, len(points))
         return None
@@ -143,7 +147,14 @@ def train_species_model(
     slug = slugify(species)
     model_path = mdir / f"{slug}.joblib"
     joblib.dump(
-        {"preprocessor": preprocessor, "clf": clf, "feature_cols": FEATURE_COLS},
+        {
+            "preprocessor": preprocessor,
+            "clf": clf,
+            "feature_cols": FEATURE_COLS,
+            "n_inat": n_inat,
+            "n_gbif": n_gbif,
+            "n_trip_log": n_trip_log,
+        },
         model_path,
     )
 
@@ -238,15 +249,18 @@ def _all_qualifying_species(db, min_presence: int) -> list[tuple[str, int]]:
     return [(canonical[k], n) for k, n in counts.items() if n >= min_presence]
 
 
-def _get_presence_points(species: str, db) -> list[tuple[float, float, bool]]:
-    """Return (lat, lng, is_obscured) for all presence records of this species."""
+def _get_presence_points(species: str, db) -> list[tuple[float, float, bool, str]]:
+    """Return (lat, lng, is_obscured, source) for all presence records of this species.
+
+    Sources: 'inat', 'gbif', 'trip_log'.
+    """
     s_lower = species.lower()
-    points: list[tuple[float, float, bool]] = []
+    points: list[tuple[float, float, bool, str]] = []
 
     for r in db["observations"].rows_where(
         "LOWER(species) = ?", [s_lower], select="lat, lng, is_obscured"
     ):
-        points.append((r["lat"], r["lng"], bool(r["is_obscured"])))
+        points.append((r["lat"], r["lng"], bool(r["is_obscured"]), "inat"))
 
     for r in db["gbif_observations"].rows_where(
         "LOWER(species) = ? AND "
@@ -254,8 +268,32 @@ def _get_presence_points(species: str, db) -> list[tuple[float, float, bool]]:
         [s_lower, _MAX_GBIF_UNCERTAINTY_M],
         select="lat, lng",
     ):
-        points.append((r["lat"], r["lng"], False))
+        points.append((r["lat"], r["lng"], False, "gbif"))
 
+    # Trip log presences — high quality, unbiased, user-confirmed catches.
+    # Non-fatal: training continues with iNat/GBIF data only if this fails.
+    try:
+        from src.services.species_mapping import COMMON_TO_SCIENTIFIC
+
+        matching_common = [
+            cn for cn, sci in COMMON_TO_SCIENTIFIC.items()
+            if sci.lower() == s_lower
+        ]
+        for common_name in matching_common:
+            rows = db.execute("""
+                SELECT st.lat, st.lng
+                FROM stops st, json_each(st.species_caught) je
+                WHERE LOWER(je.value) LIKE ?
+                  AND st.lat IS NOT NULL
+                  AND st.lng IS NOT NULL
+                  AND st.was_productive = 1
+            """, [f"%{common_name.lower()}%"]).fetchall()
+            for row in rows:
+                points.append((row[0], row[1], False, "trip_log"))
+    except Exception as exc:
+        logger.warning("Trip log presence extraction failed for %s: %s", species, exc)
+
+    logger.info("%s: %d presence points (iNat + GBIF + trip logs)", species, len(points))
     return points
 
 
@@ -274,7 +312,7 @@ def _snap_to_segments(
     tree = cKDTree(coords)
     weight_map: dict[int, float] = defaultdict(float)
 
-    for lat, lng, is_obscured in points:
+    for lat, lng, is_obscured, *_ in points:
         if is_obscured:
             idxs = tree.query_ball_point([lat, lng], _OBSCURED_RADIUS_DEG)
             if not idxs:

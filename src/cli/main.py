@@ -452,6 +452,54 @@ def train_sdm() -> None:
     )
 
 
+@app.command(name="sdm-contributions")
+def sdm_contributions() -> None:
+    """Show how many trip log catches contribute to each SDM model."""
+    import os
+
+    import joblib
+
+    model_dir = "data/processed/sdm_models"
+    if not os.path.isdir(model_dir):
+        console.print("[red]No models found. Run `make train-sdm` first.[/red]")
+        raise typer.Exit(1)
+
+    bundles = []
+    for f in sorted(os.listdir(model_dir)):
+        if not f.endswith(".joblib"):
+            continue
+        b = joblib.load(os.path.join(model_dir, f))
+        bundles.append(b)
+
+    if not bundles:
+        console.print("[red]No .joblib model files found in data/processed/sdm_models.[/red]")
+        raise typer.Exit(1)
+
+    from rich.table import Table
+
+    tbl = Table(title="SDM Training Data — Trip Log Contributions")
+    tbl.add_column("Species", min_width=30)
+    tbl.add_column("iNat", justify="right")
+    tbl.add_column("GBIF", justify="right")
+    tbl.add_column("Trip Log", justify="right")
+    tbl.add_column("Total Pres.", justify="right")
+    tbl.add_column("CV AUC", justify="right")
+
+    for b in bundles:
+        species = b.get("species", "?")
+        n_inat = b.get("n_inat", "?")
+        n_gbif = b.get("n_gbif", "?")
+        n_trip = b.get("n_trip_log", 0)
+        n_pres = b.get("n_presence", "?")
+        auc = b.get("spatial_cv_auc", None)
+        auc_str = f"{auc:.3f}" if auc is not None else "?"
+        trip_str = f"[green]{n_trip}[/green]" if n_trip > 0 else str(n_trip)
+        tbl.add_row(species, str(n_inat), str(n_gbif), trip_str, str(n_pres), auc_str)
+
+    console.print(tbl)
+    console.print("\n[dim]Run 'fishbot train-sdm' to retrain with current trip log data.[/dim]")
+
+
 @app.command(name="compute-access")
 def compute_access() -> None:
     """Compute access scores for all OHN stream segments.

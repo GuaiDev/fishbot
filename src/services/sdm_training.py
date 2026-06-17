@@ -130,6 +130,30 @@ def prepare_species_data(
             if r["lat"] is not None and r["lng"] is not None:
                 coords.append((float(r["lat"]), float(r["lng"])))
 
+    # Trip log presences — user-confirmed catches, especially valuable in
+    # undersampled areas. Non-fatal: falls through to iNat/GBIF only on error.
+    try:
+        from src.services.species_mapping import COMMON_TO_SCIENTIFIC
+
+        for name in query_names:
+            matching_common = [
+                cn for cn, sci in COMMON_TO_SCIENTIFIC.items()
+                if sci.lower() == name.lower()
+            ]
+            for common_name in matching_common:
+                rows = db.execute("""
+                    SELECT st.lat, st.lng
+                    FROM stops st, json_each(st.species_caught) je
+                    WHERE LOWER(je.value) LIKE ?
+                      AND st.lat IS NOT NULL
+                      AND st.lng IS NOT NULL
+                      AND st.was_productive = 1
+                """, [f"%{common_name.lower()}%"]).fetchall()
+                for row in rows:
+                    coords.append((float(row[0]), float(row[1])))
+    except Exception as exc:
+        logger.warning("Trip log extraction failed for %s: %s", species_name, exc)
+
     empty = pd.DataFrame(columns=_ALL_FEATURES), pd.Series(dtype=float)
     if not coords:
         return empty
@@ -273,6 +297,7 @@ def train_species_model(
     base_for_imp.fit(X_all, y_all)
 
     n_inat, n_gbif = _count_records(species_name, db)
+    n_trip_log = _count_trip_log_records(species_name, db)
 
     return {
         "species": species_name,
@@ -282,6 +307,7 @@ def train_species_model(
         "feature_importances": _importances_from_pipeline(base_for_imp),
         "n_inat": n_inat,
         "n_gbif": n_gbif,
+        "n_trip_log": n_trip_log,
         "model": calibrated,
     }
 
@@ -454,3 +480,32 @@ def _count_records(species_name: str, db) -> tuple[int, int]:
         ).fetchone()
         n_gbif += row[0] if row else 0
     return n_inat, n_gbif
+
+
+def _count_trip_log_records(species_name: str, db) -> int:
+    """Count confirmed trip-log catches for this species (using common name mapping)."""
+    try:
+        from src.services.species_mapping import COMMON_TO_SCIENTIFIC
+
+        names = list(_BASS_POOL) if species_name in _BASS_POOL else [species_name]
+        total = 0
+        for name in names:
+            matching_common = [
+                cn for cn, sci in COMMON_TO_SCIENTIFIC.items()
+                if sci.lower() == name.lower()
+            ]
+            for common_name in matching_common:
+                row = db.execute("""
+                    SELECT COUNT(*) FROM (
+                        SELECT DISTINCT st.id
+                        FROM stops st, json_each(st.species_caught) je
+                        WHERE LOWER(je.value) LIKE ?
+                          AND st.lat IS NOT NULL
+                          AND st.lng IS NOT NULL
+                          AND st.was_productive = 1
+                    )
+                """, [f"%{common_name.lower()}%"]).fetchone()
+                total += row[0] if row else 0
+        return total
+    except Exception:
+        return 0
