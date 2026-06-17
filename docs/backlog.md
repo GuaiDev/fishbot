@@ -49,6 +49,9 @@ chat window.
   `user_species_caught` separate from party-wide `species_caught`, or flag friend
   catches explicitly in the notes field during parsing. The parser should ask "what
   did YOU personally catch" vs "what did your group catch" as distinct fields.
+  **✅ Resolved:** Fixed in this session — `party_species_caught` field added to stops table
+  and parser. `get_trips_at_location` now clearly distinguishes "you caught: X
+  (others in party: Y)" from party-only catches.
 
 ---
 
@@ -74,19 +77,38 @@ chat window.
   Fix: in `match_insights_to_stop()`, also match by location proximity alone for
   unproductive stops, even when `species_caught` is empty. This way blanking at
   Willoway Park still challenges insight #34.
+  **✅ Resolved:** Fixed in this session — `match_insights_to_stop()` now has a location-only
+  branch for unproductive stops with coordinates. Blank at a known spot now triggers
+  contradiction checking even with empty `species_caught`.
 
-- **Lake-run timing tracker — Grand River / Dunnville** — no data exists on when
-  lake-run channel catfish push up the Grand River from Lake Erie. Build a
-  lightweight tracker: log date + fish size + water temp for every Dunnville
-  session. After several sessions across different months, a timing pattern will
-  emerge from real data rather than general Great Lakes knowledge. Currently flagged
-  as an open research question in angler context.
+- **Lake-run timing tracker — Grand River / Dunnville** — no data on when lake-run
+  channel catfish push up the Grand River from Lake Erie. Log date + fish size + water
+  temp for every Dunnville session. Pattern will emerge from real data over time.
+  Currently flagged as open research question in angler context.
 
-- **Kool-aid vs natural cutbait comparison** — one friend caught a smallmouth on
-  kool-aid soaked cutbait at Willoway. Not enough data to draw conclusions. Design
-  a controlled side-by-side: same location, same rig, one rod natural cutbait, one
-  rod kool-aid soaked, track strikes per rod. Run deliberately at Byng or Willoway
-  next session. Currently stored as low-confidence note in behavioral insights.
+- **Kool-aid vs natural cutbait comparison** — one session data point — not enough to
+  conclude anything. Design a controlled side-by-side: same location, same rig, one rod
+  natural, one rod kool-aid soaked, track strikes per rod. Run deliberately at Byng or
+  Willoway next session.
+
+- **Dynamic profile from trip history (Option B)** — the static profile (set once via
+  `fishbot profile`) will go stale over time as fishing interests evolve. Long-term fix:
+  deprecate preference fields in the profile entirely and infer them from trip log history
+  instead. Species targets, fishing style, skill indicators — all derived from what the
+  angler actually catches and where they fish, not from what they declared at signup. The
+  profile becomes purely administrative (home location, jurisdiction). Implement when the
+  `stops` table has enough history to make inference reliable (suggested: 20+ stops).
+
+- **Coaching layer** — two modes:
+  - **On-demand:** user explicitly asks "what am I doing wrong for madtoms?" → bot queries
+    trip logs and behavioral insights to diagnose gaps and suggest adjustments.
+  - **Proactive:** after logging a session, bot checks for meaningful patterns (3+ consecutive
+    blanks at a productive spot, 5+ failed attempts at a target species, technique
+    underperformance vs. baseline) and surfaces ONE observation with an offer to help.
+    Fires at most once per session, only when thresholds are crossed. Never lectures.
+  Triggers connect to confidence escalation system already built — low/dropping confidence
+  on an insight the user keeps acting on is the main signal. Premium tier feature. Free
+  tier stays reactive only.
 
 ---
 
@@ -110,12 +132,12 @@ chat window.
   more reliable for specific spots. Partially addressed in system prompt but needs
   ongoing attention.
 
-- **Synthesis cache — wire into tools** — the `segment_synthesis` table and
-  `synthesis_cache.py` service are built and ready. The next step is wiring the
-  cache check/store into the heaviest synthesis tools — likely
-  `get_species_habitat_predictions` or wherever watershed/geology cross-referencing
-  happens. On cache miss: run full synthesis and store. On cache hit: return stored
-  result. This makes the expensive Willoway-style analysis free after the first query.
+- **Synthesis cache — wire into tools** — `segment_synthesis` table and
+  `synthesis_cache.py` are built and ready. Next step: wire cache check/store into the
+  heaviest synthesis tools (likely `get_species_habitat_predictions` or wherever
+  watershed/geology cross-referencing happens). Cache miss → run full synthesis + store.
+  Cache hit → return stored result via Haiku (very cheap). This is what makes the
+  expensive Willoway-style analysis nearly free after the first query.
 
 - **Router — synthesis cache integration for Willoway-style questions** — when the
   router classifies a message as "synthesis" and the query is about a
@@ -124,15 +146,19 @@ chat window.
   run full pipeline and store result. This is the key step to making synthesis mode
   cheap at runtime.
 
-- **Free vs premium tier boundary** — the router mode field (`reflex` / `synthesis`
-  / `memory`) flowing through `api_usage` is the foundation of the free/premium
-  split. Design still pending:
-  - Free tier: reflex only. Generic fishing knowledge, Haiku, no tools.
-  - Premium tier: synthesis + memory. Full pipeline, personal data access.
+- **Free/premium tier boundary** — router mode field (`reflex`/`synthesis`/`memory`)
+  flowing through `api_usage` is the foundation of the split. Design pending:
+  - Free: reflex only. Generic fishing knowledge, Haiku, no tools.
+  - Premium: synthesis + memory + coaching. Full pipeline, personal data.
   - Taster: first synthesis result shown free, deeper analysis gated.
-  - Leading questions: reflex answers offer synthesis upgrade ("want me to find
-    similar spots?") as the free→premium conversion mechanism.
+  - Leading questions: reflex answers offer synthesis upgrade as conversion mechanism.
   Build when ready to think about launching.
+
+- **Context document — coordinate embedding** — Rule 9 added to Haiku merge: when session
+  summaries include coordinates, embed them in spot entries e.g. "Willoway Park, Grand River
+  (42.917, -79.774)". Monitor that this is actually happening as new trips get logged with
+  coordinates. Over time, the spots section should become a precise coordinate-linked reference,
+  not just text descriptions.
 
 ---
 
@@ -221,4 +247,4 @@ chat window.
 
 ---
 
-*Last updated: Session — cost router, synthesis cache, location trip memory, backlog refresh*
+*Last updated: Session — memory/profile/catch fixes (blank contradiction, party catch, coordinate embedding, coaching, dynamic profile)*
