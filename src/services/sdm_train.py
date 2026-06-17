@@ -33,17 +33,32 @@ _MAX_GBIF_UNCERTAINTY_M = 5_000  # skip GBIF records with uncertainty > 5 km
 _RAINBOW_TROUT = "Oncorhynchus mykiss"
 
 _NUMERICAL_COLS = [
+    # Stream geometry
     "stream_order",
     "length_m",
     "flow_verified",
+    # Thermal / water quality
     "summer_mean_temp_c",
     "do_median_mgl",
     "ph_median",
     "conductivity_median_us_cm",
+    "pwqmn_coverage",
+    # Biological quality
     "ept_proportion",
+    # Barriers and connectivity
     "barrier_count_upstream",
+    "is_confluence_segment",
+    "distance_to_nearest_confluence_km",
+    "nearest_waterbody_distance_m",
+    "connected_to_waterbody",
+    # Stocking (useful for some species)
+    "is_stocked_within_5yr",
 ]
 _CATEGORICAL_COLS = ["substrate_category", "thermal_regime", "ept_quality"]
+
+# DELIBERATELY EXCLUDED (observation bias — predicts reporting, not ecology):
+# - observation_density_25km
+# - distance_to_nearest_observation_km
 
 # Canonical order used by the ColumnTransformer (cat first, then num).
 # sdm_predict imports this constant — do not reorder without updating both.

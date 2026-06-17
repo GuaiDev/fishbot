@@ -52,24 +52,29 @@ STOCKING_CONFOUND_SPECIES = frozenset(
 
 _CATEGORICAL_FEATURES = ["substrate_category", "thermal_regime", "ept_quality"]
 _NUMERIC_FEATURES = [
+    # Stream geometry
     "stream_order",
     "length_m",
     "flow_verified",
+    # Thermal / water quality
     "summer_mean_temp_c",
     "do_median_mgl",
     "ph_median",
     "conductivity_median_us_cm",
-    "ept_proportion",
-    "barrier_count_upstream",
-    "distance_to_nearest_observation_km",
-    "observation_density_25km",
-    "is_stocked_within_5yr",
     "pwqmn_coverage",
-    # Phase 3a: structural features
+    # Biological quality
+    "ept_proportion",
+    # Barriers and connectivity
+    "barrier_count_upstream",
     "is_confluence_segment",
     "distance_to_nearest_confluence_km",
     "nearest_waterbody_distance_m",
     "connected_to_waterbody",
+    # Stocking (useful for some species)
+    "is_stocked_within_5yr",
+    # DELIBERATELY EXCLUDED (observation bias — predicts reporting, not ecology):
+    # - observation_density_25km
+    # - distance_to_nearest_observation_km
 ]
 _ALL_FEATURES = _NUMERIC_FEATURES + _CATEGORICAL_FEATURES
 
