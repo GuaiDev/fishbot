@@ -81,6 +81,11 @@ chat window.
   branch for unproductive stops with coordinates. Blank at a known spot now triggers
   contradiction checking even with empty `species_caught`.
 
+- **SDM observation bias features** ✅ — Removed `observation_density_25km` and
+  `distance_to_nearest_observation_km` from SDM training. All 9 models retrained with
+  ecology-only features. AUC scores dropped 0.05–0.09 (expected — scores were inflated
+  by sampling bias). Models now predict habitat, not observer effort.
+
 - **Lake-run timing tracker — Grand River / Dunnville** — no data on when lake-run
   channel catfish push up the Grand River from Lake Erie. Log date + fish size + water
   temp for every Dunnville session. Pattern will emerge from real data over time.
@@ -99,20 +104,43 @@ chat window.
   profile becomes purely administrative (home location, jurisdiction). Implement when the
   `stops` table has enough history to make inference reliable (suggested: 20+ stops).
 
-- **Coaching layer** — two modes:
-  - **On-demand:** user explicitly asks "what am I doing wrong for madtoms?" → bot queries
-    trip logs and behavioral insights to diagnose gaps and suggest adjustments.
-  - **Proactive:** after logging a session, bot checks for meaningful patterns (3+ consecutive
-    blanks at a productive spot, 5+ failed attempts at a target species, technique
-    underperformance vs. baseline) and surfaces ONE observation with an offer to help.
-    Fires at most once per session, only when thresholds are crossed. Never lectures.
-  Triggers connect to confidence escalation system already built — low/dropping confidence
-  on an insight the user keeps acting on is the main signal. Premium tier feature. Free
-  tier stays reactive only.
+- **Coaching layer — on-demand** ✅ — Built and verified. `get_coaching` tool with
+  species and location modes. Pulls actual trip log data, behavioral insights; Haiku
+  generates diagnosis. Verified: madtom query honestly states no logged catches; Byng
+  Island query references actual Santee Cooper / 5lb cat / turbid conditions data.
+
+- **Proactive coaching layer** — on-demand coaching is built. Next: proactive coaching
+  that fires after logging a session when meaningful patterns emerge:
+  - 3+ consecutive blanks at a previously productive spot
+  - 5+ attempts at a target species with zero personal catches
+  - Technique underperformance vs. personal baseline
+  Fires at most once per session, one observation with offer to help. Never lectures.
+  Premium tier. Connect to confidence escalation system — dropping confidence on an
+  insight the user keeps acting on is the main trigger signal.
+
+- **SDM improvement roadmap** — current AUC: 0.51–0.61 (honest but weak). Long-term
+  improvement path:
+  1. Spatial thinning of presence records to break urban clustering bias
+  2. Add missing features: riparian canopy cover, upstream impervious surface %,
+     agricultural land use intensity, seasonal flow variability
+  3. Ensemble models (Random Forest + MaxEnt + BRT)
+  4. Trip log data as unbiased presence records — every logged catch in an
+     undersampled area (Dunnville, rural Grand River) is high-value training data
+  5. Eventually: integrated SDMs that model observation process alongside ecology
+
+- **SDM retraining automation** — models should retrain automatically when new ingest
+  data meaningfully expands presence records for a species (suggested threshold: +20%
+  presence records). Currently requires manual `uv run fishbot train-sdm`. Add to
+  scheduled refresh.
 
 ---
 
 ## Agent Behaviour
+
+- **SDM confidence framing** ✅ — System prompt updated with DO/DO NOT framing, AUC
+  range (0.51–0.61) cited inline, models framed as "exploration tool not presence
+  confirmation." Verified: bot correctly hedges predictions and surfaces AUC caveat in
+  responses.
 
 - **Rolling angler context — reviewed vs draft plans** — the current rolling context
   document captures plans and patterns but doesn't distinguish between "plan we built
@@ -174,6 +202,18 @@ chat window.
   quality (music videos, non-English content mislabeled). Add minimum length filter
   and fishing-relevance check before storing. Also consider scaling up from 5 to
   15-20 videos per query once quality is confirmed.
+
+- **Ingest scheduling** — three target areas ingested manually this session (Grand
+  River/Dunnville, Credit River, Bronte Creek). Should run on a weekly schedule
+  automatically. Add a GitHub Actions workflow or Railway cron job to run
+  `fishbot ingest --lat X --lng Y --radius Z` for each target area weekly.
+
+- **Trip logs as SDM training data** — every species catch logged by users is an
+  unbiased presence record that improves SDM accuracy in undersampled areas. Build a
+  pipeline that periodically extracts confirmed species catches from the `stops` table
+  and adds them to the SDM feature matrix as presence records before retraining. This
+  is the data flywheel that improves predictions in rural/remote areas where citizen
+  science is sparse.
 
 ---
 
@@ -247,4 +287,4 @@ chat window.
 
 ---
 
-*Last updated: Session — memory/profile/catch fixes (blank contradiction, party catch, coordinate embedding, coaching, dynamic profile)*
+*Last updated: Session — SDM retrain (bias features removed), on-demand coaching layer, SDM confidence framing, proactive coaching, SDM roadmap*
