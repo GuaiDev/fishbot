@@ -4,16 +4,38 @@ Exposes the chat agent over HTTP for mobile and web clients.
 Start with: uv run fishbot serve
 """
 
+import os
+from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+
+def verify_api_key(x_api_key: str = Header(None)) -> None:
+    """Verify admin API key for protected endpoints."""
+    expected = os.environ.get("FISHBOT_API_KEY")
+    if not expected:
+        # No key configured — development mode, allow all
+        return
+    if x_api_key != expected:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+@asynccontextmanager
+async def lifespan(app):
+    from src.storage.database import ensure_schema, get_db
+    db = get_db()
+    ensure_schema(db)
+    yield
+
 
 app = FastAPI(
     title="FishBot API",
     description="Personal fishing intelligence platform",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -137,6 +159,77 @@ def ingest(body: dict):
         db = get_db()
         result = ingest_query(query, db, max_videos=max_videos)
         return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ingest/data")
+def ingest_data(body: dict, _: None = Depends(verify_api_key)):
+    """Trigger full data ingest for a location.
+
+    Body: {
+        "lat": float,
+        "lng": float,
+        "radius_km": float (optional, default 50),
+        "label": str (optional, human-readable name for logging)
+    }
+    Runs iNaturalist, GBIF, WSC, and OSM data sources for the given location.
+    Protected by X-Api-Key header.
+    """
+    try:
+        from src.services.gbif import fetch_and_store as gbif_fetch
+        from src.services.observations import fetch_and_store as inat_fetch
+        from src.services.osm import fetch_and_store as osm_fetch
+        from src.services.stream_gauge import fetch_and_store as wsc_fetch
+        from src.storage.database import ensure_schema, get_db
+
+        lat = body.get("lat")
+        lng = body.get("lng")
+        radius_km = body.get("radius_km", 50.0)
+        label = body.get("label", f"{lat},{lng}")
+
+        if lat is None or lng is None:
+            raise HTTPException(status_code=400, detail="lat and lng are required")
+
+        db = get_db()
+        ensure_schema(db)
+
+        results = {}
+
+        try:
+            n = inat_fetch(lat, lng, radius_km=radius_km, days_back=90)
+            results["inat_observations"] = n
+        except Exception as e:
+            results["inat_error"] = str(e)
+
+        try:
+            n = gbif_fetch(lat, lng, radius_km=radius_km)
+            results["gbif_records"] = n
+        except Exception as e:
+            results["gbif_error"] = str(e)
+
+        try:
+            n = wsc_fetch(lat, lng, radius_km=radius_km)
+            results["wsc_stations"] = n
+        except Exception as e:
+            results["wsc_error"] = str(e)
+
+        try:
+            osm_water, osm_access = osm_fetch(lat, lng)
+            results["osm_water_features"] = osm_water
+            results["osm_access_points"] = osm_access
+        except Exception as e:
+            results["osm_error"] = str(e)
+
+        results["label"] = label
+        results["lat"] = lat
+        results["lng"] = lng
+        results["radius_km"] = radius_km
+        results["status"] = "ok"
+        return results
+
     except HTTPException:
         raise
     except Exception as e:
