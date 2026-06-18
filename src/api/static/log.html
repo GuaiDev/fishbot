@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>FishBot — Log Trip</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e8eaf0;
+    --text-dim: #6b7280;
+    --accent: #3d9e6b;
+    --accent-dim: #1e4d34;
+    --warn: #e07b39;
+    --radius: 10px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100dvh;
+    padding: 1.25rem 1rem 2rem;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 1.75rem;
+  }
+
+  header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
+  header span { font-size: 13px; color: var(--text-dim); font-weight: 400; }
+
+  .field { margin-bottom: 1.25rem; }
+
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+
+  .photo-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    background: var(--surface);
+    position: relative;
+  }
+
+  .photo-zone:active { background: #1e2130; }
+  .photo-zone.has-photo { border-color: var(--accent); border-style: solid; }
+
+  .photo-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+
+  .photo-icon { font-size: 28px; margin-bottom: 6px; }
+  .photo-label { font-size: 14px; color: var(--text-dim); }
+  .photo-label strong { color: var(--text); }
+
+  .location-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-top: 8px;
+  }
+
+  .location-pill.found { background: var(--accent-dim); color: var(--accent); }
+  .location-pill.missing { background: #2a1f12; color: var(--warn); }
+
+  img#preview {
+    width: 100%;
+    max-height: 180px;
+    object-fit: cover;
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    display: none;
+  }
+
+  textarea {
+    width: 100%;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.5;
+    padding: 12px;
+    resize: none;
+    min-height: 120px;
+    transition: border-color 0.15s;
+  }
+
+  textarea:focus { outline: none; border-color: var(--accent); }
+  textarea::placeholder { color: var(--text-dim); }
+
+  .hint {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 5px;
+    line-height: 1.4;
+  }
+
+  .api-field { margin-bottom: 1rem; }
+  .api-field input {
+    width: 100%;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    padding: 10px 12px;
+  }
+  .api-field input:focus { outline: none; border-color: var(--accent); }
+  .api-field input::placeholder { color: var(--text-dim); }
+
+  button[type=submit] {
+    width: 100%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 16px;
+    font-weight: 600;
+    padding: 14px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    margin-top: 0.5rem;
+    letter-spacing: -0.2px;
+  }
+
+  button[type=submit]:active { opacity: 0.85; }
+  button[type=submit]:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .status {
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 14px;
+    margin-top: 1rem;
+    display: none;
+    line-height: 1.4;
+  }
+
+  .status.success { background: var(--accent-dim); color: var(--accent); }
+  .status.error { background: #2a1212; color: #e07b39; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Log a trip</h1>
+    <span>FishBot</span>
+  </div>
+</header>
+
+<div class="field">
+  <label>Photo (optional — adds GPS + time automatically)</label>
+  <div class="photo-zone" id="photoZone">
+    <input type="file" accept="image/*" capture="environment" id="photoInput">
+    <img id="preview" alt="Photo preview">
+    <div id="photoHint">
+      <div class="photo-icon">📷</div>
+      <div class="photo-label"><strong>Add a photo</strong><br>Tap to capture or upload</div>
+    </div>
+    <div id="locationPill" style="display:none"></div>
+  </div>
+</div>
+
+<div class="field">
+  <label>What happened?</label>
+  <textarea id="tripText" placeholder="Where did you fish? What did you catch? What conditions were like?&#10;&#10;e.g. Fished Byng Island this morning, caught a 5lb channel cat on Santee Cooper rig with half chub cutbait around 10am. Water was murky and high." rows="6"></textarea>
+  <div class="hint">Plain English — species, location, technique, conditions. As much or as little as you remember.</div>
+</div>
+
+<div class="api-field">
+  <label>API key</label>
+  <input type="password" id="apiKey" placeholder="Your FishBot API key" autocomplete="off">
+</div>
+
+<button type="submit" id="submitBtn" disabled>Log trip</button>
+
+<div class="status" id="status"></div>
+
+<script>
+async function extractExif(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const view = new DataView(e.target.result);
+        if (view.getUint16(0) !== 0xFFD8) { resolve(null); return; }
+
+        let offset = 2;
+        while (offset < view.byteLength - 2) {
+          const marker = view.getUint16(offset);
+          if (marker === 0xFFE1) {
+            const exifData = parseExifData(view, offset + 4);
+            resolve(exifData);
+            return;
+          }
+          if ((marker & 0xFF00) !== 0xFF00) break;
+          offset += 2 + view.getUint16(offset + 2);
+        }
+        resolve(null);
+      } catch { resolve(null); }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function parseExifData(view, start) {
+  try {
+    const header = String.fromCharCode(
+      view.getUint8(start), view.getUint8(start+1),
+      view.getUint8(start+2), view.getUint8(start+3)
+    );
+    if (header !== 'Exif') return null;
+
+    const tiffStart = start + 6;
+    const littleEndian = view.getUint16(tiffStart) === 0x4949;
+    const getUint16 = (o) => view.getUint16(tiffStart + o, littleEndian);
+    const getUint32 = (o) => view.getUint32(tiffStart + o, littleEndian);
+
+    const ifdOffset = getUint32(4);
+    const numEntries = getUint16(ifdOffset);
+
+    let gpsIfdOffset = null;
+    let dateTimeStr = null;
+
+    for (let i = 0; i < numEntries; i++) {
+      const entryOffset = ifdOffset + 2 + i * 12;
+      const tag = getUint16(entryOffset);
+      if (tag === 0x8825) {
+        gpsIfdOffset = getUint32(entryOffset + 8);
+      }
+      if (tag === 0x9003 || tag === 0x0132) {
+        const count = getUint32(entryOffset + 4);
+        const valOffset = getUint32(entryOffset + 8);
+        let str = '';
+        for (let j = 0; j < count - 1; j++) {
+          str += String.fromCharCode(view.getUint8(tiffStart + valOffset + j));
+        }
+        dateTimeStr = str;
+      }
+    }
+
+    let lat = null, lng = null;
+    if (gpsIfdOffset !== null) {
+      const gpsEntries = getUint16(gpsIfdOffset);
+      let latRef = 'N', lngRef = 'E';
+      let latRaw = null, lngRaw = null;
+
+      for (let i = 0; i < gpsEntries; i++) {
+        const e = gpsIfdOffset + 2 + i * 12;
+        const tag = getUint16(e);
+        if (tag === 1) latRef = String.fromCharCode(view.getUint8(tiffStart + getUint32(e+8)));
+        if (tag === 3) lngRef = String.fromCharCode(view.getUint8(tiffStart + getUint32(e+8)));
+        if (tag === 2) latRaw = readGpsCoord(view, tiffStart, getUint32(e+8), littleEndian);
+        if (tag === 4) lngRaw = readGpsCoord(view, tiffStart, getUint32(e+8), littleEndian);
+      }
+      if (latRaw !== null && lngRaw !== null) {
+        lat = latRaw * (latRef === 'S' ? -1 : 1);
+        lng = lngRaw * (lngRef === 'W' ? -1 : 1);
+      }
+    }
+
+    let isoDate = null;
+    if (dateTimeStr) {
+      const parts = dateTimeStr.match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+      if (parts) {
+        isoDate = `${parts[1]}-${parts[2]}-${parts[3]}T${parts[4]}:${parts[5]}:${parts[6]}`;
+      }
+    }
+
+    return { lat, lng, takenAt: isoDate };
+  } catch { return null; }
+}
+
+function readGpsCoord(view, tiffStart, offset, le) {
+  const d = view.getUint32(tiffStart + offset, le) / view.getUint32(tiffStart + offset + 4, le);
+  const m = view.getUint32(tiffStart + offset + 8, le) / view.getUint32(tiffStart + offset + 12, le);
+  const s = view.getUint32(tiffStart + offset + 16, le) / view.getUint32(tiffStart + offset + 20, le);
+  return d + m / 60 + s / 3600;
+}
+
+let exifData = null;
+
+document.getElementById('photoInput').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const preview = document.getElementById('preview');
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = 'block';
+  document.getElementById('photoHint').style.display = 'none';
+  document.getElementById('photoZone').classList.add('has-photo');
+
+  exifData = await extractExif(file);
+  const pill = document.getElementById('locationPill');
+
+  if (exifData && exifData.lat) {
+    pill.innerHTML = `<span class="location-pill found">📍 GPS captured (${exifData.lat.toFixed(4)}, ${exifData.lng.toFixed(4)})</span>`;
+    if (exifData.takenAt) {
+      const dt = new Date(exifData.takenAt);
+      pill.innerHTML += `<br><span class="location-pill found" style="margin-top:4px">🕐 ${dt.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>`;
+    }
+  } else {
+    pill.innerHTML = `<span class="location-pill missing">📍 No GPS in photo — describe location in text</span>`;
+  }
+  pill.style.display = 'block';
+  checkSubmitReady();
+});
+
+document.getElementById('tripText').addEventListener('input', checkSubmitReady);
+document.getElementById('apiKey').addEventListener('input', checkSubmitReady);
+
+function checkSubmitReady() {
+  const hasText = document.getElementById('tripText').value.trim().length > 10;
+  document.getElementById('submitBtn').disabled = !hasText;
+}
+
+document.getElementById('submitBtn').addEventListener('click', async () => {
+  const text = document.getElementById('tripText').value.trim();
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const btn = document.getElementById('submitBtn');
+  const status = document.getElementById('status');
+
+  btn.disabled = true;
+  btn.textContent = 'Logging…';
+  status.style.display = 'none';
+
+  const body = { text };
+  if (exifData) {
+    if (exifData.lat) { body.photo_lat = exifData.lat; body.photo_lng = exifData.lng; }
+    if (exifData.takenAt) body.photo_taken_at = exifData.takenAt;
+  }
+
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['X-Api-Key'] = apiKey;
+
+    const resp = await fetch('/log-trip', { method: 'POST', headers, body: JSON.stringify(body) });
+    const data = await resp.json();
+
+    if (resp.ok) {
+      status.className = 'status success';
+      const locMethod = data.location_method || 'text';
+      const locNote = locMethod === 'photo_exif' ? ' GPS from photo.' : '';
+      status.textContent = `✓ Trip logged (${data.stops_logged} stop${data.stops_logged !== 1 ? 's' : ''}).${locNote}`;
+      document.getElementById('tripText').value = '';
+      document.getElementById('preview').style.display = 'none';
+      document.getElementById('photoHint').style.display = 'block';
+      document.getElementById('photoZone').classList.remove('has-photo');
+      document.getElementById('locationPill').style.display = 'none';
+      exifData = null;
+    } else {
+      status.className = 'status error';
+      status.textContent = `Error: ${data.detail || 'Something went wrong'}`;
+    }
+  } catch (err) {
+    status.className = 'status error';
+    status.textContent = 'Could not reach FishBot. Check your connection.';
+  }
+
+  status.style.display = 'block';
+  btn.textContent = 'Log trip';
+  checkSubmitReady();
+});
+</script>
+</body>
+</html>

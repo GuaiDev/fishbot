@@ -422,7 +422,9 @@ Return a JSON object with this exact structure:
       "water_level": "low/normal/high/flooded or null",
       "water_clarity": "clear/slightly turbid/turbid or null",
       "weather_notes": "any weather or conditions notes, or null",
-      "notes": "anything else specific to this stop, or null"
+      "notes": "anything else specific to this stop, or null",
+      "time_of_day": "dawn/morning/midday/afternoon/evening/night or null",
+      "hour_of_day": "integer 0-23 or null (only if specific time mentioned)"
     }
   ]
 }
@@ -477,7 +479,14 @@ PRODUCTIVITY RULES:
 - A stop where the user caught nothing is was_productive: false
 - A stop where a friend caught something but the user caught nothing:
   was_productive: false (log from the user's perspective)
-- A stop cut short due to conditions: was_productive: false\
+- A stop cut short due to conditions: was_productive: false
+
+TIME OF DAY:
+- Extract time_of_day from mentions like "dawn session", "fished until dark",
+  "noon", "early morning", "sunset", "8pm", "this morning", etc.
+- hour_of_day: only set if a specific time is mentioned ("caught at 10am" → 10,
+  "8pm" → 20). Use 24-hour integers.
+- If no time mentioned, both are null — do not guess\
 """
 
 

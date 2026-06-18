@@ -51,6 +51,12 @@ def log_session(parsed_session: dict, db_conn: Database) -> dict:
                 "water_temp_c": stop.get("water_temp_c"),
                 "weather_notes": stop.get("weather_notes"),
                 "notes": stop.get("notes"),
+                "time_of_day": stop.get("time_of_day"),
+                "hour_of_day": stop.get("hour_of_day"),
+                "photo_lat": stop.get("photo_lat"),
+                "photo_lng": stop.get("photo_lng"),
+                "photo_taken_at": stop.get("photo_taken_at"),
+                "photo_url": stop.get("photo_url"),
             }
         )
         stops_logged += 1

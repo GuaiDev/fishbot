@@ -102,3 +102,28 @@ def test_ingest_data_no_key_development_mode():
         json={"lat": 43.45, "lng": -79.72, "radius_km": 1},
     )
     assert response.status_code != 401
+
+
+@REQUIRES_API
+def test_log_trip_with_photo_metadata():
+    """Photo GPS and timestamp should be accepted and reflected in response."""
+    response = client.post(
+        "/log-trip",
+        json={
+            "text": "Fished Bronte Creek, caught a creek chub",
+            "photo_lat": 43.45,
+            "photo_lng": -79.72,
+            "photo_taken_at": "2025-06-14T08:30:00",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "logged"
+    assert data["stops_logged"] >= 1
+
+
+def test_log_page_served():
+    """GET /log returns the mobile trip logging page."""
+    response = client.get("/log")
+    assert response.status_code == 200
+    assert "FishBot" in response.text

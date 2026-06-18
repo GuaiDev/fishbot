@@ -10,6 +10,8 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 
@@ -45,6 +47,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Static files (mobile log page)
+_static_dir = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(_static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+
+def _hour_to_time_of_day(hour: int) -> str:
+    if hour < 6: return "night"
+    if hour < 9: return "dawn"
+    if hour < 12: return "morning"
+    if hour < 14: return "midday"
+    if hour < 17: return "afternoon"
+    if hour < 20: return "evening"
+    return "night"
 
 
 # --- Request / Response models ---
@@ -112,32 +129,81 @@ def chat(request: ChatRequest):
 
 
 @app.post("/log-trip")
-def log_trip(body: dict):
-    """Log a fishing trip from natural language.
+def log_trip(body: dict, _: None = Depends(verify_api_key)):
+    """Log a fishing trip from natural language, with optional photo metadata.
 
-    Body: {"text": "natural language trip description"}
+    Body: {
+        "text": "natural language trip description",
+        "photo_lat": float (optional, from EXIF),
+        "photo_lng": float (optional, from EXIF),
+        "photo_taken_at": "ISO timestamp" (optional, from EXIF),
+        "photo_url": "string" (optional)
+    }
+    Photo GPS overrides text-parsed location for the primary stop.
     """
     try:
         from src.services.trip_logger import log_session
         from src.services.trip_parser import parse_session_from_text
-        from src.storage.database import get_db
+        from src.storage.database import ensure_schema, get_db
 
         text = body.get("text", "").strip()
         if not text:
             raise HTTPException(status_code=400, detail="'text' field is required")
 
+        photo_lat = body.get("photo_lat")
+        photo_lng = body.get("photo_lng")
+        photo_taken_at = body.get("photo_taken_at")
+        photo_url = body.get("photo_url")
+
         db = get_db()
+        ensure_schema(db)
         parsed = parse_session_from_text(text, db)
+
+        # Inject photo metadata into the first stop
+        if parsed.get("stops") and (photo_lat is not None or photo_taken_at):
+            first_stop = parsed["stops"][0]
+
+            if photo_lat is not None and photo_lng is not None:
+                first_stop["photo_lat"] = photo_lat
+                first_stop["photo_lng"] = photo_lng
+                if not first_stop.get("lat"):
+                    first_stop["lat"] = photo_lat
+                    first_stop["lng"] = photo_lng
+                    first_stop["location_method"] = "photo_exif"
+                    first_stop["location_confidence"] = 0.95
+
+            if photo_taken_at:
+                first_stop["photo_taken_at"] = photo_taken_at
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(photo_taken_at.replace("Z", "+00:00"))
+                    first_stop["hour_of_day"] = dt.hour
+                    first_stop["time_of_day"] = _hour_to_time_of_day(dt.hour)
+                    if not parsed.get("date"):
+                        parsed["date"] = dt.date().isoformat()
+                except Exception:
+                    pass
+
+            if photo_url:
+                first_stop["photo_url"] = photo_url
+
         result = log_session(parsed, db)
         return {
             "status": "logged",
             "session_id": result["session_id"],
             "stops_logged": result["stops_logged"],
+            "location_method": parsed["stops"][0].get("location_method") if parsed.get("stops") else None,
         }
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/log")
+def log_page():
+    """Serve the mobile trip logging page."""
+    return FileResponse(os.path.join(_static_dir, "log.html"))
 
 
 @app.post("/ingest")

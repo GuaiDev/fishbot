@@ -21,11 +21,21 @@ def get_db(path: Path | None = None) -> Database:
 
 
 def migrate_stops(db: Database) -> None:
-    """Add party_species_caught column to stops. Idempotent."""
-    try:
-        db.execute("ALTER TABLE stops ADD COLUMN party_species_caught TEXT")
-    except Exception:
-        pass  # column already exists
+    """Add columns to stops table. Idempotent."""
+    new_columns = [
+        ("party_species_caught", "TEXT"),
+        ("time_of_day",  "TEXT"),
+        ("hour_of_day",  "INTEGER"),
+        ("photo_lat",    "REAL"),
+        ("photo_lng",    "REAL"),
+        ("photo_taken_at", "TEXT"),
+        ("photo_url",    "TEXT"),
+    ]
+    for col_name, col_type in new_columns:
+        try:
+            db.execute(f"ALTER TABLE stops ADD COLUMN {col_name} {col_type}")
+        except Exception:
+            pass  # column already exists
 
 
 def migrate_behavioral_insights(db: Database) -> None:
@@ -499,6 +509,12 @@ def ensure_schema(db: Database) -> None:
                 water_temp_c        REAL,
                 weather_notes       TEXT,
                 notes               TEXT,
+                time_of_day         TEXT,
+                hour_of_day         INTEGER,
+                photo_lat           REAL,
+                photo_lng           REAL,
+                photo_taken_at      TEXT,
+                photo_url           TEXT,
                 created_at          TEXT DEFAULT (datetime('now'))
             )
         """)
