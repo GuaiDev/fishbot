@@ -238,17 +238,40 @@ document.getElementById('photoInput').addEventListener('change', async function(
   exifData = await extractExif(file);
   const pill = document.getElementById('locationPill');
 
-  if (exifData && exifData.lat) {
+  function showGpsPill() {
     pill.innerHTML = `<span class="location-pill found">📍 GPS captured (${exifData.lat.toFixed(4)}, ${exifData.lng.toFixed(4)})</span>`;
     if (exifData.takenAt) {
       const dt = new Date(exifData.takenAt);
       pill.innerHTML += `<br><span class="location-pill found" style="margin-top:4px">🕐 ${dt.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>`;
     }
-  } else {
-    pill.innerHTML = `<span class="location-pill missing">📍 No GPS in photo — describe location in text</span>`;
   }
-  pill.style.display = 'block';
-  checkSubmitReady();
+
+  if (exifData && exifData.lat) {
+    showGpsPill();
+    pill.style.display = 'block';
+    checkSubmitReady();
+  } else {
+    pill.innerHTML = `<span class="location-pill missing">📍 No GPS in photo — trying device location…</span>`;
+    pill.style.display = 'block';
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          if (!exifData) exifData = {};
+          exifData.lat = pos.coords.latitude;
+          exifData.lng = pos.coords.longitude;
+          showGpsPill();
+        },
+        () => {
+          pill.innerHTML = `<span class="location-pill missing">📍 No GPS in photo — describe location in text</span>`;
+        },
+        { timeout: 10000, maximumAge: 60000 }
+      );
+    } else {
+      pill.innerHTML = `<span class="location-pill missing">📍 No GPS in photo — describe location in text</span>`;
+    }
+    checkSubmitReady();
+  }
 });
 
 document.getElementById('tripText').addEventListener('input', checkSubmitReady);
