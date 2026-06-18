@@ -109,14 +109,22 @@ chat window.
   generates diagnosis. Verified: madtom query honestly states no logged catches; Byng
   Island query references actual Santee Cooper / 5lb cat / turbid conditions data.
 
-- **Proactive coaching layer** — on-demand coaching is built. Next: proactive coaching
-  that fires after logging a session when meaningful patterns emerge:
-  - 3+ consecutive blanks at a previously productive spot
-  - 5+ attempts at a target species with zero personal catches
-  - Technique underperformance vs. personal baseline
-  Fires at most once per session, one observation with offer to help. Never lectures.
-  Premium tier. Connect to confidence escalation system — dropping confidence on an
-  insight the user keeps acting on is the main trigger signal.
+- **Proactive coaching layer** ✅ — Built and verified. Three pattern detectors in
+  priority order: (1) location slump — consecutive blanks at previously productive spot,
+  (2) species gap — species in insights never personally caught, (3) technique pattern —
+  techniques that only appear in productive sessions. Fires at most once per session,
+  only when thresholds crossed (min 3 sessions). Verified: Byng Island slump detected
+  and surfaced naturally in log_trip response.
+
+- **Proactive coaching — additional detectors** — current detectors: location slump,
+  species gap, technique pattern. Future additions:
+  - Seasonal pattern: "You catch redhorse in April but never in September — have you
+    tried the Thames in fall?"
+  - Bait effectiveness: "Your successful catfish sessions used cutbait, blanks used
+    worm — want to test this pattern deliberately?"
+  - Time-of-day pattern: "All your productive Byng sessions were before 11am — your
+    afternoon sessions there have been unproductive"
+  Add when trip log has enough data (suggested: 10+ stops per location).
 
 - **SDM improvement roadmap** — current AUC: 0.51–0.61 (honest but weak). Long-term
   improvement path:
@@ -205,6 +213,21 @@ chat window.
   coordinates. Over time, the spots section should become a precise coordinate-linked reference,
   not just text descriptions.
 
+- **Synthesis cache wired into router** ✅ — Location extraction added to router. Cache
+  check before full pipeline for synthesis-mode queries. Cache hit returns via Haiku (very
+  cheap). Fuzzy name matching handles slight phrasing differences. Verified: Willoway Park
+  query served from cache on second ask.
+
+- **Context validator false positive** ✅ — Validator now only warns on river names
+  genuinely new to the updated context, not ones already present from previous sessions.
+  `_validate_context()` signature updated to accept `existing` parameter.
+
+- **Tool-level API usage tracking** — all API calls currently log as endpoint="chat".
+  Can't see which tools (get_recent_observations, get_behavioral_insights, etc.) are
+  expensive. Add tool name tracking to api_usage when tool calls fire in
+  `_run_full_pipeline`. Needed for: identifying which tools to prioritize for caching,
+  understanding true cost per query type, future per-user billing.
+
 ---
 
 ## Data Sources
@@ -220,10 +243,10 @@ chat window.
   and fishing-relevance check before storing. Also consider scaling up from 5 to
   15-20 videos per query once quality is confirmed.
 
-- **Ingest scheduling** — three target areas ingested manually this session (Grand
-  River/Dunnville, Credit River, Bronte Creek). Should run on a weekly schedule
-  automatically. Add a GitHub Actions workflow or Railway cron job to run
-  `fishbot ingest --lat X --lng Y --radius Z` for each target area weekly.
+- **Ingest scheduling** ✅ — GitHub Actions weekly cron (Sunday 6am UTC) calling
+  `/ingest/data` endpoint for 4 areas: Grand River/Dunnville, Credit River, Bronte Creek,
+  Thames/London. API key protected via X-Api-Key header. Manual trigger available from
+  GitHub Actions UI.
 
 - **Trip logs as SDM training data** ✅ — see Personal Model section.
 
@@ -264,12 +287,12 @@ chat window.
   knowledge base on the server, (2) write a script to copy local `data/fishing.db`
   to the Railway volume. Defer until UI exists.
 
-- **API authentication** — `/ingest` endpoint is unprotected. Add `X-API-Key`
-  header check before making the server public. Implement when UI is being built.
+- **API authentication** ✅ — X-Api-Key header check on `/ingest/data` endpoint.
+  Dev mode allows requests without a key. Add key to Railway Variables and GitHub
+  Secrets before making server public.
 
-- **`ensure_schema()` not called on startup** — tables only exist after manually
-  calling ensure_schema(). Should be called automatically when the app starts.
-  Low priority until there's a proper app entrypoint.
+- **`ensure_schema()` not called on startup** ✅ — Fixed via FastAPI lifespan event.
+  `ensure_schema()` called once on server boot.
 
 - **Agent efficiency — token usage tracking** — `api_usage` table now exists and
   is being populated. Build a dashboard or reporting tool to understand cost per
@@ -306,4 +329,4 @@ chat window.
 
 ---
 
-*Last updated: Session — Trip log SDM flywheel (species_mapping.py, sdm-contributions CLI, data flywheel wired)*
+*Last updated: Session — Proactive coaching, ingest scheduling, synthesis cache, context validator fix*
