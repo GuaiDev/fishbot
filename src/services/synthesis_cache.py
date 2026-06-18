@@ -42,6 +42,7 @@ def get_cached_synthesis(
             "UPDATE segment_synthesis SET hit_count = hit_count + 1 WHERE cache_key = ?",
             [key],
         )
+        db.conn.commit()
         return {
             "synthesis": row["synthesis"],
             "location_name": row.get("location_name"),
@@ -63,6 +64,7 @@ def get_cached_synthesis(
                     "UPDATE segment_synthesis SET hit_count = hit_count + 1 WHERE id = ?",
                     [c["id"]],
                 )
+                db.conn.commit()
                 return {
                     "synthesis": c["synthesis"],
                     "location_name": c.get("location_name"),
@@ -86,6 +88,7 @@ def get_cached_synthesis(
                     "UPDATE segment_synthesis SET hit_count = hit_count + 1 WHERE id = ?",
                     [c["id"]],
                 )
+                db.conn.commit()
                 return {
                     "synthesis": c["synthesis"],
                     "location_name": c.get("location_name"),
