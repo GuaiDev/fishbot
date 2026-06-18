@@ -21,9 +21,11 @@ chat window.
   / unidentified group. Parser handles "uncertain" tagging but no UI or downstream
   handling exists yet. Needs proper design when commercial product is built.
 
-- **EXIF photo coordinates** — phone photos embed GPS coordinates. Use these to
-  auto-resolve trip location without user typing anything. Deferred until mobile
-  UI is built.
+- **EXIF photo coordinates** ✅ — Built and live at https://web-production-e2094.up.railway.app/log.
+  Dark mobile-optimised page. EXIF GPS extraction (works on Android via exifr library),
+  geolocation fallback (works on iOS after one permission tap). New stops fields:
+  time_of_day, hour_of_day, photo_lat, photo_lng, photo_taken_at. Parser extracts
+  time_of_day from text descriptions too.
 
 - **Voice logging** — dictate trips instead of typing. Works today via phone
   keyboard mic into terminal. A proper hold-to-speak button deferred until UI
@@ -158,6 +160,20 @@ chat window.
   scientific name — log it so the mapping can be expanded. Also consider auto-lookup
   via GBIF species API for unmapped names.
 
+- **Time-of-day and seasonal coaching detectors** — `time_of_day` and `hour_of_day`
+  fields are now being captured from EXIF and text parsing. Once enough trips are logged
+  with time data, add detectors:
+  - Time-of-day pattern: "all productive Byng sessions before 11am — why?"
+    (hypothesis + question, not conclusion)
+  - Seasonal gap: "you fish Thames in April, never in October — here's what the data
+    suggests about fall redhorse on the Thames"
+  Wait until 10+ stops have `time_of_day` populated before building.
+
+- **Cache prewarm automation** — `scripts/prewarm_cache.py` requires manual runs. Add
+  to ingest scheduling: after weekly ingest completes, automatically prewarm cache for
+  spots in the angler context document. Spots added to "Spots on the radar" should get
+  their synthesis cached on the next ingest run.
+
 ---
 
 ## Agent Behaviour
@@ -222,11 +238,8 @@ chat window.
   genuinely new to the updated context, not ones already present from previous sessions.
   `_validate_context()` signature updated to accept `existing` parameter.
 
-- **Tool-level API usage tracking** — all API calls currently log as endpoint="chat".
-  Can't see which tools (get_recent_observations, get_behavioral_insights, etc.) are
-  expensive. Add tool name tracking to api_usage when tool calls fire in
-  `_run_full_pipeline`. Needed for: identifying which tools to prioritize for caching,
-  understanding true cost per query type, future per-user billing.
+- **Tool-level API usage tracking** ✅ — `tool_usage` table tracking individual tool
+  calls per session. `fishbot tool-stats` shows call counts by tool name.
 
 ---
 
@@ -249,6 +262,12 @@ chat window.
   GitHub Actions UI.
 
 - **Trip logs as SDM training data** ✅ — see Personal Model section.
+
+- **Synthesis cache pre-warming** ✅ — `scripts/prewarm_cache.py` caches known spots on
+  demand. 5 spots now cached: Willoway Park (4 hits), Byng Island, North London Athletic
+  Fields, Credit River at Creditview Rd, Bronte Creek Oakville. Fixed SQLite lock bug in
+  `synthesis_cache.py` — hit_count UPDATEs now commit properly, preventing deadlock when
+  a cache hit is followed by a full-pipeline call in the same process.
 
 - **SDM contribution tracking as a product metric** — `uv run fishbot sdm-contributions`
   shows iNat/GBIF/TripLog breakdown per model. When FishBot has users, total trip log
@@ -337,4 +356,4 @@ Flutter or React Native are the right choices for cross-platform.
 
 ---
 
-*Last updated: Session — Proactive coaching, ingest scheduling, synthesis cache, context validator fix*
+*Last updated: Session — Mobile trip logging, EXIF GPS, synthesis cache prewarm, tool-level tracking*
