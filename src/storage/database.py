@@ -655,6 +655,22 @@ def ensure_schema(db: Database) -> None:
         CREATE INDEX IF NOT EXISTS idx_segment_synthesis_loc
             ON segment_synthesis(lat, lng)
     """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS tool_usage (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id      TEXT,
+            timestamp       TEXT DEFAULT (datetime('now')),
+            tool_name       TEXT NOT NULL,
+            input_summary   TEXT,
+            success         INTEGER DEFAULT 1
+        )
+    """)
+    db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tool_usage_session ON tool_usage(session_id)
+    """)
+    db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tool_usage_tool ON tool_usage(tool_name)
+    """)
 
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:

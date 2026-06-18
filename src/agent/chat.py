@@ -137,6 +137,16 @@ def _run_full_pipeline(
             tool_results.append(
                 {"type": "tool_result", "tool_use_id": block.id, "content": result}
             )
+            try:
+                import json as _json
+                db["tool_usage"].insert({
+                    "session_id": session_id,
+                    "tool_name": block.name,
+                    "input_summary": str(_json.dumps(block.input))[:200],
+                    "success": 1,
+                })
+            except Exception:
+                pass
         messages.append({"role": "user", "content": tool_results})
 
 
@@ -505,6 +515,16 @@ def _agentic_loop(
                     "content": result,
                 }
             )
+            try:
+                import json as _json
+                db["tool_usage"].insert({
+                    "session_id": session_id,
+                    "tool_name": block.name,
+                    "input_summary": str(_json.dumps(block.input))[:200],
+                    "success": 1,
+                })
+            except Exception:
+                pass
 
         messages.append({"role": "user", "content": tool_results})
 

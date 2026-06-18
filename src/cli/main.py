@@ -755,6 +755,37 @@ def cache_clear() -> None:
         console.print(f"[red]Error clearing cache: {e}[/red]")
 
 
+@app.command(name="tool-stats")
+def tool_stats(days: int = typer.Option(7, "--days", "-d", help="Number of days to show")) -> None:
+    """Show which tools are being called most over the last N days."""
+    db = get_db()
+    rows = list(db.execute(f"""
+        SELECT tool_name,
+               COUNT(*) as calls,
+               COUNT(DISTINCT session_id) as sessions
+        FROM tool_usage
+        WHERE timestamp >= datetime('now', '-{days} days')
+        GROUP BY tool_name
+        ORDER BY calls DESC
+    """).fetchall())
+
+    if not rows:
+        console.print(f"No tool usage data in the last {days} days.")
+        return
+
+    from rich.table import Table
+
+    tbl = Table(title=f"Tool Usage — last {days} days")
+    tbl.add_column("Tool", min_width=45)
+    tbl.add_column("Calls", justify="right")
+    tbl.add_column("Sessions", justify="right")
+
+    for r in rows:
+        tbl.add_row(r[0], str(r[1]), str(r[2]))
+
+    console.print(tbl)
+
+
 def _print_profile(p: UserProfile) -> None:
     home = p.home_location
     home_str = f"{home.name} ({home.lat}, {home.lng})" if home else "(not set)"
