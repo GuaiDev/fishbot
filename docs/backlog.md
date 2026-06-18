@@ -269,6 +269,14 @@ chat window.
   server. Required before EXIF photo logging, voice logging, and public access
   are meaningful. Not yet started.
 
+### Native iOS/Android app
+iOS Safari strips GPS from photos uploaded via file input — a known Apple privacy
+decision. The geolocation fallback works but requires a permission tap. A native
+app would get full EXIF access (precise GPS from photo metadata, no permission
+dialog) plus: push notifications for trip reminders, background location logging,
+offline trip drafts. Build after the web UI is proven and user base exists.
+Flutter or React Native are the right choices for cross-platform.
+
 - **Fishing derby — hosted version** — the derby widget currently runs as a local
   browser artifact. Build a proper hosted version with:
   - Shared live leaderboard (all players see each other's catches in real time)
