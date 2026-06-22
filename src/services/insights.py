@@ -117,8 +117,56 @@ def record_behavioral_insight_for_agent(
     )
 
     db = get_db()
-    insight_id = insert_insight(db, insight)
 
+    # Check for conflicting current insights at same location/season
+    from src.storage.insights import check_conflicts, refine_insight
+    conflicts = check_conflicts(
+        db, species,
+        lat=lat, lng=lng,
+        condition_season=condition_season,
+        radius_km=1.0,
+    )
+
+    # Auto-refine if new insight directly contradicts an existing one
+    # Only refine if the new insight has equal or higher confidence
+    CONFIDENCE_RANK = {"low": 0, "medium": 1, "high": 2}
+    new_rank = CONFIDENCE_RANK.get(confidence, 0)
+
+    refined_ids = []
+    for conflict in conflicts:
+        # Only version out if:
+        # 1. Same condition_type (temporal vs temporal, not temporal vs habitat)
+        # 2. New insight is explicitly contradicting (check for keywords in conclusion)
+        # 3. New confidence >= existing confidence (don't downgrade with weak data)
+        contradiction_keywords = [
+            "contradict", "contrary", "reversal", "opposite", "unlike prior",
+            "completely", "overturns", "not the case", "wrong", "incorrect",
+            "not just", "also viable", "not only"
+        ]
+        is_contradiction = any(kw in conclusion.lower() for kw in contradiction_keywords)
+        same_type = conflict.condition_type == condition_type
+        confidence_ok = new_rank >= CONFIDENCE_RANK.get(conflict.confidence, 0)
+
+        if is_contradiction and same_type and confidence_ok:
+            refine_insight(db, conflict.id, insight)
+            refined_ids.append(conflict.id)
+            # insight already inserted by refine_insight, get its id
+            insight_id = db.execute(
+                "SELECT MAX(id) FROM behavioral_insights"
+            ).fetchone()[0]
+            return json.dumps({
+                "success": True,
+                "insight_id": insight_id,
+                "species": species,
+                "condition_type": condition_type,
+                "conclusion": conclusion,
+                "confidence": confidence,
+                "refined_prior_insights": refined_ids,
+                "note": f"Versioned out {len(refined_ids)} conflicting insight(s)"
+            })
+
+    # No contradiction found — standard insert
+    insight_id = insert_insight(db, insight)
     return json.dumps(
         {
             "success": True,
