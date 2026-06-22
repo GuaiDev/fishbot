@@ -688,6 +688,48 @@ def ensure_schema(db: Database) -> None:
         CREATE INDEX IF NOT EXISTS idx_tool_usage_tool ON tool_usage(tool_name)
     """)
 
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS session_conditions (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id              INTEGER NOT NULL UNIQUE,
+            enriched_at             TEXT DEFAULT (datetime('now')),
+            enrichment_source       TEXT,
+
+            air_temp_c              REAL,
+            feels_like_c            REAL,
+            pressure_hpa            REAL,
+            precip_mm               REAL,
+            cloud_cover_pct         INTEGER,
+            wind_speed_kmh          REAL,
+            wind_direction_deg      INTEGER,
+            weather_code            INTEGER,
+
+            water_temp_c            REAL,
+            do_mgl                  REAL,
+            ph                      REAL,
+            conductivity_us_cm      REAL,
+            turbidity_fnu           REAL,
+            pwqmn_station_name      TEXT,
+            pwqmn_station_dist_km   REAL,
+            pwqmn_sampled_at        TEXT,
+
+            water_temp_anomaly_c    REAL,
+            air_temp_anomaly_c      REAL,
+            anomaly_flag            TEXT,
+
+            days_since_rain         INTEGER,
+            moon_phase              REAL,
+            season                  TEXT,
+            time_of_day             TEXT,
+
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
+        )
+    """)
+    db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_session_conditions_session
+            ON session_conditions(session_id)
+    """)
+
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()

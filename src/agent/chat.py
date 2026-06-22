@@ -905,6 +905,40 @@ def _execute_tool(name: str, inputs: dict) -> str:
             if not species:
                 return "Please specify a species for species coaching."
             return get_species_coaching(db, species, question)
+    if name == "get_session_conditions":
+        db = get_db()
+        session_id = inputs.get("session_id")
+        location_query = inputs.get("location_query")
+
+        if session_id:
+            rows = list(db.execute(
+                "SELECT * FROM session_conditions WHERE session_id = ?",
+                [session_id]
+            ).fetchall())
+        elif location_query:
+            rows = list(db.execute("""
+                SELECT sc.* FROM session_conditions sc
+                JOIN sessions s ON sc.session_id = s.id
+                JOIN stops st ON st.session_id = s.id
+                WHERE LOWER(st.location_name) LIKE ?
+                   OR LOWER(st.location_text) LIKE ?
+                LIMIT 5
+            """, [f"%{location_query.lower()}%", f"%{location_query.lower()}%"]).fetchall())
+        else:
+            return json.dumps({"error": "Provide session_id or location_query"})
+
+        if not rows:
+            return json.dumps({"note": (
+                "No conditions data found. Conditions are captured automatically "
+                "when trips are logged with GPS coordinates and timestamps."
+            )})
+        col_names = [d[0] for d in db.execute(
+            "SELECT * FROM session_conditions LIMIT 0"
+        ).description]
+        return json.dumps(
+            [dict(zip(col_names, r)) for r in rows],
+            default=str,
+        )
     return json.dumps({"error": f"Unknown tool: {name}"})
 
 
@@ -2240,6 +2274,29 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": ["coaching_type"],
+            },
+        },
+        {
+            "name": "get_session_conditions",
+            "description": (
+                "Get the environmental conditions that were automatically recorded "
+                "for a fishing session: air temp, pressure, water temp, cloud cover, "
+                "wind, days since rain, moon phase, and anomaly flags. "
+                "Use when the user asks about conditions during a past trip, or when "
+                "doing pattern analysis to understand why a session was productive."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "integer",
+                        "description": "Session ID to get conditions for",
+                    },
+                    "location_query": {
+                        "type": "string",
+                        "description": "Location name to find sessions with conditions",
+                    },
+                },
             },
         },
     ]

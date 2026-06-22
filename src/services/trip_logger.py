@@ -79,11 +79,62 @@ def log_session(parsed_session: dict, db_conn: Database) -> dict:
     except Exception as e:
         print(f"[ENRICHMENT] Non-fatal error: {e}")
 
+    # Determine session coordinates and datetime for condition enrichment
+    enrich_lat = None
+    enrich_lng = None
+    enrich_dt = None
+    session_date = parsed_session.get("date")
+    photo_taken_at = None
+    for stop in parsed_session.get("stops", []):
+        if stop.get("photo_taken_at"):
+            photo_taken_at = stop["photo_taken_at"]
+        if stop.get("photo_lat") and enrich_lat is None:
+            enrich_lat = stop["photo_lat"]
+            enrich_lng = stop["photo_lng"]
+        if stop.get("lat") and enrich_lat is None:
+            enrich_lat = stop["lat"]
+            enrich_lng = stop["lng"]
+
+    if photo_taken_at:
+        try:
+            enrich_dt = datetime.fromisoformat(
+                photo_taken_at.replace("Z", "+00:00")
+            )
+        except Exception:
+            pass
+    elif session_date:
+        try:
+            enrich_dt = datetime.fromisoformat(f"{session_date}T12:00:00")
+        except Exception:
+            pass
+
+    conditions_result = None
+    if enrich_lat is not None and enrich_dt is not None:
+        try:
+            import concurrent.futures
+
+            from src.services.trip_enrichment_conditions import enrich_session_conditions
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    enrich_session_conditions,
+                    db_conn, session_id, enrich_lat, enrich_lng, enrich_dt,
+                    timeout_seconds=3.0,
+                )
+                try:
+                    conditions_result = future.result(timeout=3.5)
+                except concurrent.futures.TimeoutError:
+                    conditions_result = {"timeout": True, "queued": True}
+        except Exception as e:
+            conditions_result = {"error": str(e)}
+
     return {
         "session_id": session_id,
         "stops_logged": stops_logged,
         "followup_questions": followup_questions,
         "proactive_coaching": proactive_coaching,
+        "conditions_enriched": conditions_result is not None and
+                               not conditions_result.get("timeout"),
+        "conditions": conditions_result,
     }
 
 

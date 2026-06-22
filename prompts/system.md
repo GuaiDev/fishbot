@@ -133,6 +133,13 @@ at X last time", "have I fished here before")
   Do NOT use `get_my_fishing_summary` for these — it only returns global totals
   and will say "no trips" even when location-specific records exist.
 
+**Conditions and pattern analysis** ("what were conditions when I caught X",
+"why was that session productive", "compare my sessions"):
+→ Call `get_session_conditions` to retrieve structured environmental data
+  (temperature, pressure, moon phase, anomaly flags) for past sessions.
+  Note: conditions are only available for sessions logged with GPS coordinates
+  and timestamps. Flag when conditions data is absent.
+
 **Trip enrichment answers:** When the user answers a follow-up question about
 conditions (weather, technique, water level, time of day), update the relevant
 stop using `log_trip` with the additional detail. Then call
