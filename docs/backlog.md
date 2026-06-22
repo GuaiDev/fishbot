@@ -174,6 +174,44 @@ chat window.
   spots in the angler context document. Spots added to "Spots on the radar" should get
   their synthesis cached on the next ingest run.
 
+- **Auto-enrichment pipeline** ✅ — Built and verified. Creates `session_conditions`
+  table with structured environmental data per session. Two data layers:
+  - Open-Meteo archive API: air temp, pressure, cloud cover, wind, precip history,
+    weather code. No API key required.
+  - PWQMN local DB: water temp, DO, pH, conductivity, turbidity from nearest station
+    within 50 km and 45 days.
+  Anomaly detection compares current conditions vs historical baseline for that
+  location/month. Flags cold/warm anomalies. Verified: June 20 Willoway session enriched
+  with 17.2°C air temp, 990.4 hPa pressure, 78% cloud cover, cold_air anomaly flag (4.9°C
+  below normal). Likely explains the morning smash fest the model failed to predict —
+  post-cold-front low pressure with overcast skies is a known catfish trigger. 3-second
+  timeout enforced via ThreadPoolExecutor. ✅
+
+- **Prediction system: use enriched conditions not forecasts** — The June 20 prediction
+  failure was likely caused by wrong weather data — bot cited high pressure but actual
+  conditions were 990.4 hPa (low). When making predictions for a future trip, the bot
+  should: (1) fetch ACTUAL current conditions via `get_stream_conditions_for_agent`,
+  (2) if predicting for today/tomorrow, use live pressure + temp, (3) flag when
+  prediction is based on forecast vs actual conditions. The enrichment pipeline provides
+  ground truth for past sessions; predictions for future sessions need live condition data.
+
+- **Conditions-based pattern detection** — `session_conditions` table now accumulating
+  structured features per session. When enough sessions are enriched (suggested: 10+),
+  build correlation analysis: pressure + cloud cover + air temp at time of session vs
+  catch rate and species. This is the statistical learning layer that makes predictions
+  principled rather than rule-based. Key variables to correlate first: `pressure_hpa`,
+  `cloud_cover_pct`, `air_temp_anomaly_c` vs species caught and `was_productive`.
+
+- **Enrich historical sessions retroactively** — Sessions 1–26 have no conditions data.
+  For sessions with known coordinates and dates (Willoway Park, Byng Island, North London
+  Athletic Fields), run `enrich_session_conditions` retroactively via a script. This
+  immediately gives the pattern detection layer more data points to work with. Session 27
+  already enriched manually as a test.
+
+- **`get_session_conditions` agent tool** — Tool added to `chat.py` but not yet tested
+  end-to-end. Verify the bot can surface conditions data when asked "what were the
+  conditions during my last Willoway session?" Should return the June 20 enrichment data.
+
 ---
 
 ## Agent Behaviour
@@ -240,6 +278,15 @@ chat window.
 
 - **Tool-level API usage tracking** ✅ — `tool_usage` table tracking individual tool
   calls per session. `fishbot tool-stats` shows call counts by tool name.
+
+- **Cache invalidation on insight update** ✅ — `synthesis_cache.py` now has
+  `invalidate_cache()` called whenever a behavioral insight is recorded or refined for a
+  location. Prevents stale cached synthesis from overriding updated insights. ✅
+
+- **Contradiction auto-versioning** ✅ — `record_behavioral_insight_for_agent()` now runs
+  conflict detection before inserting. If conclusion contains contradiction keywords + same
+  condition_type + new confidence >= existing → calls `refine_insight()` to version out
+  prior. ✅
 
 ---
 
@@ -348,6 +395,25 @@ Flutter or React Native are the right choices for cross-platform.
 
 ---
 
+## Predictions
+
+- **Prediction validation experiment** — June 20 Willoway test revealed: model
+  confidently predicted morning slow, evening prime; reality was morning smash fest,
+  evening slower. Root cause: bot had wrong weather data (forecast vs actual). With
+  enrichment pipeline, next prediction will use actual conditions.
+
+  Next test: before next Willoway session, ask for prediction noting what conditions bot
+  cites. Compare to reality. With enriched conditions data, prediction should be more
+  accurate.
+
+  Key hypotheses to validate:
+  - Low pressure + overcast → morning channel cat activity
+  - High pressure + clear → evening activity, morning slow
+  - Post-cold-front → aggressive feeding window before conditions stabilize
+  - Bowfin/catfish ratio → may correlate with water temp or flow
+
+---
+
 ## Known Bugs
 
 - **OHN snap criteria too strict** — location resolver previously skipped trips
@@ -356,4 +422,4 @@ Flutter or React Native are the right choices for cross-platform.
 
 ---
 
-*Last updated: Session — Mobile trip logging, EXIF GPS, synthesis cache prewarm, tool-level tracking*
+*Last updated: Session — Auto-enrichment pipeline (weather + PWQMN + anomaly detection), cache invalidation on insight update, contradiction auto-versioning*
