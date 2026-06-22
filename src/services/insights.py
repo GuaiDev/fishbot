@@ -154,6 +154,12 @@ def record_behavioral_insight_for_agent(
             insight_id = db.execute(
                 "SELECT MAX(id) FROM behavioral_insights"
             ).fetchone()[0]
+            if lat is not None or location_name is not None:
+                try:
+                    from src.services.synthesis_cache import invalidate_cache
+                    invalidate_cache(db, lat=lat, lng=lng, location_name=location_name)
+                except Exception:
+                    pass
             return json.dumps({
                 "success": True,
                 "insight_id": insight_id,
@@ -167,6 +173,12 @@ def record_behavioral_insight_for_agent(
 
     # No contradiction found — standard insert
     insight_id = insert_insight(db, insight)
+    if lat is not None or location_name is not None:
+        try:
+            from src.services.synthesis_cache import invalidate_cache
+            invalidate_cache(db, lat=lat, lng=lng, location_name=location_name)
+        except Exception:
+            pass
     return json.dumps(
         {
             "success": True,

@@ -129,6 +129,61 @@ def store_synthesis(
     db.conn.commit()
 
 
+def invalidate_cache(
+    db: Database,
+    lat: float | None = None,
+    lng: float | None = None,
+    location_name: str | None = None,
+    radius_km: float = 0.15,
+) -> int:
+    """Delete cache entries for a location when insights are updated. Returns number deleted."""
+    deleted = 0
+    key = _cache_key(lat, lng, location_name)
+
+    # Exact key match
+    try:
+        result = db.execute(
+            "DELETE FROM segment_synthesis WHERE cache_key = ?", [key]
+        )
+        deleted += result.rowcount
+    except Exception:
+        pass
+
+    # Fuzzy name match
+    if location_name:
+        try:
+            words = [w.lower() for w in location_name.split() if len(w) > 3]
+            for word in words:
+                result = db.execute(
+                    "DELETE FROM segment_synthesis WHERE LOWER(location_name) LIKE ?",
+                    [f"%{word}%"]
+                )
+                deleted += result.rowcount
+            db.conn.commit()
+        except Exception:
+            pass
+
+    # Proximity match
+    if lat is not None and lng is not None:
+        try:
+            candidates = list(db["segment_synthesis"].rows_where(
+                "lat IS NOT NULL AND lng IS NOT NULL"
+            ))
+            for c in candidates:
+                if _haversine_km(lat, lng, c["lat"], c["lng"]) <= radius_km:
+                    db.execute(
+                        "DELETE FROM segment_synthesis WHERE id = ?", [c["id"]]
+                    )
+                    deleted += 1
+            db.conn.commit()
+        except Exception:
+            pass
+
+    if deleted:
+        print(f"[CACHE] Invalidated {deleted} synthesis cache entry/entries for {location_name or lat}")
+    return deleted
+
+
 def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     R = 6371
     dlat = math.radians(lat2 - lat1)
