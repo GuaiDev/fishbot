@@ -252,16 +252,29 @@ Next step: add actual cost in $ per tool call based on token counts.
 Needed for: identifying expensive tools to prioritize for caching,
 future per-user billing.
 
+### Local vs Railway Database Sync 📋
+Current state: local database has Jason's full trip history (22+ sessions).
+Railway database started fresh with multi-user auth.
+Decision: accept the split. Local CLI for personal analysis; Railway is the
+beta environment where new trips from all users accumulate including Jason
+logging new trips via the web app.
+If a one-time migration is needed: export local sessions → /admin/import
+endpoint or direct DB copy via Railway CLI.
+
+### Token Management 📋
+Admin token currently retrieved manually via /admin/bootstrap + curl.
+Consider: fishbot token command that retrieves/refreshes the admin token
+without needing to curl manually. Or store in a local .env file.
+
 ---
 
 ## UI / Product
 
-### Web Chat Interface 📋
-Minimum viable: single page at /chat that calls /chat API endpoint.
-React component, dark theme matching /log page.
-Required before friend beta testing.
-Learn path: HTML/CSS → JavaScript → React → build.
-Estimated: 6-8 weeks part-time learning before ready to build.
+### React Web UI ✅
+Built and deployed at https://web-production-e2094.up.railway.app/app
+Three screens: Chat (home), Log Trip, Trips history.
+Dark theme, mobile-first, bottom nav, + button always visible in chat.
+Vite + React, served from FastAPI at /app.
 
 ### Native iOS/Android App 💡
 iOS Safari strips GPS from photos (Apple privacy decision).
@@ -271,13 +284,51 @@ background location, offline trip drafts.
 Flutter or React Native for cross-platform.
 Build after web UI is proven and user base exists.
 
-### Multi-User Architecture 📋
-Currently single-user by design. Before friend beta:
-- user_id column on sessions, stops, behavioral_insights, angler_context
-- Simple auth: username + passphrase → user-specific API key
-- Separate profile, context document, trip history per user
-- Shared objective model (SDM, synthesis cache) across all users
-- Personal model (insights, conditions, coaching) per user
+### Multi-User Architecture ✅
+- users, invite_codes, user_sessions, daily_usage tables
+- user_id added to all personal tables (sessions, stops, behavioral_insights,
+  angler_context, session_conditions, chat_sessions, chat_messages)
+- Synthesis cache and SDM predictions remain shared (no user_id)
+- Invite code auth: generate via CLI or admin API
+- 50 message/day rate limit for beta users
+- Admin endpoints: /admin/bootstrap, /admin/invite, /admin/invites, /admin/users
+- CLI: fishbot invite --note "name", fishbot users
+- React: Login screen, auth gate in App.jsx, 401/429 handling
+
+### Map — two modes 📋
+Add Leaflet map into the React web app with two toggleable states:
+
+**Personal mode:**
+- Shows the user's own logged stops as markers
+- Marker color/size reflects productivity (green = caught fish, grey = blank)
+- Tap a marker → shows what was caught there, conditions, date
+- Populated entirely from the user's trip log (stops table)
+- Empty state: "Log trips to see your spots appear here"
+
+**Explore mode:**
+- Shows OHN stream segments scored by SDM predictions and exploration value
+- The existing adventure/easy_access/balanced scoring modes
+- Heatmap below zoom 11, CircleMarkers above zoom 11
+- Tap a segment → synthesis cache check → show "why this spot is interesting"
+- find_exploration_targets tool wired to map
+
+**Toggle:** Simple button in the map header switching between Personal and Explore.
+No other UI needed — the two modes share the same map, different data layers.
+
+**Technical notes:**
+- Leaflet already built and working in the existing Flask/Python UI
+- React wrapper: react-leaflet package
+- Personal mode: GET /sessions → extract stop coordinates → render markers
+- Explore mode: existing OHN segment data + SDM predictions already in DB
+- Synthesis cache pre-warmed for known spots → tap = instant answer
+
+### Admin Dashboard 💡
+Simple web page at /admin showing:
+- Active users and message counts
+- Cost per user per day
+- Which spots are being asked about most (synthesis cache hit counts)
+- Which tools are firing most (tool_usage table)
+Useful for monitoring beta tester activity and model performance.
 
 ### Free / Premium Tier Boundary 📋
 Router mode field (reflex/synthesis/memory) in api_usage is the foundation.
