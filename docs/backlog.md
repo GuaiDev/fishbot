@@ -1,425 +1,313 @@
 # FishBot Backlog
 
-This file tracks features, improvements, and design decisions that have been
-deliberately deferred. Updated every session. Nothing should live only in a
-chat window.
+Last updated: June 2026
+
+## Legend
+- ✅ Resolved
+- 🔨 In progress / partially built
+- 📋 Planned
+- 💡 Future / research
+
+---
+
+## Core Intelligence
+
+### Behavioral Insights & Contradiction System ✅
+- Auto-versioning of contradicted insights on record
+- Contradiction keywords trigger refine_insight()
+- Cache invalidation when insights updated for a location
+- Insight #37 (evening-only) correctly versioned out by #40 (morning viable)
+
+### Synthesis Cache ✅
+- Lazy precompute — synthesize on first query, reuse forever
+- Location extraction via Haiku before pipeline
+- Cache hit → Haiku reformulates cheaply
+- Invalidates when behavioral insights updated for that location
+- 5 spots pre-warmed: Willoway, Byng Island, North London Athletic Fields,
+  Credit River Creditview, Bronte Creek Oakville
+
+### Message Router ✅
+- Haiku classifier → reflex / synthesis / memory
+- Errs toward synthesis on uncertainty
+- Reflex → cheap Haiku answer + leading question
+- Synthesis → cache check → full pipeline on miss
+- Memory → full pipeline with log tools
+- ~95% cost reduction on simple queries
+
+### SDM Models ✅
+- 9 species, Random Forest, spatial block CV
+- Observation bias features removed (observation_density_25km,
+  distance_to_nearest_observation_km) — were 48% of signal
+- Ecology-only features: substrate, stream order, temp, EPT, confluences
+- Current AUC: 0.51-0.61 (honest, not inflated by sampling bias)
+- Trip log catches injected as presence records (data flywheel)
+- Creek chub: 2 trip log records. White sucker: 1.
+- SDM confidence framing in system prompt: "worth investigating" not
+  "predicted present"
+
+### Auto-Enrichment Pipeline ✅
+- session_conditions table: air temp, pressure, cloud cover, wind,
+  precip history, water quality, anomaly flags, moon phase, days since rain
+- Open-Meteo archive API (no key, back to 1940): weather at exact timestamp
+- PWQMN local DB: nearest station water quality within 50km/45 days
+- Anomaly detection: compare current vs historical baseline for month/location
+- 3-second timeout via ThreadPoolExecutor — never blocks logging
+- Verified: June 20 Willoway enriched with 17.2°C, 990.4 hPa, cold_air flag
 
 ---
 
 ## Trip Logging
 
-- **Productivity signal redesign** — current boolean `was_productive` may not
-  capture enough nuance (e.g. catching 1 fish after 6 hours vs 10 fish in 1 hour).
-  Revisit when personal model layer is designed.
+### Sessions/Stops Schema ✅
+- sessions + stops tables (replaced flat parsed_trips)
+- Multi-stop sessions supported
+- location_method, location_confidence, was_productive
+- party_species_caught separate from user species_caught
 
-- **Catch count per stop** — consider adding `fish_caught_count` integer to `stops`
-  table to give the model richer signal beyond the boolean. Deferred until personal
-  model design.
+### Natural Language Parser ✅
+- Species hallucination prevention (_validate_species)
+- User vs party catch distinction
+- time_of_day, hour_of_day extraction from text
+- Fuzzy location resolution (name match → landmark → geocode → text_only)
 
-- **Species confidence tiers for commercial use** — beginner anglers can't always
-  ID species. Design a tiered system: user-confirmed / uncertain ("I think it was X")
-  / unidentified group. Parser handles "uncertain" tagging but no UI or downstream
-  handling exists yet. Needs proper design when commercial product is built.
+### Mobile Logging Page ✅
+- Live at https://web-production-e2094.up.railway.app/log
+- EXIF GPS extraction (Android)
+- Geolocation fallback (iOS — one permission tap)
+- photo_lat, photo_lng, photo_taken_at → stops table
+- time_of_day derived from EXIF timestamp
 
-- **EXIF photo coordinates** ✅ — Built and live at https://web-production-e2094.up.railway.app/log.
-  Dark mobile-optimised page. EXIF GPS extraction (works on Android via exifr library),
-  geolocation fallback (works on iOS after one permission tap). New stops fields:
-  time_of_day, hour_of_day, photo_lat, photo_lng, photo_taken_at. Parser extracts
-  time_of_day from text descriptions too.
+### Multi-Technique Stop Logging 📋
+- Current schema: one technique field per stop
+- June 20 Willoway had 3 simultaneous rigs (Santee Cooper, Carolina, packbait)
+  producing 3 different species profiles
+- Need: array of {technique, gear, species_caught} per stop
+- Schema migration + parser update required
 
-- **Voice logging** — dictate trips instead of typing. Works today via phone
-  keyboard mic into terminal. A proper hold-to-speak button deferred until UI
-  is built.
+### Voice Trip Logging 💡
+- Critical path for activating personal model at scale
+- Mobile page → voice memo → transcribe → parse
+- Reduces logging friction dramatically
+- Requires Whisper API or similar
 
-- **`parsed_trips` table cleanup** — old flat schema table left intact as fallback.
-  Remove once `sessions`/`stops` schema is confirmed stable across several sessions.
+---
 
-- **Seasonal location awareness in personal model** — user is in London Ontario
-  Sept–Apr and Oakville/GTA May–Aug. Personal model should never recommend London
-  spots in summer or Oakville spots in winter. Implement when personal model layer
-  is built.
+## Coaching Layer
 
-- **Double-parse bug in review mode** — in batch_log_historical_trips_v2.py, the
-  parse-for-review step and the actual log step call the parser twice, so what you
-  review isn't guaranteed to match what gets stored. Fix when review mode is next used.
+### On-Demand Coaching ✅
+- get_coaching tool: species and location modes
+- Queries trip logs + behavioral insights
+- Honest about sparse data
+- Verified: madtom query honestly states no logged catches;
+  Byng Island query references actual rig/catch data
 
-- **User vs. friend catch distinction** — the trip parser lumps all anglers'
-  techniques and catches into shared stop fields (technique, gear, notes) without
-  tracking what each technique actually produced. This causes ambiguous memory
-  responses — "friends were using bottom rigs" gets interpreted as "friends caught
-  fish on bottom rigs" when they may have caught nothing. Fix: add
-  `user_species_caught` separate from party-wide `species_caught`, or flag friend
-  catches explicitly in the notes field during parsing. The parser should ask "what
-  did YOU personally catch" vs "what did your group catch" as distinct fields.
-  **✅ Resolved:** Fixed in this session — `party_species_caught` field added to stops table
-  and parser. `get_trips_at_location` now clearly distinguishes "you caught: X
-  (others in party: Y)" from party-only catches.
+### Proactive Coaching ✅
+- Fires after session logging when thresholds crossed
+- Location slump detector: consecutive blanks at productive spot
+- Species gap detector: species in insights never personally caught
+- Technique pattern detector: techniques only in productive sessions
+- Min 3 sessions before firing, max once per session
+
+### Additional Coaching Detectors 📋
+Wait until 10+ stops with time_of_day and 5+ stops per location before building:
+- Time-of-day pattern: "all productive Byng sessions before 11am — why?"
+  (hypothesis + question, not conclusion)
+- Seasonal gap: "you fish Thames in April, never in October"
+- Bait effectiveness: "cutbait sessions productive, worm sessions mixed —
+  could be bait, could be conditions, which was it?"
+All detectors should hypothesize and ask rather than conclude.
+
+### Conditions-Based Pattern Detection 📋
+session_conditions accumulating structured features. When 10+ sessions enriched:
+- Correlate pressure_hpa + cloud_cover_pct + air_temp_anomaly_c vs catch rate
+- Key hypothesis: low pressure + overcast → morning channel cat activity
+- High pressure + clear → evening activity
+- Post-cold-front window → aggressive feeding before conditions stabilize
+This is the statistical learning layer that makes predictions principled.
 
 ---
 
 ## Personal Model
 
-- **Personal model layer** — not yet built. Will be a separate model layer on top
-  of the shared objective SDM, learning individual fishing patterns from trip logs.
-  Key inputs: stops table, species caught, conditions, productivity, seasonal location.
-  Commercial "pal" concept depends on this.
+### Rolling Angler Context ✅
+- Single-row table, Haiku-merged after each session
+- Sections: Active plans, Spots on radar, Learned patterns, Species intel
+- Context priority over static profile
+- River name hallucination prevention (rules 8 & 9 in Haiku merge prompt)
+- Coordinate embedding when present in session summaries
 
-- **Confidence escalation from trip logs** — when a stop in the `stops` table
-  confirms or contradicts a stored behavioral insight (same species, same location
-  within 1km), automatically update the insight's confidence level and call
-  `refine_insight()` if needed. Currently requires manual recording. This closes
-  the feedback loop between trip logs and recommendations — a confirmed catch at
-  Willoway Park should bump insight #34 from medium → high confidence automatically.
+### Static Profile → Dynamic Inference 📋
+Current profile (set once, goes stale) should be replaced by inference from
+trip log history:
+- Species targets → infer from what angler actually catches
+- Fishing style → infer from techniques used across sessions
+- Skill level → infer from species diversity and technique sophistication
+- Profile becomes administrative only: home location, jurisdiction
+Implement when stops table has 20+ entries. Until then, profile + context
+document together are sufficient.
 
-- **Blank trip contradiction matching** — when a user logs an unproductive stop
-  ("blanked on channel catfish"), the parser correctly sets `species_caught=[]`
-  and `was_productive=False`. But `enrich_session` matches insights by species
-  caught — so a blank stop never triggers a contradiction against existing insights,
-  even if the spot has a high-confidence "good here" insight.
-  Fix: in `match_insights_to_stop()`, also match by location proximity alone for
-  unproductive stops, even when `species_caught` is empty. This way blanking at
-  Willoway Park still challenges insight #34.
-  **✅ Resolved:** Fixed in this session — `match_insights_to_stop()` now has a location-only
-  branch for unproductive stops with coordinates. Blank at a known spot now triggers
-  contradiction checking even with empty `species_caught`.
-
-- **SDM observation bias features** ✅ — Removed `observation_density_25km` and
-  `distance_to_nearest_observation_km` from SDM training. All 9 models retrained with
-  ecology-only features. AUC scores dropped 0.05–0.09 (expected — scores were inflated
-  by sampling bias). Models now predict habitat, not observer effort.
-
-- **Lake-run timing tracker — Grand River / Dunnville** — no data on when lake-run
-  channel catfish push up the Grand River from Lake Erie. Log date + fish size + water
-  temp for every Dunnville session. Pattern will emerge from real data over time.
-  Currently flagged as open research question in angler context.
-
-- **Kool-aid vs natural cutbait comparison** — one session data point — not enough to
-  conclude anything. Design a controlled side-by-side: same location, same rig, one rod
-  natural, one rod kool-aid soaked, track strikes per rod. Run deliberately at Byng or
-  Willoway next session.
-
-- **Dynamic profile from trip history (Option B)** — the static profile (set once via
-  `fishbot profile`) will go stale over time as fishing interests evolve. Long-term fix:
-  deprecate preference fields in the profile entirely and infer them from trip log history
-  instead. Species targets, fishing style, skill indicators — all derived from what the
-  angler actually catches and where they fish, not from what they declared at signup. The
-  profile becomes purely administrative (home location, jurisdiction). Implement when the
-  `stops` table has enough history to make inference reliable (suggested: 20+ stops).
-
-- **Coaching layer — on-demand** ✅ — Built and verified. `get_coaching` tool with
-  species and location modes. Pulls actual trip log data, behavioral insights; Haiku
-  generates diagnosis. Verified: madtom query honestly states no logged catches; Byng
-  Island query references actual Santee Cooper / 5lb cat / turbid conditions data.
-
-- **Proactive coaching layer** ✅ — Built and verified. Three pattern detectors in
-  priority order: (1) location slump — consecutive blanks at previously productive spot,
-  (2) species gap — species in insights never personally caught, (3) technique pattern —
-  techniques that only appear in productive sessions. Fires at most once per session,
-  only when thresholds crossed (min 3 sessions). Verified: Byng Island slump detected
-  and surfaced naturally in log_trip response.
-
-- **Proactive coaching — additional detectors** — current detectors: location slump,
-  species gap, technique pattern. Future additions:
-  - Seasonal pattern: "You catch redhorse in April but never in September — have you
-    tried the Thames in fall?"
-  - Bait effectiveness: "Your successful catfish sessions used cutbait, blanks used
-    worm — want to test this pattern deliberately?"
-  - Time-of-day pattern: "All your productive Byng sessions were before 11am — your
-    afternoon sessions there have been unproductive"
-  Add when trip log has enough data (suggested: 10+ stops per location).
-
-- **SDM improvement roadmap** — current AUC: 0.51–0.61 (honest but weak). Long-term
-  improvement path:
-  1. Spatial thinning of presence records to break urban clustering bias
-  2. Add missing features: riparian canopy cover, upstream impervious surface %,
-     agricultural land use intensity, seasonal flow variability
-  3. Ensemble models (Random Forest + MaxEnt + BRT)
-  4. Trip log data as unbiased presence records — every logged catch in an
-     undersampled area (Dunnville, rural Grand River) is high-value training data
-  5. Eventually: integrated SDMs that model observation process alongside ecology
-
-- **SDM retraining automation** — models should retrain automatically when new ingest
-  data meaningfully expands presence records for a species (suggested threshold: +20%
-  presence records). Currently requires manual `uv run fishbot train-sdm`. Add to
-  scheduled refresh.
-
-- **Trip logs as SDM training data** ✅ — Built and wired. `species_mapping.py` with
-  ~70 species common↔scientific. `_get_presence_points()` now pulls from stops table
-  (productive stops with valid coordinates only). `sdm-contributions` CLI shows
-  breakdown per model. Creek chub: 2 trip log records. White sucker: 1. Grows
-  automatically with every logged trip.
-
-- **SDM retraining trigger** — currently requires manual `uv run fishbot train-sdm`.
-  Should trigger automatically when trip log presence records grow meaningfully for a
-  species (suggested threshold: new trip log points exceed 20% of existing iNat+GBIF
-  count for that species). Add as part of ingest scheduling work.
-
-- **Species mapping expansion** — `species_mapping.py` covers ~70 species. As new
-  species appear in trip logs that aren't mapped, they silently don't contribute to
-  SDM training. Add a warning when a common name from a stop can't be mapped to a
-  scientific name — log it so the mapping can be expanded. Also consider auto-lookup
-  via GBIF species API for unmapped names.
-
-- **Time-of-day and seasonal coaching detectors** — `time_of_day` and `hour_of_day`
-  fields are now being captured from EXIF and text parsing. Once enough trips are logged
-  with time data, add detectors:
-  - Time-of-day pattern: "all productive Byng sessions before 11am — why?"
-    (hypothesis + question, not conclusion)
-  - Seasonal gap: "you fish Thames in April, never in October — here's what the data
-    suggests about fall redhorse on the Thames"
-  Wait until 10+ stops have `time_of_day` populated before building.
-
-- **Cache prewarm automation** — `scripts/prewarm_cache.py` requires manual runs. Add
-  to ingest scheduling: after weekly ingest completes, automatically prewarm cache for
-  spots in the angler context document. Spots added to "Spots on the radar" should get
-  their synthesis cached on the next ingest run.
-
-- **Auto-enrichment pipeline** ✅ — Built and verified. Creates `session_conditions`
-  table with structured environmental data per session. Two data layers:
-  - Open-Meteo archive API: air temp, pressure, cloud cover, wind, precip history,
-    weather code. No API key required.
-  - PWQMN local DB: water temp, DO, pH, conductivity, turbidity from nearest station
-    within 50 km and 45 days.
-  Anomaly detection compares current conditions vs historical baseline for that
-  location/month. Flags cold/warm anomalies. Verified: June 20 Willoway session enriched
-  with 17.2°C air temp, 990.4 hPa pressure, 78% cloud cover, cold_air anomaly flag (4.9°C
-  below normal). Likely explains the morning smash fest the model failed to predict —
-  post-cold-front low pressure with overcast skies is a known catfish trigger. 3-second
-  timeout enforced via ThreadPoolExecutor. ✅
-
-- **Prediction system: use enriched conditions not forecasts** — The June 20 prediction
-  failure was likely caused by wrong weather data — bot cited high pressure but actual
-  conditions were 990.4 hPa (low). When making predictions for a future trip, the bot
-  should: (1) fetch ACTUAL current conditions via `get_stream_conditions_for_agent`,
-  (2) if predicting for today/tomorrow, use live pressure + temp, (3) flag when
-  prediction is based on forecast vs actual conditions. The enrichment pipeline provides
-  ground truth for past sessions; predictions for future sessions need live condition data.
-
-- **Conditions-based pattern detection** — `session_conditions` table now accumulating
-  structured features per session. When enough sessions are enriched (suggested: 10+),
-  build correlation analysis: pressure + cloud cover + air temp at time of session vs
-  catch rate and species. This is the statistical learning layer that makes predictions
-  principled rather than rule-based. Key variables to correlate first: `pressure_hpa`,
-  `cloud_cover_pct`, `air_temp_anomaly_c` vs species caught and `was_productive`.
-
-- **Enrich historical sessions retroactively** — Sessions 1–26 have no conditions data.
-  For sessions with known coordinates and dates (Willoway Park, Byng Island, North London
-  Athletic Fields), run `enrich_session_conditions` retroactively via a script. This
-  immediately gives the pattern detection layer more data points to work with. Session 27
-  already enriched manually as a test.
-
-- **`get_session_conditions` agent tool** — Tool added to `chat.py` but not yet tested
-  end-to-end. Verify the bot can surface conditions data when asked "what were the
-  conditions during my last Willoway session?" Should return the June 20 enrichment data.
-
----
-
-## Agent Behaviour
-
-- **SDM confidence framing** ✅ — System prompt updated with DO/DO NOT framing, AUC
-  range (0.51–0.61) cited inline, models framed as "exploration tool not presence
-  confirmation." Verified: bot correctly hedges predictions and surfaces AUC caveat in
-  responses.
-
-- **Rolling angler context — reviewed vs draft plans** — the current rolling context
-  document captures plans and patterns but doesn't distinguish between "plan we built
-  together and refined" vs "first-draft plan not yet reviewed." When a plan has been
-  discussed and refined across multiple sessions, the context should note it as
-  reviewed so the bot doesn't re-critique it from scratch next session.
-
-- **Mapbox satellite vision in chat** — when user provides coordinates, fetch Mapbox
-  satellite tile and run Claude vision assessment (water type, structure, cover, depth
-  indicators). Already used in `vision_screening.py` — adapt for conversational use.
-  Makes geographic assessment work anywhere in the world, not just OHN coverage areas.
-  Currently users must describe what they see at a location.
-
-- **Trust user location knowledge** — when user provides coordinates or describes a
-  spot from personal experience, the bot should accept it as ground truth. Internal
-  water databases (OHN, OSM) have incomplete coverage — user firsthand knowledge is
-  more reliable for specific spots. Partially addressed in system prompt but needs
-  ongoing attention.
-
-- **Synthesis cache — wire into tools** — `segment_synthesis` table and
-  `synthesis_cache.py` are built and ready. Next step: wire cache check/store into the
-  heaviest synthesis tools (likely `get_species_habitat_predictions` or wherever
-  watershed/geology cross-referencing happens). Cache miss → run full synthesis + store.
-  Cache hit → return stored result via Haiku (very cheap). This is what makes the
-  expensive Willoway-style analysis nearly free after the first query.
-
-- **Router — synthesis cache integration for Willoway-style questions** — when the
-  router classifies a message as "synthesis" and the query is about a
-  named/coordinate location, check `segment_synthesis` cache first before invoking
-  the full pipeline. If hit, answer from cache with Haiku (very cheap). If miss,
-  run full pipeline and store result. This is the key step to making synthesis mode
-  cheap at runtime.
-
-- **Free/premium tier boundary** — router mode field (`reflex`/`synthesis`/`memory`)
-  flowing through `api_usage` is the foundation of the split. Design pending:
-  - Free: reflex only. Generic fishing knowledge, Haiku, no tools.
-  - Premium: synthesis + memory + coaching. Full pipeline, personal data.
-  - Taster: first synthesis result shown free, deeper analysis gated.
-  - Leading questions: reflex answers offer synthesis upgrade as conversion mechanism.
-  Build when ready to think about launching.
-
-- **Context document — coordinate embedding** — Rule 9 added to Haiku merge: when session
-  summaries include coordinates, embed them in spot entries e.g. "Willoway Park, Grand River
-  (42.917, -79.774)". Monitor that this is actually happening as new trips get logged with
-  coordinates. Over time, the spots section should become a precise coordinate-linked reference,
-  not just text descriptions.
-
-- **Synthesis cache wired into router** ✅ — Location extraction added to router. Cache
-  check before full pipeline for synthesis-mode queries. Cache hit returns via Haiku (very
-  cheap). Fuzzy name matching handles slight phrasing differences. Verified: Willoway Park
-  query served from cache on second ask.
-
-- **Context validator false positive** ✅ — Validator now only warns on river names
-  genuinely new to the updated context, not ones already present from previous sessions.
-  `_validate_context()` signature updated to accept `existing` parameter.
-
-- **Tool-level API usage tracking** ✅ — `tool_usage` table tracking individual tool
-  calls per session. `fishbot tool-stats` shows call counts by tool name.
-
-- **Cache invalidation on insight update** ✅ — `synthesis_cache.py` now has
-  `invalidate_cache()` called whenever a behavioral insight is recorded or refined for a
-  location. Prevents stale cached synthesis from overriding updated insights. ✅
-
-- **Contradiction auto-versioning** ✅ — `record_behavioral_insight_for_agent()` now runs
-  conflict detection before inserting. If conclusion contains contradiction keywords + same
-  condition_type + new confidence >= existing → calls `refine_insight()` to version out
-  prior. ✅
+### Retroactive Session Enrichment 📋
+Sessions 1-26 have no conditions data. For sessions with known coordinates
+(Willoway Park, Byng Island, North London Athletic Fields), run
+enrich_session_conditions retroactively via a script.
+Session 27 already enriched manually as proof of concept.
 
 ---
 
 ## Data Sources
 
-- **Reddit RAG** — ingest fishing subreddit posts for local knowledge. Same
-  architecture as YouTube (search → ingest → chunk → embed → store →
-  search_knowledge_base tool already handles it). Waiting on credentials. When
-  ready, add `src/ingest/community/reddit_ingest.py` following the same pattern
-  as `youtube_ingest.py`.
+### Ingest Pipeline ✅
+Full pipeline: iNaturalist, GBIF, WSC gauges, OSM water features,
+MNRF stocking, OHN stream segments, regulations, PWQMN water quality,
+CABIN benthic, eBird piscivore, provincial parks, Crown land
+--lat/--lng flags for targeted area ingest
 
-- **YouTube transcript quality filtering** — some auto-caption transcripts are poor
-  quality (music videos, non-English content mislabeled). Add minimum length filter
-  and fishing-relevance check before storing. Also consider scaling up from 5 to
-  15-20 videos per query once quality is confirmed.
+### Ingest Scheduling ✅
+GitHub Actions weekly cron (Sunday 6am UTC)
+4 areas: Grand River/Dunnville, Credit River/Mississauga,
+Bronte Creek/Oakville, Thames River/London
+API key protected via X-Api-Key header
 
-- **Ingest scheduling** ✅ — GitHub Actions weekly cron (Sunday 6am UTC) calling
-  `/ingest/data` endpoint for 4 areas: Grand River/Dunnville, Credit River, Bronte Creek,
-  Thames/London. API key protected via X-Api-Key header. Manual trigger available from
-  GitHub Actions UI.
+### Species Mapping ✅
+~70 species common ↔ scientific name mapping
+Trip log catches → SDM presence records
 
-- **Trip logs as SDM training data** ✅ — see Personal Model section.
+### Reddit RAG 💡
+Blocked on API credentials (403 on current setup).
+Investigate Reddit API access requirements.
+r/OntarioFishing has dense local knowledge especially for underreported
+areas like Dunnville. Architecture identical to YouTube RAG when credentials
+arrive.
 
-- **Synthesis cache pre-warming** ✅ — `scripts/prewarm_cache.py` caches known spots on
-  demand. 5 spots now cached: Willoway Park (4 hits), Byng Island, North London Athletic
-  Fields, Credit River at Creditview Rd, Bronte Creek Oakville. Fixed SQLite lock bug in
-  `synthesis_cache.py` — hit_count UPDATEs now commit properly, preventing deadlock when
-  a cache hit is followed by a full-pipeline call in the same process.
-
-- **SDM contribution tracking as a product metric** — `uv run fishbot sdm-contributions`
-  shows iNat/GBIF/TripLog breakdown per model. When FishBot has users, total trip log
-  contributions across all users becomes a meaningful data asset metric: "X,000
-  angler-confirmed catches informing Ontario species predictions." Track this over time.
-  Eventually surface in the UI as a trust signal ("predictions informed by your catches
-  + X community catches").
+### YouTube RAG ✅
+Transcript ingestion, chunking, embedding, FTS5 search
+search_knowledge_base tool in agent
 
 ---
 
-## Map & UI
+## Prediction System
 
-- **Mapbox GL JS map rebuild** — replace current Leaflet prototype with proper
-  Mapbox GL JS implementation. Better performance, satellite imagery, mobile-ready.
-  Not yet started.
+### Prediction Validation Experiment 🔨
+June 20 Willoway test findings:
+- Model predicted morning slow, evening prime
+- Reality: morning smash fest, evening slower
+- Root cause: bot had wrong weather data (forecast vs actual conditions —
+  actual was 990.4 hPa low pressure, overcast, 4.9°C below normal)
+- Low pressure + overcast is a known catfish trigger
+- With enrichment pipeline, future predictions will use actual conditions
 
-- **Mobile UI** — build a mobile-friendly web interface that talks to the FastAPI
-  server. Required before EXIF photo logging, voice logging, and public access
-  are meaningful. Not yet started.
+Next test: before next Willoway session, ask for prediction noting what
+conditions bot cites. With enriched conditions data, morning should now
+be predicted as viable (insights #34 + #40 both current, #37 versioned out).
 
-### Native iOS/Android app
-iOS Safari strips GPS from photos uploaded via file input — a known Apple privacy
-decision. The geolocation fallback works but requires a permission tap. A native
-app would get full EXIF access (precise GPS from photo metadata, no permission
-dialog) plus: push notifications for trip reminders, background location logging,
-offline trip drafts. Build after the web UI is proven and user base exists.
-Flutter or React Native are the right choices for cross-platform.
+### Prediction Confidence Calibration 📋
+Model expressed high confidence on morning prediction with only 1 prior
+Willoway session. Need to express lower confidence when:
+- Fewer than 3 data points for a specific time window at a specific location
+- Conditions data unavailable or stale
+- Species composition variable (bowfin/catfish ratio fluctuation)
+System prompt addition: "For time-window predictions with <3 data points,
+explicitly state low confidence and explain why."
 
-- **Fishing derby — hosted version** — the derby widget currently runs as a local
-  browser artifact. Build a proper hosted version with:
-  - Shared live leaderboard (all players see each other's catches in real time)
-  - Each player opens the Railway URL on their own phone
-  - Photo submission stored server-side
-  - Session management (create derby → share code → friends join)
-  Backend: new `/derby` endpoints on the Railway FastAPI server.
-  Frontend: simple mobile web page served from Railway.
+### Live Conditions in Predictions 📋
+When predicting for today/tomorrow:
+1. Fetch current pressure + temp via get_stream_conditions_for_agent
+2. Compare to historical pattern (low pressure → morning, high → evening)
+3. Flag when prediction is based on forecast vs actual measured conditions
+The enrichment pipeline gives ground truth for past sessions; predictions
+for future sessions need live condition data wired in explicitly.
 
 ---
 
 ## Infrastructure
 
-- **Populate Railway database** — the live Railway server has a fresh empty database.
-  Options: (1) run `/ingest` endpoint with key Ontario fishing queries to build
-  knowledge base on the server, (2) write a script to copy local `data/fishing.db`
-  to the Railway volume. Defer until UI exists.
+### Cost Architecture ✅
+Router: reflex (Haiku, no tools) / synthesis (cache → pipeline) / memory
+Tool-level usage tracking via tool_usage table
+fishbot tool-stats command
+All costs logged to api_usage with endpoint field
 
-- **API authentication** ✅ — X-Api-Key header check on `/ingest/data` endpoint.
-  Dev mode allows requests without a key. Add key to Railway Variables and GitHub
-  Secrets before making server public.
+### ensure_schema() on Startup ✅
+FastAPI lifespan event calls ensure_schema() on server boot
 
-- **`ensure_schema()` not called on startup** ✅ — Fixed via FastAPI lifespan event.
-  `ensure_schema()` called once on server boot.
+### API Authentication ✅
+X-Api-Key header on /ingest/data and /log-trip
+Dev mode allows without key
 
-- **Agent efficiency — token usage tracking** — `api_usage` table now exists and
-  is being populated. Build a dashboard or reporting tool to understand cost per
-  query over time. Foundation for future per-user billing in commercial version.
+### SDM Retraining Automation 📋
+Currently manual: uv run fishbot train-sdm
+Should trigger when trip log presence records grow meaningfully
+(suggested: new trip log points exceed 20% of existing iNat+GBIF for a species)
+Add to ingest scheduling or as separate weekly GitHub Actions job
 
-- **Test isolation — production DB pollution** — verification scripts that call
-  `log_session()` directly write to `data/fishing.db` (production). Need a `--db`
-  flag or `DATA_DIR` environment variable override for all verification and manual
-  test scripts so they never touch the production database. Add
-  `DATA_DIR=data/test.db uv run python scripts/...` pattern to CLAUDE.md as the
-  standard approach for manual testing.
+### Cache Prewarm Automation 📋
+scripts/prewarm_cache.py requires manual runs.
+After weekly ingest, automatically prewarm cache for spots in the angler
+context document. New spots added to "Spots on radar" should get synthesis
+cached on next ingest run.
 
-- **Derby scoring — data-driven rarity** — the fishing derby widget uses hardcoded
-  point values. The real version should query iNaturalist + GBIF observation counts
-  for species near the derby location and derive relative rarity scores from actual
-  data. Blocked on local database being populated for target areas (Grand River /
-  Dunnville not yet ingested). Backend endpoint: `POST /derby/scores` with species
-  list + lat/lng → returns point table. Build after ingest is run for target areas.
-
-- **Ingest target fishing areas** — the iNaturalist/GBIF database is sparse for
-  the areas actually being fished (Grand River/Dunnville, Credit River, Bronte
-  Creek). Run targeted ingest for these areas so observation-based features (rarity
-  scoring, species presence, piscivore activity) work with real local data rather
-  than returning empty results. Priority areas: Grand River at Dunnville, Credit
-  River Mississauga/Streetsville, Bronte Creek Oakville.
+### Tool-Level Cost Tracking 📋
+tool_usage table tracks which tools are called.
+Next step: add actual cost in $ per tool call based on token counts.
+Needed for: identifying expensive tools to prioritize for caching,
+future per-user billing.
 
 ---
 
-## Predictions
+## UI / Product
 
-- **Prediction validation experiment** — June 20 Willoway test revealed: model
-  confidently predicted morning slow, evening prime; reality was morning smash fest,
-  evening slower. Root cause: bot had wrong weather data (forecast vs actual). With
-  enrichment pipeline, next prediction will use actual conditions.
+### Web Chat Interface 📋
+Minimum viable: single page at /chat that calls /chat API endpoint.
+React component, dark theme matching /log page.
+Required before friend beta testing.
+Learn path: HTML/CSS → JavaScript → React → build.
+Estimated: 6-8 weeks part-time learning before ready to build.
 
-  Next test: before next Willoway session, ask for prediction noting what conditions bot
-  cites. Compare to reality. With enriched conditions data, prediction should be more
-  accurate.
+### Native iOS/Android App 💡
+iOS Safari strips GPS from photos (Apple privacy decision).
+Geolocation fallback works but requires permission tap.
+Native app would provide: full EXIF access, push notifications,
+background location, offline trip drafts.
+Flutter or React Native for cross-platform.
+Build after web UI is proven and user base exists.
 
-  Key hypotheses to validate:
-  - Low pressure + overcast → morning channel cat activity
-  - High pressure + clear → evening activity, morning slow
-  - Post-cold-front → aggressive feeding window before conditions stabilize
-  - Bowfin/catfish ratio → may correlate with water temp or flow
+### Multi-User Architecture 📋
+Currently single-user by design. Before friend beta:
+- user_id column on sessions, stops, behavioral_insights, angler_context
+- Simple auth: username + passphrase → user-specific API key
+- Separate profile, context document, trip history per user
+- Shared objective model (SDM, synthesis cache) across all users
+- Personal model (insights, conditions, coaching) per user
+
+### Free / Premium Tier Boundary 📋
+Router mode field (reflex/synthesis/memory) in api_usage is the foundation.
+Design pending:
+- Free: reflex only. Generic fishing knowledge, Haiku, no tools.
+- Premium: synthesis + memory + coaching. Full pipeline, personal data.
+- Taster: first synthesis result shown free, deeper analysis gated.
+- Leading questions: reflex answers offer synthesis upgrade as conversion.
+Build when multi-user architecture exists.
 
 ---
 
-## Known Bugs
+## Open Research Questions
 
-- **OHN snap criteria too strict** — location resolver previously skipped trips
-  that couldn't snap to an OHN segment. Fixed with sessions/stops schema (text_only
-  fallback). Monitor for regressions.
+### Lake-Run Channel Catfish Timing — Dunnville
+When do lake-run Erie cats push up the Grand River?
+General pattern: May-June spawn timing, possible fall push.
+This year ran cold — likely delayed.
+Track: date + fish size + water temp for every Dunnville session.
+Pattern will emerge after 5+ sessions across different months.
 
----
+### Bowfin / Channel Catfish Ratio — Willoway
+June 20: channels dominant all day, 1 bowfin.
+Prior session: bowfin dominant, channels rare until night.
+Hypothesis: water temp, flow, or barometric pressure drives ratio.
+Need: structured conditions data for both sessions to correlate.
+June 20 now enriched (990.4 hPa, 17.2°C, cold_air). Prior session not enriched.
+Retroactive enrichment would enable comparison.
 
-*Last updated: Session — Auto-enrichment pipeline (weather + PWQMN + anomaly detection), cache invalidation on insight update, contradiction auto-versioning*
+### Kool-Aid vs Natural Cutbait
+One controlled comparison planned: same location, same rig, one rod natural,
+one rod kool-aid soaked. Track strikes per rod.
+Run deliberately at Byng or Willoway next session.
