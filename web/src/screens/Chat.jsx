@@ -1,0 +1,202 @@
+import { useState, useRef, useEffect } from 'react';
+import Message from '../components/Message';
+import { sendMessage } from '../api';
+
+export default function Chat({ onNavigate }) {
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      content: "Hey — what's on your mind? Ask me anything about fishing, or tap + to log a catch.",
+    }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  async function handleSend() {
+    const text = input.trim();
+    if (!text || loading) return;
+
+    const userMsg = { role: 'user', content: text };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const apiMessages = newMessages
+        .filter((_, i) => i > 0) // skip the initial bot greeting
+        .map(m => ({ role: m.role, content: m.content }));
+
+      const data = await sendMessage(apiMessages);
+      const reply = data.reply || data.content || 'No response.';
+      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: "Couldn't reach FishBot right now. Check your connection and try again.",
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100dvh',
+      background: '#0F1117',
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '16px 16px 12px',
+        borderBottom: '1px solid #2A2D3A',
+        background: '#0F1117',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: '50%',
+            background: '#1D9E75',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16, fontWeight: 600, color: 'white',
+          }}>F</div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#E8EAF0' }}>
+              FishBot
+            </div>
+            <div style={{ fontSize: 11, color: '#6B7280' }}>
+              Ontario freshwater intelligence
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: '16px 16px 80px',
+      }}>
+        {messages.map((msg, i) => (
+          <Message key={i} role={msg.role} content={msg.content} />
+        ))}
+        {loading && (
+          <div style={{
+            display: 'flex', justifyContent: 'flex-start', marginBottom: 8,
+          }}>
+            <div style={{
+              padding: '10px 14px',
+              borderRadius: '4px 14px 14px 14px',
+              background: '#1A1D27',
+              borderLeft: '2px solid #1D9E75',
+              color: '#6B7280',
+              fontSize: 14,
+            }}>
+              thinking...
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input bar */}
+      <div style={{
+        position: 'fixed',
+        bottom: 64,
+        left: 0, right: 0,
+        maxWidth: 480,
+        margin: '0 auto',
+        padding: '10px 12px',
+        background: '#0F1117',
+        borderTop: '1px solid #2A2D3A',
+        display: 'flex',
+        alignItems: 'flex-end',
+        gap: 8,
+        zIndex: 50,
+      }}>
+        {/* Log button */}
+        <button
+          onClick={() => onNavigate('log')}
+          style={{
+            width: 40, height: 40,
+            borderRadius: '50%',
+            background: '#1D9E75',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: 22,
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+          title="Log a catch"
+        >＋</button>
+
+        {/* Text input */}
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Ask anything..."
+          rows={1}
+          style={{
+            flex: 1,
+            background: '#1A1D27',
+            border: '1px solid #2A2D3A',
+            borderRadius: 20,
+            padding: '10px 14px',
+            color: '#E8EAF0',
+            fontSize: 14,
+            fontFamily: 'inherit',
+            resize: 'none',
+            outline: 'none',
+            maxHeight: 120,
+            overflowY: 'auto',
+          }}
+          onInput={e => {
+            e.target.style.height = 'auto';
+            e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+          }}
+        />
+
+        {/* Send button */}
+        <button
+          onClick={handleSend}
+          disabled={!input.trim() || loading}
+          style={{
+            width: 40, height: 40,
+            borderRadius: '50%',
+            background: input.trim() && !loading ? '#1D9E75' : '#2A2D3A',
+            border: 'none',
+            cursor: input.trim() && !loading ? 'pointer' : 'default',
+            fontSize: 18,
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            transition: 'background 0.15s',
+          }}
+        >↑</button>
+      </div>
+    </div>
+  );
+}

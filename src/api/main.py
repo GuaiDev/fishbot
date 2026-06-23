@@ -200,6 +200,47 @@ def log_trip(body: dict, _: None = Depends(verify_api_key)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/sessions")
+def get_sessions(_: None = Depends(verify_api_key)):
+    """Return all logged sessions with their primary stop info."""
+    from src.storage.database import get_db
+
+    db = get_db()
+    try:
+        rows = list(db.execute("""
+            SELECT
+                s.id, s.date, s.date_approx, s.overall_notes,
+                st.location_name, st.location_text,
+                GROUP_CONCAT(DISTINCT je.value) as species_caught,
+                sc.air_temp_c, sc.pressure_hpa, sc.anomaly_flag
+            FROM sessions s
+            LEFT JOIN stops st ON st.session_id = s.id
+            LEFT JOIN json_each(st.species_caught) je ON 1=1
+            LEFT JOIN session_conditions sc ON sc.session_id = s.id
+            GROUP BY s.id
+            ORDER BY s.id DESC
+            LIMIT 50
+        """).fetchall())
+
+        sessions = []
+        for r in rows:
+            sessions.append({
+                "id": r[0],
+                "date": r[1] or r[2],
+                "notes": r[3],
+                "location": r[4] or r[5] or "Unknown location",
+                "species_caught": [s.strip() for s in (r[6] or "").split(",") if s.strip()],
+                "conditions": {
+                    "air_temp_c": r[7],
+                    "pressure_hpa": r[8],
+                    "anomaly_flag": r[9],
+                } if r[7] else None,
+            })
+        return {"sessions": sessions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/log")
 def log_page():
     """Serve the mobile trip logging page."""
@@ -336,3 +377,9 @@ def ingest_data(body: dict, _: None = Depends(verify_api_key)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Serve React web app from /app — mount last so API routes take priority
+_web_dist = os.path.join(os.path.dirname(__file__), "../../web/dist")
+if os.path.exists(_web_dist):
+    app.mount("/app", StaticFiles(directory=_web_dist, html=True), name="webapp")

@@ -14,6 +14,9 @@ data/models/
 data/processed/map_data.json
 data/processed/map_index.html
 
+# Node
+web/node_modules/
+
 # Python
 __pycache__/
 *.pyc
