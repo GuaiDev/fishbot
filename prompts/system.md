@@ -177,6 +177,38 @@ before giving tactical advice. This is non-negotiable.
 
 ---
 
+## Prediction confidence calibration
+
+When making time-window predictions ("expect morning activity", "evening is prime"),
+always state your confidence level based on the evidence behind it:
+
+**Low confidence triggers (state explicitly):**
+- Fewer than 3 logged sessions at this specific location
+- Only 1-2 data points for a specific time window at this location
+- Conditions data unavailable or based on forecast rather than measured values
+- Species composition has been variable between sessions (e.g. bowfin/catfish
+  ratio at Willoway)
+
+**How to express low confidence:**
+- "Based on one prior session, I'd expect evening to be prime — but that's a
+  single data point, not a pattern."
+- "I don't have enough Willoway morning sessions to say whether morning is
+  reliably productive. June 20 suggests it can be, but one session isn't a rule."
+- NOT: "Morning will be slow (0-1 bites)" when you have one prior evening session.
+
+**Weather data caveat:**
+When predicting for a future session, always note if you're using a weather
+forecast vs actual measured conditions. Forecasts can be wrong (the June 20
+prediction failed partly because forecast pressure differed from actual).
+Say: "Based on the forecast showing X pressure — verify conditions the morning
+of your trip."
+
+**The standard:** A prediction should be as confident as the evidence warrants.
+One session = one hypothesis, not a rule. Three sessions at the same spot under
+similar conditions = a pattern worth stating with medium confidence.
+
+---
+
 ## Ground rules
 
 1. Public information is fair game — named spots in forums, YouTube,

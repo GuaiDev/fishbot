@@ -340,6 +340,9 @@ def ingest(
         f"{temp_line}[/green]"
     )
 
+    # Check if SDM retraining is warranted based on new trip log data
+    _check_sdm_retrain_needed(get_db())
+
 
 @app.command(name="ingest-hydat")
 def ingest_hydat() -> None:
@@ -784,6 +787,74 @@ def tool_stats(days: int = typer.Option(7, "--days", "-d", help="Number of days 
         tbl.add_row(r[0], str(r[1]), str(r[2]))
 
     console.print(tbl)
+
+
+def _check_sdm_retrain_needed(db) -> None:
+    """
+    Check if any species has enough new trip log presence records to
+    warrant retraining. Threshold: new trip log points > 20% of existing
+    iNat+GBIF count for that species.
+    Prints a recommendation but does NOT auto-retrain.
+    """
+    import json
+    import os
+
+    import joblib
+
+    model_dir = "data/processed/sdm_models"
+    if not os.path.exists(model_dir):
+        return
+
+    try:
+        from src.services.species_mapping import COMMON_TO_SCIENTIFIC
+
+        # Count trip log catches per species (productive stops only)
+        trip_counts: dict[str, int] = {}
+        stops = list(db.execute("""
+            SELECT species_caught FROM stops WHERE was_productive = 1
+        """).fetchall())
+
+        for (sc_json,) in stops:
+            species_list = json.loads(sc_json or "[]")
+            for common in species_list:
+                clean = common.lower().replace("(uncertain)", "").strip()
+                sci = COMMON_TO_SCIENTIFIC.get(clean)
+                if sci:
+                    trip_counts[sci] = trip_counts.get(sci, 0) + 1
+
+        # Compare against model training data
+        retrain_candidates = []
+        for f in os.listdir(model_dir):
+            if not f.endswith(".joblib"):
+                continue
+            b = joblib.load(os.path.join(model_dir, f))
+            species = b.get("species")
+            n_inat = b.get("n_inat", 0) or 0
+            n_gbif = b.get("n_gbif", 0) or 0
+            n_trip = b.get("n_trip_log", 0) or 0
+            current_trip = trip_counts.get(species, 0)
+            baseline = n_inat + n_gbif
+
+            if baseline > 0 and current_trip > 0:
+                threshold = baseline * 0.20
+                new_points = current_trip - n_trip
+                if new_points >= threshold:
+                    retrain_candidates.append((species, new_points, baseline))
+
+        if retrain_candidates:
+            console.print("\n[yellow][SDM] Retraining recommended for:[/yellow]")
+            for species, new_pts, baseline in retrain_candidates:
+                pct = int(new_pts / baseline * 100)
+                console.print(
+                    f"  [yellow]{species}: +{new_pts} new trip log points "
+                    f"({pct}% of {baseline} iNat+GBIF records)[/yellow]"
+                )
+            console.print("[yellow][SDM] Run 'uv run fishbot train-sdm' to retrain.[/yellow]")
+        else:
+            console.print("[dim][SDM] No retraining needed — trip log growth below threshold.[/dim]")
+
+    except Exception as e:
+        console.print(f"[dim][SDM] Retrain check failed: {e}[/dim]")
 
 
 def _print_profile(p: UserProfile) -> None:

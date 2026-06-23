@@ -294,6 +294,42 @@ def ingest_data(body: dict, _: None = Depends(verify_api_key)):
         results["lng"] = lng
         results["radius_km"] = radius_km
         results["status"] = "ok"
+
+        # Check if SDM retraining is warranted
+        try:
+            from src.cli.main import _check_sdm_retrain_needed as _sdm_check
+            import json as _json
+            import os as _os
+            import joblib as _joblib
+            from src.services.species_mapping import COMMON_TO_SCIENTIFIC as _c2s
+
+            model_dir = "data/processed/sdm_models"
+            retrain_candidates = []
+            if _os.path.exists(model_dir):
+                trip_counts: dict = {}
+                for (sc_json,) in db.execute(
+                    "SELECT species_caught FROM stops WHERE was_productive = 1"
+                ).fetchall():
+                    for common in _json.loads(sc_json or "[]"):
+                        clean = common.lower().replace("(uncertain)", "").strip()
+                        sci = _c2s.get(clean)
+                        if sci:
+                            trip_counts[sci] = trip_counts.get(sci, 0) + 1
+                for f in _os.listdir(model_dir):
+                    if not f.endswith(".joblib"):
+                        continue
+                    b = _joblib.load(_os.path.join(model_dir, f))
+                    species = b.get("species")
+                    baseline = (b.get("n_inat", 0) or 0) + (b.get("n_gbif", 0) or 0)
+                    n_trip = b.get("n_trip_log", 0) or 0
+                    current = trip_counts.get(species, 0)
+                    if baseline > 0 and (current - n_trip) >= baseline * 0.20:
+                        retrain_candidates.append(species)
+            results["sdm_retrain_recommended"] = len(retrain_candidates) > 0
+            results["sdm_retrain_species"] = retrain_candidates
+        except Exception:
+            results["sdm_retrain_recommended"] = False
+
         return results
 
     except HTTPException:
