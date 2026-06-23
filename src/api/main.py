@@ -322,35 +322,36 @@ def log_page():
 
 @app.post("/admin/bootstrap")
 def bootstrap(body: dict, _: None = Depends(verify_api_key)):
-    """One-time setup: create admin user and return a token."""
+    import traceback
     import secrets
     from datetime import datetime, timedelta
 
-    db = get_db()
-    username = body.get("username", "jason")
-
     try:
-        existing = list(db.execute("SELECT * FROM users WHERE id = 1").fetchall())
-    except Exception:
-        existing = []
+        db = get_db()
+        username = body.get("username", "jason")
 
-    if not existing:
+        existing = list(db.execute("SELECT id FROM users WHERE id = 1").fetchall())
+
+        if not existing:
+            db.execute(
+                "INSERT OR IGNORE INTO users (id, username, display_name, role, daily_message_limit) "
+                "VALUES (1, ?, 'Jason', 'admin', 200)",
+                [username],
+            )
+            db.conn.commit()
+
+        token = secrets.token_urlsafe(32)
+        expires = (datetime.now() + timedelta(days=90)).isoformat()
         db.execute(
-            "INSERT OR IGNORE INTO users (id, username, display_name, role, daily_message_limit) "
-            "VALUES (1, ?, 'Jason', 'admin', 200)",
-            [username],
+            "INSERT INTO user_sessions (user_id, token, expires_at, last_used_at) VALUES (1, ?, ?, ?)",
+            [token, expires, datetime.now().isoformat()],
         )
         db.conn.commit()
 
-    token = secrets.token_urlsafe(32)
-    expires = (datetime.now() + timedelta(days=90)).isoformat()
-    db.execute(
-        "INSERT INTO user_sessions (user_id, token, expires_at, last_used_at) VALUES (1, ?, ?, ?)",
-        [token, expires, datetime.now().isoformat()],
-    )
-    db.conn.commit()
+        return {"token": token, "user_id": 1, "username": username}
 
-    return {"token": token, "user_id": 1, "username": username}
+    except Exception as e:
+        return {"error": str(e), "traceback": traceback.format_exc()}
 
 
 @app.post("/admin/invite")
