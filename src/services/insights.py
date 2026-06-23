@@ -13,6 +13,7 @@ _DISPERSAL_SEED_PATH = Path("data/processed/dispersal_insights.json")
 def get_behavioral_insights_for_agent(
     species: str,
     condition_type: str | None = None,
+    user_id: int = 1,
 ) -> str:
     db = get_db()
     insights = query_insights(db, species=species, condition_type=condition_type, current_only=True)

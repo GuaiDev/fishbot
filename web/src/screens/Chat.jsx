@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import Message from '../components/Message';
 import { sendMessage } from '../api';
 
-export default function Chat({ onNavigate }) {
+export default function Chat({ onNavigate, user, onLogout }) {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -37,10 +37,14 @@ export default function Chat({ onNavigate }) {
       const reply = data.reply || data.content || 'No response.';
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
     } catch (err) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: "Couldn't reach FishBot right now. Check your connection and try again.",
-      }]);
+      if (err.status === 401) {
+        onLogout?.();
+        return;
+      }
+      const msg = err.status === 429
+        ? err.message
+        : "Couldn't reach FishBot right now. Check your connection and try again.";
+      setMessages(prev => [...prev, { role: 'assistant', content: msg }]);
     } finally {
       setLoading(false);
     }
@@ -52,6 +56,8 @@ export default function Chat({ onNavigate }) {
       handleSend();
     }
   }
+
+  const displayName = user?.display_name || user?.username || 'You';
 
   return (
     <div style={{
@@ -76,7 +82,7 @@ export default function Chat({ onNavigate }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 16, fontWeight: 600, color: 'white',
           }}>F</div>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#E8EAF0' }}>
               FishBot
             </div>
@@ -84,6 +90,23 @@ export default function Chat({ onNavigate }) {
               Ontario freshwater intelligence
             </div>
           </div>
+          {user && (
+            <button
+              onClick={onLogout}
+              title={`Logged in as ${displayName}`}
+              style={{
+                background: 'none',
+                border: '1px solid #2A2D3A',
+                borderRadius: '20px',
+                padding: '4px 10px',
+                color: '#6B7280',
+                fontSize: '11px',
+                cursor: 'pointer',
+              }}
+            >
+              {displayName}
+            </button>
+          )}
         </div>
       </div>
 

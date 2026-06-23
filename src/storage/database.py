@@ -17,6 +17,8 @@ def get_db(path: Path | None = None) -> Database:
     ensure_schema(db)
     migrate_behavioral_insights(db)
     migrate_stops(db)
+    migrate_angler_context_multi_user(db)
+    migrate_user_fields(db)
     return db
 
 
@@ -642,11 +644,16 @@ def ensure_schema(db: Database) -> None:
 
     db.execute("""
         CREATE TABLE IF NOT EXISTS angler_context (
-            id              INTEGER PRIMARY KEY CHECK (id = 1),
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL DEFAULT 1,
             content         TEXT NOT NULL DEFAULT '',
             last_updated    TEXT DEFAULT (datetime('now')),
             session_count   INTEGER DEFAULT 0
         )
+    """)
+    db.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_angler_context_user
+            ON angler_context(user_id)
     """)
 
 
@@ -729,6 +736,141 @@ def ensure_schema(db: Database) -> None:
         CREATE INDEX IF NOT EXISTS idx_session_conditions_session
             ON session_conditions(session_id)
     """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            username            TEXT UNIQUE NOT NULL,
+            display_name        TEXT,
+            created_at          TEXT DEFAULT (datetime('now')),
+            last_seen_at        TEXT,
+            is_active           INTEGER DEFAULT 1,
+            daily_message_limit INTEGER DEFAULT 50,
+            role                TEXT DEFAULT 'beta'
+        )
+    """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS invite_codes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            code        TEXT UNIQUE NOT NULL,
+            created_by  INTEGER,
+            used_by     INTEGER,
+            created_at  TEXT DEFAULT (datetime('now')),
+            used_at     TEXT,
+            is_active   INTEGER DEFAULT 1,
+            note        TEXT
+        )
+    """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            token       TEXT UNIQUE NOT NULL,
+            created_at  TEXT DEFAULT (datetime('now')),
+            expires_at  TEXT,
+            last_used_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS daily_usage (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL,
+            date            TEXT NOT NULL,
+            message_count   INTEGER DEFAULT 0,
+            UNIQUE(user_id, date)
+        )
+    """)
+
+    db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)
+    """)
+    db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_daily_usage_user_date ON daily_usage(user_id, date)
+    """)
+
+
+def migrate_angler_context_multi_user(db: Database) -> None:
+    """Convert singleton angler_context to per-user table. Idempotent."""
+    if "angler_context" not in db.table_names():
+        return
+    cols = {c.name for c in db["angler_context"].columns}
+    if "user_id" in cols:
+        return  # Already migrated
+
+    try:
+        existing_row = db["angler_context"].get(1)
+        existing_content = existing_row.get("content", "") if existing_row else ""
+        existing_session_count = existing_row.get("session_count", 0) if existing_row else 0
+        existing_last_updated = existing_row.get("last_updated") if existing_row else None
+    except Exception:
+        existing_content = ""
+        existing_session_count = 0
+        existing_last_updated = None
+
+    db.execute("ALTER TABLE angler_context RENAME TO angler_context_old")
+    db.execute("""
+        CREATE TABLE angler_context (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL DEFAULT 1,
+            content         TEXT NOT NULL DEFAULT '',
+            last_updated    TEXT DEFAULT (datetime('now')),
+            session_count   INTEGER DEFAULT 0
+        )
+    """)
+    db.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_angler_context_user
+            ON angler_context(user_id)
+    """)
+    if existing_content:
+        db.execute(
+            "INSERT INTO angler_context (user_id, content, last_updated, session_count) "
+            "VALUES (1, ?, ?, ?)",
+            [existing_content, existing_last_updated or datetime.now().isoformat(), existing_session_count],
+        )
+    db.execute("DROP TABLE IF EXISTS angler_context_old")
+    db.conn.commit()
+
+
+def migrate_user_fields(db: Database) -> None:
+    """Add user_id to personal tables. Idempotent. Existing rows get user_id=1."""
+    personal_tables = [
+        "sessions",
+        "stops",
+        "behavioral_insights",
+        "session_conditions",
+        "chat_sessions",
+        "chat_messages",
+        "api_usage",
+        "tool_usage",
+    ]
+    for table in personal_tables:
+        if table not in db.table_names():
+            continue
+        try:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER DEFAULT 1")
+        except Exception:
+            pass  # Column already exists
+        try:
+            db.execute(f"UPDATE {table} SET user_id = 1 WHERE user_id IS NULL")
+            db.conn.commit()
+        except Exception:
+            pass
+
+    # Ensure Jason is user_id=1
+    try:
+        existing = list(db.execute("SELECT id FROM users WHERE id = 1").fetchall())
+        if not existing:
+            db.execute(
+                "INSERT OR IGNORE INTO users (id, username, display_name, role) "
+                "VALUES (1, 'jason', 'Jason', 'admin')"
+            )
+            db.conn.commit()
+    except Exception:
+        pass
 
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:

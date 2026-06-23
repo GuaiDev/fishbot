@@ -789,6 +789,58 @@ def tool_stats(days: int = typer.Option(7, "--days", "-d", help="Number of days 
     console.print(tbl)
 
 
+@app.command()
+def invite(note: str = typer.Option("", "--note", "-n", help="Note for this invite code")) -> None:
+    """Generate an invite code for a friend."""
+    from src.auth.auth import generate_invite_code
+
+    db = get_db()
+    code = generate_invite_code(db, created_by=1, note=note)
+    console.print(f"\n[green]Invite code: [bold]{code}[/bold][/green]")
+    console.print("Share this URL: https://web-production-e2094.up.railway.app/app")
+    console.print(f"They enter: [bold]{code}[/bold] + choose a username")
+    if note:
+        console.print(f"Note: {note}")
+
+
+@app.command()
+def users() -> None:
+    """List all registered users and their usage."""
+    from rich.table import Table
+
+    db = get_db()
+    try:
+        rows = list(db.execute("""
+            SELECT u.id, u.username, u.display_name, u.role,
+                   u.created_at,
+                   COALESCE(SUM(du.message_count), 0) as total_messages
+            FROM users u
+            LEFT JOIN daily_usage du ON du.user_id = u.id
+            GROUP BY u.id
+            ORDER BY u.id
+        """).fetchall())
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return
+
+    if not rows:
+        console.print("[dim]No users yet.[/dim]")
+        return
+
+    tbl = Table(title="Registered Users")
+    tbl.add_column("ID", justify="right")
+    tbl.add_column("Username")
+    tbl.add_column("Display Name")
+    tbl.add_column("Role")
+    tbl.add_column("Joined")
+    tbl.add_column("Total Msgs", justify="right")
+
+    for r in rows:
+        tbl.add_row(str(r[0]), r[1], r[2] or "", r[3] or "", (r[4] or "")[:10], str(r[5]))
+
+    console.print(tbl)
+
+
 def _check_sdm_retrain_needed(db) -> None:
     """
     Check if any species has enough new trip log presence records to

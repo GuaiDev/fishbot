@@ -19,10 +19,42 @@ def verify_api_key(x_api_key: str = Header(None)) -> None:
     """Verify admin API key for protected endpoints."""
     expected = os.environ.get("FISHBOT_API_KEY")
     if not expected:
-        # No key configured — development mode, allow all
         return
     if x_api_key != expected:
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+def get_current_user(authorization: str = Header(None)) -> dict:
+    """Extract and validate user from Authorization: Bearer <token> header."""
+    from src.auth.auth import get_user_from_token
+    from src.storage.database import get_db
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = authorization.replace("Bearer ", "").strip()
+    db = get_db()
+    user = get_user_from_token(db, token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return user
+
+
+def get_current_user_or_apikey(
+    authorization: str = Header(None),
+    x_api_key: str = Header(None),
+) -> dict:
+    """Accept either Bearer token (users) or X-Api-Key (admin fallback for log.html)."""
+    from src.auth.auth import get_user_from_token
+    from src.storage.database import get_db
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.replace("Bearer ", "").strip()
+        db = get_db()
+        user = get_user_from_token(db, token)
+        if user:
+            return user
+    expected = os.environ.get("FISHBOT_API_KEY")
+    if expected and x_api_key == expected:
+        return {"id": 1, "username": "jason", "role": "admin", "daily_message_limit": 9999}
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 @asynccontextmanager
@@ -92,44 +124,84 @@ def health():
     return {"status": "ok", "service": "fishbot"}
 
 
-@app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest):
-    """Send a message to FishBot and get a response.
-
-    Pass conversation_history from the previous response to maintain context.
-    Only user/assistant text turns are tracked in history — intermediate tool
-    calls are handled server-side and not exposed to the client.
+@app.post("/auth/signup")
+def signup(body: dict):
     """
-    try:
-        from src.agent.chat import run_chat_api
+    Redeem an invite code and create an account.
+    Body: {"code": "A3KX9P2Q", "username": "jake", "display_name": "Jake"}
+    Returns: {"token": "...", "user_id": N, "username": "..."}
+    """
+    from src.auth.auth import redeem_invite_code
+    from src.storage.database import get_db
+    code = body.get("code", "").strip()
+    username = body.get("username", "").strip()
+    display_name = body.get("display_name", "").strip()
 
-        messages = [
-            {"role": msg.role, "content": msg.content}
-            for msg in (request.conversation_history or [])
-        ]
-        messages.append({"role": "user", "content": request.message})
+    if not code or not username:
+        raise HTTPException(status_code=400, detail="code and username are required")
+    if len(username) < 2 or len(username) > 20:
+        raise HTTPException(status_code=400, detail="Username must be 2-20 characters")
+    if not username.isalnum():
+        raise HTTPException(status_code=400, detail="Username must be letters and numbers only")
 
-        result = run_chat_api(messages)
+    db = get_db()
+    result = redeem_invite_code(db, code, username, display_name)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
 
-        # Return only user/assistant text turns — strip intermediate tool messages
-        clean_history = [
-            ChatMessage(role=m["role"], content=m["content"])
-            for m in result["messages"]
-            if isinstance(m["content"], str)
-        ]
+    return {
+        "token": result["token"],
+        "user_id": result["user_id"],
+        "username": username,
+        "display_name": display_name or username,
+    }
 
-        return ChatResponse(
-            reply=result["reply"],
-            conversation_history=clean_history,
-            tool_calls_made=result["tool_calls"],
+
+@app.get("/auth/me")
+def me(user: dict = Depends(get_current_user)):
+    """Return current user info."""
+    from src.auth.auth import check_rate_limit
+    from src.storage.database import get_db
+    db = get_db()
+    usage = check_rate_limit(db, user["id"], user.get("daily_message_limit", 50))
+    return {
+        "user_id": user["id"],
+        "username": user["username"],
+        "display_name": user.get("display_name"),
+        "role": user.get("role"),
+        "usage_today": usage["used"],
+        "daily_limit": usage["limit"],
+    }
+
+
+@app.post("/chat")
+def chat(body: dict, user: dict = Depends(get_current_user)):
+    """Send a message to FishBot. Body: {"messages": [{"role": "user", "content": "..."}]}"""
+    from src.agent.chat import run_chat_api
+    from src.auth.auth import check_rate_limit, increment_usage
+    from src.storage.database import get_db
+
+    db = get_db()
+    limit = user.get("daily_message_limit", 50)
+    usage = check_rate_limit(db, user["id"], limit)
+    if not usage["allowed"]:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily message limit reached ({limit} messages/day). Try again tomorrow.",
         )
 
+    try:
+        messages = body.get("messages", [])
+        session_id = body.get("session_id")
+        result = run_chat_api(messages, session_id=session_id, user_id=user["id"])
+        increment_usage(db, user["id"])
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/log-trip")
-def log_trip(body: dict, _: None = Depends(verify_api_key)):
+def log_trip(body: dict, user: dict = Depends(get_current_user_or_apikey)):
     """Log a fishing trip from natural language, with optional photo metadata.
 
     Body: {
@@ -187,7 +259,7 @@ def log_trip(body: dict, _: None = Depends(verify_api_key)):
             if photo_url:
                 first_stop["photo_url"] = photo_url
 
-        result = log_session(parsed, db)
+        result = log_session(parsed, db, user_id=user["id"])
         return {
             "status": "logged",
             "session_id": result["session_id"],
@@ -201,8 +273,8 @@ def log_trip(body: dict, _: None = Depends(verify_api_key)):
 
 
 @app.get("/sessions")
-def get_sessions(_: None = Depends(verify_api_key)):
-    """Return all logged sessions with their primary stop info."""
+def get_sessions(user: dict = Depends(get_current_user)):
+    """Return logged sessions for the current user."""
     from src.storage.database import get_db
 
     db = get_db()
@@ -217,10 +289,11 @@ def get_sessions(_: None = Depends(verify_api_key)):
             LEFT JOIN stops st ON st.session_id = s.id
             LEFT JOIN json_each(st.species_caught) je ON 1=1
             LEFT JOIN session_conditions sc ON sc.session_id = s.id
+            WHERE s.user_id = ?
             GROUP BY s.id
             ORDER BY s.id DESC
             LIMIT 50
-        """).fetchall())
+        """, [user["id"]]).fetchall())
 
         sessions = []
         for r in rows:
@@ -245,6 +318,56 @@ def get_sessions(_: None = Depends(verify_api_key)):
 def log_page():
     """Serve the mobile trip logging page."""
     return FileResponse(os.path.join(_static_dir, "log.html"))
+
+
+@app.post("/admin/invite")
+def create_invite(body: dict, user: dict = Depends(get_current_user)):
+    """Generate an invite code. Admin only."""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    from src.auth.auth import generate_invite_code
+    from src.storage.database import get_db
+    db = get_db()
+    note = body.get("note", "")
+    code = generate_invite_code(db, created_by=user["id"], note=note)
+    return {"code": code, "note": note}
+
+
+@app.get("/admin/invites")
+def list_invites(user: dict = Depends(get_current_user)):
+    """List all invite codes. Admin only."""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    from src.storage.database import get_db
+    db = get_db()
+    codes = list(db["invite_codes"].rows)
+    return {"codes": codes}
+
+
+@app.get("/admin/users")
+def list_users(user: dict = Depends(get_current_user)):
+    """List all users and their usage. Admin only."""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    from src.storage.database import get_db
+    db = get_db()
+    users = list(db.execute("""
+        SELECT u.id, u.username, u.display_name, u.role,
+               u.created_at, u.last_seen_at,
+               COALESCE(SUM(du.message_count), 0) as total_messages
+        FROM users u
+        LEFT JOIN daily_usage du ON du.user_id = u.id
+        GROUP BY u.id
+        ORDER BY u.id
+    """).fetchall())
+    return {"users": [
+        {
+            "id": r[0], "username": r[1], "display_name": r[2],
+            "role": r[3], "created_at": r[4], "last_seen_at": r[5],
+            "total_messages": r[6],
+        }
+        for r in users
+    ]}
 
 
 @app.post("/ingest")

@@ -73,6 +73,7 @@ def close_and_update_context(
     session_id: str,
     messages: list[dict],
     client,
+    user_id: int = 1,
 ) -> None:
     """End a session: generate summary, merge into rolling angler context, mark ended.
 
@@ -92,6 +93,6 @@ def close_and_update_context(
     summary = generate_session_summary(messages, client)
 
     if summary and len(summary.strip()) > 100:
-        update_context(db, summary, client)
+        update_context(db, summary, client, user_id=user_id)
 
     end_session(db, session_id, summary)

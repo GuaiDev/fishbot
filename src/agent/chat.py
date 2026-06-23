@@ -63,7 +63,7 @@ def _summarize_history(messages: list[dict], client) -> list[dict]:
 
 
 def _run_full_pipeline(
-    messages: list[dict], session_id: str, mode: str = "synthesis"
+    messages: list[dict], session_id: str, mode: str = "synthesis", user_id: int = 1
 ) -> dict:
     """Non-streaming agentic loop. The synthesis path and fallback for all modes."""
     try:
@@ -77,9 +77,11 @@ def _run_full_pipeline(
     home = get_jurisdiction(profile.home_jurisdiction)
     system_prompt = assemble(load_template(), profile, trips, home)
     start_session(db, session_id)
-    angler_context = load_context(db)
+    angler_context = load_context(db, user_id=user_id)
     if angler_context:
         system_prompt = system_prompt + "\n\n" + format_context_for_prompt(angler_context)
+    if user_id != 1:
+        system_prompt += f"\n\nCurrent user: {user_id} (filter all personal data queries by this user_id)"
     model = get_model()
     tools = _tools(profile)
     tool_calls_made: list[str] = []
@@ -123,7 +125,7 @@ def _run_full_pipeline(
             session_row = db["chat_sessions"].get(session_id)
             if session_row and (session_row.get("turn_count") or 0) >= 15:
                 if not session_row.get("summary"):
-                    close_and_update_context(db, session_id, messages, client)
+                    close_and_update_context(db, session_id, messages, client, user_id=user_id)
 
             return {"reply": reply, "tool_calls": tool_calls_made, "messages": messages}
 
@@ -133,7 +135,7 @@ def _run_full_pipeline(
         tool_results: list[dict] = []
         for block in tool_use_blocks:
             tool_calls_made.append(block.name)
-            result = _execute_tool(block.name, block.input)
+            result = _execute_tool(block.name, block.input, user_id=user_id)
             tool_results.append(
                 {"type": "tool_result", "tool_use_id": block.id, "content": result}
             )
@@ -154,6 +156,7 @@ def run_chat_api(
     messages: list[dict],
     session_id: str | None = None,
     routing_enabled: bool = True,
+    user_id: int = 1,
 ) -> dict:
     """Routed entry point. Classifies the latest user message and dispatches to the
     cheapest capable path. Falls back to the full pipeline on synthesis or any uncertainty.
@@ -169,7 +172,7 @@ def run_chat_api(
             break
 
     if not routing_enabled or latest_user is None:
-        return _run_full_pipeline(messages, session_id)
+        return _run_full_pipeline(messages, session_id, user_id=user_id)
 
     from src.agent.router import classify_message, handle_reflex
 
@@ -195,7 +198,7 @@ def run_chat_api(
         }
 
     if mode == "memory":
-        return _run_full_pipeline(messages, session_id, mode="memory")
+        return _run_full_pipeline(messages, session_id, mode="memory", user_id=user_id)
 
     # synthesis mode — check cache first
     if mode == "synthesis":
@@ -245,7 +248,7 @@ def run_chat_api(
                 }
 
         # Cache miss (or no location) — run full pipeline
-        result = _run_full_pipeline(messages, session_id, mode="synthesis")
+        result = _run_full_pipeline(messages, session_id, mode="synthesis", user_id=user_id)
 
         # Store result in cache if we have a location
         if (lat is not None or location_name is not None) and result.get("reply"):
@@ -264,7 +267,7 @@ def run_chat_api(
         return result
 
     # Fallback — full pipeline
-    return _run_full_pipeline(messages, session_id, mode=mode)
+    return _run_full_pipeline(messages, session_id, mode=mode, user_id=user_id)
 
 
 def _log_routing(session_id: str, mode: str, tokens: int) -> None:
@@ -459,6 +462,7 @@ def _agentic_loop(
     tools: list[dict],
     console: Console,
     session_id: str | None = None,
+    user_id: int = 1,
 ) -> None:
     """Stream a response, handle tool calls, loop until end_turn."""
     db = get_db()
@@ -507,7 +511,7 @@ def _agentic_loop(
 
         tool_results: list[dict] = []
         for block in tool_use_blocks:
-            result = _execute_tool(block.name, block.input)
+            result = _execute_tool(block.name, block.input, user_id=user_id)
             tool_results.append(
                 {
                     "type": "tool_result",
@@ -537,7 +541,7 @@ def _normalize_block(b: Any) -> dict:
     return {"type": b.type}
 
 
-def _execute_tool(name: str, inputs: dict) -> str:
+def _execute_tool(name: str, inputs: dict, user_id: int = 1) -> str:
     if name == "get_recent_observations":
         from src.services.observations import query_for_agent
 
@@ -581,6 +585,7 @@ def _execute_tool(name: str, inputs: dict) -> str:
         return get_behavioral_insights_for_agent(
             species=inputs["species"],
             condition_type=inputs.get("condition_type"),
+            user_id=user_id,
         )
     if name == "record_behavioral_insight":
         from src.services.insights import record_behavioral_insight_for_agent
@@ -829,7 +834,7 @@ def _execute_tool(name: str, inputs: dict) -> str:
 
         db = get_db()
         parsed = parse_session_from_text(inputs["description"], db)
-        result = log_session(parsed, db)
+        result = log_session(parsed, db, user_id=user_id)
         stops_summary = [
             {
                 "location": s.get("location_text"),
@@ -871,7 +876,7 @@ def _execute_tool(name: str, inputs: dict) -> str:
     if name == "get_my_fishing_summary":
         from src.services.trip_logger import get_trip_summary
 
-        return json.dumps({"summary": get_trip_summary(get_db())})
+        return json.dumps({"summary": get_trip_summary(get_db(), user_id=user_id)})
     if name == "get_trips_at_location":
         from src.services.trip_logger import get_trips_at_location
 
@@ -880,6 +885,7 @@ def _execute_tool(name: str, inputs: dict) -> str:
             location_query=inputs.get("location_query"),
             lat=inputs.get("lat"),
             lng=inputs.get("lng"),
+            user_id=user_id,
         )
     if name == "search_knowledge_base":
         from src.services.knowledge import search_knowledge_base_for_agent

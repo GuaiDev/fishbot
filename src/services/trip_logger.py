@@ -16,7 +16,7 @@ from src.storage.trips import get_parsed_trips, insert_parsed_trip
 logger = logging.getLogger(__name__)
 
 
-def log_session(parsed_session: dict, db_conn: Database) -> dict:
+def log_session(parsed_session: dict, db_conn: Database, user_id: int = 1) -> dict:
     """Insert a parsed session and all its stops into the database.
 
     Returns {"session_id": int, "stops_logged": int}
@@ -26,6 +26,7 @@ def log_session(parsed_session: dict, db_conn: Database) -> dict:
             "date": parsed_session.get("date"),
             "date_approx": parsed_session.get("date_approx"),
             "overall_notes": parsed_session.get("overall_notes"),
+            "user_id": user_id,
         }
     ).last_pk
 
@@ -34,6 +35,7 @@ def log_session(parsed_session: dict, db_conn: Database) -> dict:
         db_conn["stops"].insert(
             {
                 "session_id": session_id,
+                "user_id": user_id,
                 "location_text": stop.get("location_text") or "",
                 "location_name": stop.get("location_name"),
                 "lat": stop.get("lat"),
@@ -189,7 +191,7 @@ def log_trip(  # DEPRECATED — use log_session / parse_session_from_text instea
     }
 
 
-def get_trip_summary(db: Database) -> str:
+def get_trip_summary(db: Database, user_id: int = 1) -> str:
     """Return a natural-language summary of all logged trips for agent context."""
     has_stops = "stops" in db.table_names()
     has_parsed = "parsed_trips" in db.table_names()
@@ -204,9 +206,11 @@ def get_trip_summary(db: Database) -> str:
     n_sessions = 0
 
     if has_stops:
-        stops = list(db["stops"].rows)
+        stops = list(db["stops"].rows_where("user_id = ?", [user_id]))
         n_stops = len(stops)
-        n_sessions = db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        n_sessions = db.execute(
+            "SELECT COUNT(*) FROM sessions WHERE user_id = ?", [user_id]
+        ).fetchone()[0]
         for stop in stops:
             species = json.loads(stop.get("species_caught") or "[]")
             for sp in species:
@@ -217,7 +221,8 @@ def get_trip_summary(db: Database) -> str:
                 location_counter[loc[:50]] += 1
 
         session_dates = list(db.execute(
-            "SELECT date FROM sessions WHERE date IS NOT NULL"
+            "SELECT date FROM sessions WHERE date IS NOT NULL AND user_id = ?",
+            [user_id],
         ).fetchall())
         dates = [r[0] for r in session_dates]
 
@@ -267,6 +272,7 @@ def get_trips_at_location(
     lat: float | None = None,
     lng: float | None = None,
     radius_km: float = 2.0,
+    user_id: int = 1,
 ) -> str:
     """Return a summary of the user's logged stops at a specific location.
 
@@ -277,7 +283,7 @@ def get_trips_at_location(
     if "stops" not in db.table_names():
         return "No trips logged yet."
 
-    stops = list(db["stops"].rows)
+    stops = list(db["stops"].rows_where("user_id = ?", [user_id]))
     if not stops:
         return "No trips logged yet."
 
