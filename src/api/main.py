@@ -320,6 +320,26 @@ def log_page():
     return FileResponse(os.path.join(_static_dir, "log.html"))
 
 
+@app.post("/admin/bootstrap")
+def bootstrap(body: dict, _: None = Depends(verify_api_key)):
+    """One-time setup: create the admin user and return a token. Only works if user_id=1 doesn't exist."""
+    from src.auth.auth import _create_token
+    db = get_db()
+
+    existing = list(db["users"].rows_where("id = 1"))
+    if existing:
+        token = _create_token(db, 1)
+        return {"token": token, "user_id": 1, "username": existing[0]["username"]}
+
+    db.execute(
+        "INSERT OR IGNORE INTO users (id, username, display_name, role) VALUES (1, ?, 'Jason', 'admin')",
+        [body.get("username", "jason")],
+    )
+    db.conn.commit()
+    token = _create_token(db, 1)
+    return {"token": token, "user_id": 1, "username": body.get("username", "jason")}
+
+
 @app.post("/admin/invite")
 def create_invite(body: dict, user: dict = Depends(get_current_user)):
     """Generate an invite code. Admin only."""
