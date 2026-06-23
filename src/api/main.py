@@ -322,22 +322,35 @@ def log_page():
 
 @app.post("/admin/bootstrap")
 def bootstrap(body: dict, _: None = Depends(verify_api_key)):
-    """One-time setup: create the admin user and return a token. Only works if user_id=1 doesn't exist."""
-    from src.auth.auth import _create_token
+    """One-time setup: create admin user and return a token."""
+    import secrets
+    from datetime import datetime, timedelta
+
     db = get_db()
+    username = body.get("username", "jason")
 
-    existing = list(db["users"].rows_where("id = 1"))
-    if existing:
-        token = _create_token(db, 1)
-        return {"token": token, "user_id": 1, "username": existing[0]["username"]}
+    try:
+        existing = list(db.execute("SELECT * FROM users WHERE id = 1").fetchall())
+    except Exception:
+        existing = []
 
+    if not existing:
+        db.execute(
+            "INSERT OR IGNORE INTO users (id, username, display_name, role, daily_message_limit) "
+            "VALUES (1, ?, 'Jason', 'admin', 200)",
+            [username],
+        )
+        db.conn.commit()
+
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.now() + timedelta(days=90)).isoformat()
     db.execute(
-        "INSERT OR IGNORE INTO users (id, username, display_name, role) VALUES (1, ?, 'Jason', 'admin')",
-        [body.get("username", "jason")],
+        "INSERT INTO user_sessions (user_id, token, expires_at, last_used_at) VALUES (1, ?, ?, ?)",
+        [token, expires, datetime.now().isoformat()],
     )
     db.conn.commit()
-    token = _create_token(db, 1)
-    return {"token": token, "user_id": 1, "username": body.get("username", "jason")}
+
+    return {"token": token, "user_id": 1, "username": username}
 
 
 @app.post("/admin/invite")
