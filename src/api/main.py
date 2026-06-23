@@ -325,6 +325,7 @@ def bootstrap(body: dict, _: None = Depends(verify_api_key)):
     import traceback
     import secrets
     from datetime import datetime, timedelta
+    from src.storage.database import get_db
 
     try:
         db = get_db()
