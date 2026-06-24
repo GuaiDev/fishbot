@@ -537,6 +537,104 @@ def ingest_data(body: dict, _: None = Depends(verify_api_key)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/map/segments")
+def get_map_segments(
+    north: float,
+    south: float,
+    east: float,
+    west: float,
+    mode: str = "balanced",
+    limit: int = 300,
+    user: dict = Depends(get_current_user),
+):
+    """Return stream segments within viewport bounds for explore mode."""
+    from src.storage.database import get_db
+
+    score_col = {
+        "easy": "score_easy",
+        "adventure": "score_adventure",
+    }.get(mode, "score_balanced")
+
+    db = get_db()
+    rows = list(db.execute(f"""
+        SELECT ogf_id, lat, lng, {score_col} as score,
+               watercourse_name, nearest_named_stream,
+               stream_order, top1_species, top1_prob,
+               top2_species, top2_prob,
+               is_confluence, connected_to_waterbody,
+               google_maps_url, swoop_url,
+               habitat_score, access_score
+        FROM map_segments
+        WHERE lat BETWEEN ? AND ?
+          AND lng BETWEEN ? AND ?
+          AND {score_col} IS NOT NULL
+        ORDER BY {score_col} DESC
+        LIMIT ?
+    """, [south, north, west, east, limit]).fetchall())
+
+    cols = [
+        "ogf_id", "lat", "lng", "score", "watercourse_name",
+        "nearest_named_stream", "stream_order", "top1_species", "top1_prob",
+        "top2_species", "top2_prob", "is_confluence", "connected_to_waterbody",
+        "google_maps_url", "swoop_url", "habitat_score", "access_score",
+    ]
+    return {
+        "segments": [dict(zip(cols, r)) for r in rows],
+        "count": len(rows),
+        "mode": mode,
+        "bounds": {"north": north, "south": south, "east": east, "west": west},
+    }
+
+
+@app.get("/map/my-stops")
+def get_my_stops(user: dict = Depends(get_current_user)):
+    """Return all of the user's logged stops with coordinates for personal map mode."""
+    from src.storage.database import get_db
+    import json
+
+    db = get_db()
+    rows = list(db.execute("""
+        SELECT st.id, st.lat, st.lng, st.photo_lat, st.photo_lng,
+               st.location_name, st.location_text,
+               st.species_caught, st.was_productive,
+               st.technique, st.gear,
+               s.date, s.date_approx,
+               sc.air_temp_c, sc.pressure_hpa, sc.anomaly_flag
+        FROM stops st
+        JOIN sessions s ON st.session_id = s.id
+        LEFT JOIN session_conditions sc ON sc.session_id = s.id
+        WHERE st.user_id = ?
+          AND (st.lat IS NOT NULL OR st.photo_lat IS NOT NULL)
+        ORDER BY s.id DESC
+    """, [user["id"]]).fetchall())
+
+    stops = []
+    for r in rows:
+        lat = r[3] if r[3] is not None else r[1]   # photo_lat preferred
+        lng = r[4] if r[4] is not None else r[2]   # photo_lng preferred
+        if not lat:
+            continue
+        species = json.loads(r[7] or "[]")
+        stops.append({
+            "stop_id": r[0],
+            "lat": lat,
+            "lng": lng,
+            "location": r[5] or r[6] or "Unknown",
+            "species": species,
+            "productive": bool(r[8]),
+            "technique": r[9],
+            "gear": r[10],
+            "date": r[11] or r[12] or "Unknown",
+            "conditions": {
+                "air_temp_c": r[13],
+                "pressure_hpa": r[14],
+                "anomaly_flag": r[15],
+            } if r[13] else None,
+        })
+
+    return {"stops": stops, "count": len(stops)}
+
+
 # Serve React web app from /app — mount last so API routes take priority
 _web_dist = os.path.join(os.path.dirname(__file__), "../../web/dist")
 if os.path.exists(_web_dist):

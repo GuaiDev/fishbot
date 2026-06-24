@@ -1,6 +1,7 @@
 export default function NavBar({ screen, onNavigate }) {
   const tabs = [
     { id: 'chat', label: 'Chat', icon: '💬' },
+    { id: 'map', label: 'Map', icon: '🗺️' },
     { id: 'log', label: 'Log', icon: '＋' },
     { id: 'trips', label: 'Trips', icon: '📋' },
   ];

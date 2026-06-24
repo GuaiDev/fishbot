@@ -793,6 +793,40 @@ def ensure_schema(db: Database) -> None:
     """)
 
 
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS map_segments (
+            ogf_id              INTEGER PRIMARY KEY,
+            lat                 REAL NOT NULL,
+            lng                 REAL NOT NULL,
+            score_balanced      REAL,
+            score_easy          REAL,
+            score_adventure     REAL,
+            habitat_score       REAL,
+            access_score        REAL,
+            stream_order        INTEGER,
+            watercourse_name    TEXT,
+            nearest_named_stream TEXT,
+            is_confluence       INTEGER DEFAULT 0,
+            connected_to_waterbody INTEGER DEFAULT 0,
+            observation_pressure REAL,
+            top1_species        TEXT,
+            top1_prob           REAL,
+            top2_species        TEXT,
+            top2_prob           REAL,
+            google_maps_url     TEXT,
+            swoop_url           TEXT
+        )
+    """)
+    db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_map_segments_lat_lng
+            ON map_segments(lat, lng)
+    """)
+    db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_map_segments_score_balanced
+            ON map_segments(score_balanced DESC)
+    """)
+
+
 def migrate_angler_context_multi_user(db: Database) -> None:
     """Convert singleton angler_context to per-user table. Idempotent."""
     if "angler_context" not in db.table_names():

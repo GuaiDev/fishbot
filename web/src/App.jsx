@@ -3,6 +3,7 @@ import Chat from './screens/Chat';
 import LogTrip from './screens/LogTrip';
 import Trips from './screens/Trips';
 import Login from './screens/Login';
+import Map from './screens/Map';
 import NavBar from './components/NavBar';
 import { getMe } from './api';
 
@@ -73,6 +74,7 @@ export default function App() {
       background: '#0F1117',
     }}>
       {screen === 'chat' && <Chat onNavigate={setScreen} user={user} onLogout={handleLogout} />}
+      {screen === 'map' && <Map />}
       {screen === 'log' && <LogTrip onNavigate={setScreen} />}
       {screen === 'trips' && <Trips onNavigate={setScreen} />}
       <NavBar screen={screen} onNavigate={setScreen} />
