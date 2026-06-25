@@ -841,6 +841,45 @@ def users() -> None:
     console.print(tbl)
 
 
+@app.command()
+def token() -> None:
+    """Get or refresh the admin Bearer token for Railway API access."""
+    import secrets
+    import sys
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, "src")
+    from src.storage.database import ensure_schema, get_db as _get_db
+
+    db = _get_db()
+    ensure_schema(db)
+
+    try:
+        user = next(db["users"].rows_where("id = 1"), None)
+        if not user:
+            console.print("No admin user found. Run on Railway first or use bootstrap endpoint.")
+            return
+
+        new_token = secrets.token_urlsafe(32)
+        expires = (datetime.now() + timedelta(days=90)).isoformat()
+        db["user_sessions"].insert({
+            "user_id": 1,
+            "token": new_token,
+            "expires_at": expires,
+            "last_used_at": datetime.now().isoformat(),
+        })
+        db.conn.commit()
+
+        console.print("\n[green]Admin token (valid 90 days):[/green]")
+        console.print(f"Bearer {new_token}")
+        console.print("\n[dim]Save this. Use it to generate invite codes:[/dim]")
+        console.print(f'curl -X POST https://web-production-e2094.up.railway.app/admin/invite \\')
+        console.print(f'  -H "Authorization: Bearer {new_token}" \\')
+        console.print(f"  -d '{{\"note\": \"friendsname\"}}'")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+
+
 def _check_sdm_retrain_needed(db) -> None:
     """
     Check if any species has enough new trip log presence records to
