@@ -295,32 +295,16 @@ Build after web UI is proven and user base exists.
 - CLI: fishbot invite --note "name", fishbot users
 - React: Login screen, auth gate in App.jsx, 401/429 handling
 
-### Map — two modes 📋
-Add Leaflet map into the React web app with two toggleable states:
-
-**Personal mode:**
-- Shows the user's own logged stops as markers
-- Marker color/size reflects productivity (green = caught fish, grey = blank)
-- Tap a marker → shows what was caught there, conditions, date
-- Populated entirely from the user's trip log (stops table)
-- Empty state: "Log trips to see your spots appear here"
-
-**Explore mode:**
-- Shows OHN stream segments scored by SDM predictions and exploration value
-- The existing adventure/easy_access/balanced scoring modes
-- Heatmap below zoom 11, CircleMarkers above zoom 11
-- Tap a segment → synthesis cache check → show "why this spot is interesting"
-- find_exploration_targets tool wired to map
-
-**Toggle:** Simple button in the map header switching between Personal and Explore.
-No other UI needed — the two modes share the same map, different data layers.
-
-**Technical notes:**
-- Leaflet already built and working in the existing Flask/Python UI
-- React wrapper: react-leaflet package
-- Personal mode: GET /sessions → extract stop coordinates → render markers
-- Explore mode: existing OHN segment data + SDM predictions already in DB
-- Synthesis cache pre-warmed for known spots → tap = instant answer
+### Map screen — personal mode + explore mode ✅
+Built and deployed. React map with two toggleable modes:
+- Personal mode: user's logged stops as green/grey dots
+- Explore mode: 47,454 OHN segments colored by SDM score (red→blue)
+- Scoring mode selector: balanced / easy access / adventure
+- Bottom sheet on tap: stream details, species predictions, Google Maps + SWOOP links
+- Viewport-bounded API: /map/segments returns only segments in current view
+- map_segments table imported from map_data.json (47,454 rows)
+- Auto-import on Railway startup if table is empty
+- react-leaflet downgraded to v4 (v5 incompatible with React 18)
 
 ### Admin Dashboard 💡
 Simple web page at /admin showing:
@@ -329,6 +313,37 @@ Simple web page at /admin showing:
 - Which spots are being asked about most (synthesis cache hit counts)
 - Which tools are firing most (tool_usage table)
 Useful for monitoring beta tester activity and model performance.
+
+### Map — explore mode improvements (next session) 📋
+Current state: dots appear when zoomed in past zoom 11, colored by score.
+Improvements needed:
+- Heatmap at low zoom (below zoom 11) showing hotspot density
+  Use leaflet.heat plugin — already used in src/map/index.html
+  Pre-aggregate heatmap data from map_segments table
+- "Zoom in to see spots" hint disappears when dots are visible
+- Filter panel: stream order filter, confluence-only toggle, species filter
+- Performance: currently fetches 300 segments per viewport pan — test
+  whether this feels responsive on mobile or needs further optimization
+
+### Map — personal mode improvements 📋
+- Empty state currently shows but needs better copy
+- Add "Save to explore later" button on explore mode segments
+  Creates a saved_spots table, segments show differently in personal mode
+  This is the "explore → personal" pipeline that solves cold-start problem
+- Show trip count per location (if same spot fished multiple times)
+- Color intensity reflects catch rate, not just productive/unproductive binary
+
+### Map — token management 📋
+Admin token expires and requires bootstrap curl to refresh.
+Add a CLI command: fishbot token → prints current valid admin token
+or refreshes it automatically. Reduces friction for generating invite codes.
+
+### Admin dashboard 📋
+Track beta tester activity:
+- Messages per user per day
+- Which spots are being asked about (synthesis cache hit counts)
+- Cost per user
+Simple /admin page served from FastAPI, protected by admin role.
 
 ### Free / Premium Tier Boundary 📋
 Router mode field (reflex/synthesis/memory) in api_usage is the foundation.
