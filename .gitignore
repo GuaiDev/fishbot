@@ -11,7 +11,6 @@ data/user_profile.json
 data/cache/
 data/raw/
 data/models/
-data/processed/map_data.json
 data/processed/map_index.html
 
 # Node

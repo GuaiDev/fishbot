@@ -62,6 +62,53 @@ async def lifespan(app):
     from src.storage.database import ensure_schema, get_db
     db = get_db()
     ensure_schema(db)
+
+    count = db.execute("SELECT COUNT(*) FROM map_segments").fetchone()[0]
+    if count == 0:
+        try:
+            import json
+            map_file = "data/processed/map_data.json"
+            if os.path.exists(map_file):
+                print("[startup] Importing map segments...")
+                with open(map_file) as f:
+                    data = json.load(f)
+                rows = []
+                for feat in data["features"]:
+                    coords = feat["geometry"]["coordinates"]
+                    p = feat["properties"]
+                    rows.append({
+                        "ogf_id": p["ogf_id"],
+                        "lat": coords[1], "lng": coords[0],
+                        "score_balanced": p.get("untapped_score_balanced"),
+                        "score_easy": p.get("untapped_score_easy"),
+                        "score_adventure": p.get("untapped_score_adventure"),
+                        "habitat_score": p.get("habitat_score"),
+                        "access_score": p.get("access_score"),
+                        "stream_order": p.get("stream_order"),
+                        "watercourse_name": p.get("watercourse_name"),
+                        "nearest_named_stream": p.get("nearest_named_stream"),
+                        "is_confluence": 1 if p.get("is_confluence_segment") else 0,
+                        "connected_to_waterbody": 1 if p.get("connected_to_waterbody") else 0,
+                        "observation_pressure": p.get("observation_pressure"),
+                        "top1_species": p.get("top1_species"),
+                        "top1_prob": p.get("top1_prob"),
+                        "top2_species": p.get("top2_species"),
+                        "top2_prob": p.get("top2_prob"),
+                        "google_maps_url": p.get("google_maps_url"),
+                        "swoop_url": p.get("swoop_url"),
+                    })
+                    if len(rows) >= 1000:
+                        db["map_segments"].insert_all(rows, ignore=True)
+                        db.conn.commit()
+                        rows = []
+                if rows:
+                    db["map_segments"].insert_all(rows, ignore=True)
+                    db.conn.commit()
+                final = db.execute("SELECT COUNT(*) FROM map_segments").fetchone()[0]
+                print(f"[startup] Imported {final:,} map segments.")
+        except Exception as e:
+            print(f"[startup] Map segment import failed: {e}")
+
     yield
 
 
