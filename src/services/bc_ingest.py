@@ -32,8 +32,9 @@ def ingest_bc_hydro_network(
     _fwa = importlib.import_module("src.ingest.jurisdictions.ca_bc.hydro_network")
     db = get_db()
 
-    logger.info("Fetching FWA stream segments (%.0fkm radius)…", radius_km)
+    logger.info("FWA: fetching stream segments — lat=%.4f lon=%.4f radius=%.0fkm", lat, lon, radius_km)
     segments = _fwa.fetch_watercourses(lat, lon, radius_km)
+    logger.info("FWA: %d segments fetched from WFS", len(segments))
 
     now = datetime.utcnow().isoformat()
 
@@ -63,7 +64,7 @@ def ingest_bc_hydro_network(
     if seg_rows:
         db["stream_segments"].insert_all(seg_rows, pk="ogf_id", replace=True)
 
-    logger.info("FWA ingest done: %d segments stored", len(segments))
+    logger.info("FWA: %d segments stored to DB", len(segments))
     return len(segments), 0
 
 
@@ -78,11 +79,12 @@ def ingest_fiss_observations(
     _fiss = importlib.import_module("src.ingest.jurisdictions.ca_bc.fish_observations")
     db = get_db()
 
-    logger.info("Fetching FISS fish observations (%.0fkm radius)…", radius_km)
+    logger.info("FISS: fetching fish observations — lat=%.4f lng=%.4f radius=%.0fkm", lat, lng, radius_km)
     observations = _fiss.fetch_observations(lat, lng, radius_km)
+    logger.info("FISS: %d observations fetched from WFS", len(observations))
     if observations:
         upsert_observations(db, observations)
-    logger.info("FISS ingest done: %d observations stored", len(observations))
+    logger.info("FISS: %d observations stored to DB", len(observations))
     return len(observations)
 
 
@@ -96,8 +98,10 @@ def ingest_bc_water_quality(
     Currently returns 0 — results fetch is not yet implemented; see
     src/ingest/jurisdictions/ca_bc/water_quality.py for the TODO.
     """
+    logger.info("BC EMS: fetching water quality — lat=%.4f lng=%.4f radius=%.0fkm", lat, lng, radius_km)
     _wq = importlib.import_module("src.ingest.jurisdictions.ca_bc.water_quality")
     readings = _wq.fetch_water_quality_readings(lat, lng, radius_km)
+    logger.info("BC EMS: %d readings stored", len(readings))
     return len(readings)
 
 

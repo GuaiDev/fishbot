@@ -511,7 +511,7 @@ def _run_global_ingest(lat: float, lng: float, radius_km: float, label: str) -> 
     import os as _os
 
     _log = logging.getLogger(__name__)
-    _log.info("Background ingest started: %s (%.4f, %.4f, %.0fkm)", label, lat, lng, radius_km)
+    _log.info("[%s] Global ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
 
     from src.services.gbif import fetch_and_store as gbif_fetch
     from src.services.observations import fetch_and_store as inat_fetch
@@ -522,25 +522,33 @@ def _run_global_ingest(lat: float, lng: float, radius_km: float, label: str) -> 
     db = get_db()
     ensure_schema(db)
 
+    _log.info("[%s] iNat: fetching observations (last 90 days)", label)
     try:
-        inat_fetch(lat, lng, radius_km=radius_km, days_back=90)
-    except Exception as e:
-        _log.error("iNat fetch failed for %s: %s", label, e)
+        n = inat_fetch(lat, lng, radius_km=radius_km, days_back=90)
+        _log.info("[%s] iNat: %d observations stored", label, n)
+    except Exception:
+        _log.exception("[%s] iNat fetch failed", label)
 
+    _log.info("[%s] GBIF: fetching occurrences", label)
     try:
-        gbif_fetch(lat, lng, radius_km=radius_km)
-    except Exception as e:
-        _log.error("GBIF fetch failed for %s: %s", label, e)
+        n = gbif_fetch(lat, lng, radius_km=radius_km)
+        _log.info("[%s] GBIF: %d records stored", label, n)
+    except Exception:
+        _log.exception("[%s] GBIF fetch failed", label)
 
+    _log.info("[%s] WSC: fetching stream gauge readings", label)
     try:
-        wsc_fetch(lat, lng, radius_km=radius_km)
-    except Exception as e:
-        _log.error("WSC fetch failed for %s: %s", label, e)
+        n = wsc_fetch(lat, lng, radius_km=radius_km)
+        _log.info("[%s] WSC: %d station readings stored", label, n)
+    except Exception:
+        _log.exception("[%s] WSC fetch failed", label)
 
+    _log.info("[%s] OSM: fetching water features and access points", label)
     try:
-        osm_fetch(lat, lng)
-    except Exception as e:
-        _log.error("OSM fetch failed for %s: %s", label, e)
+        osm_water, osm_access = osm_fetch(lat, lng)
+        _log.info("[%s] OSM: %d water features, %d access points stored", label, osm_water, osm_access)
+    except Exception:
+        _log.exception("[%s] OSM fetch failed", label)
 
     # SDM retrain check — non-fatal if it errors
     try:
@@ -570,11 +578,11 @@ def _run_global_ingest(lat: float, lng: float, radius_km: float, label: str) -> 
                 if baseline > 0 and (current - n_trip) >= baseline * 0.20:
                     retrain_candidates.append(species)
             if retrain_candidates:
-                _log.info("SDM retrain recommended for: %s", retrain_candidates)
-    except Exception as e:
-        _log.warning("SDM retrain check failed: %s", e)
+                _log.info("[%s] SDM retrain recommended for: %s", label, retrain_candidates)
+    except Exception:
+        _log.exception("[%s] SDM retrain check failed", label)
 
-    _log.info("Background ingest complete: %s", label)
+    _log.info("[%s] Global ingest complete", label)
 
 
 @app.post("/ingest/data")
@@ -619,16 +627,40 @@ def _run_bc_ingest(lat: float, lng: float, radius_km: float, label: str) -> None
     """Background task: run FWA, FISS, and BC EMS ingest for a BC location."""
     import logging
     _log = logging.getLogger(__name__)
-    _log.info("BC background ingest started: %s (%.4f, %.4f, %.0fkm)", label, lat, lng, radius_km)
+    _log.info("[%s] BC ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+
+    from src.services.bc_ingest import (
+        ingest_bc_hydro_network,
+        ingest_bc_water_quality,
+        ingest_fiss_observations,
+    )
+    from src.storage.database import ensure_schema, get_db
+
+    db = get_db()
+    ensure_schema(db)
+
+    _log.info("[%s] FWA: fetching stream segments", label)
     try:
-        from src.services.bc_ingest import ingest_bc_data
-        from src.storage.database import ensure_schema, get_db
-        db = get_db()
-        ensure_schema(db)
-        counts = ingest_bc_data(lat, lng, radius_km=radius_km)
-        _log.info("BC background ingest complete: %s — %s", label, counts)
-    except Exception as e:
-        _log.error("BC background ingest failed for %s: %s", label, e)
+        segs, _ = ingest_bc_hydro_network(lat, lng, radius_km=radius_km)
+        _log.info("[%s] FWA: %d stream segments stored", label, segs)
+    except Exception:
+        _log.exception("[%s] FWA fetch failed", label)
+
+    _log.info("[%s] FISS: fetching fish observations", label)
+    try:
+        n = ingest_fiss_observations(lat, lng, radius_km=radius_km)
+        _log.info("[%s] FISS: %d observations stored", label, n)
+    except Exception:
+        _log.exception("[%s] FISS fetch failed", label)
+
+    _log.info("[%s] BC EMS: fetching water quality", label)
+    try:
+        n = ingest_bc_water_quality(lat, lng, radius_km=radius_km)
+        _log.info("[%s] BC EMS: %d readings stored", label, n)
+    except Exception:
+        _log.exception("[%s] BC EMS fetch failed", label)
+
+    _log.info("[%s] BC ingest complete", label)
 
 
 @app.post("/ingest/data-bc")
