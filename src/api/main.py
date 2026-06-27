@@ -611,6 +611,52 @@ def ingest_data(body: dict, _: None = Depends(verify_api_key)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/ingest/data-bc")
+def ingest_data_bc(body: dict, _: None = Depends(verify_api_key)):
+    """Trigger BC-specific data ingest for a location.
+
+    Body: {
+        "lat": float,
+        "lng": float,
+        "radius_km": float (optional, default 50),
+        "label": str (optional, human-readable name for logging)
+    }
+    Runs FWA stream network, FISS fish observations, and BC EMS water quality
+    for the given location. Protected by X-Api-Key header.
+    Global sources (iNat, GBIF, WSC, OSM) are handled by /ingest/data.
+    """
+    try:
+        from src.services.bc_ingest import ingest_bc_data
+        from src.storage.database import ensure_schema, get_db
+
+        lat = body.get("lat")
+        lng = body.get("lng")
+        radius_km = body.get("radius_km", 50.0)
+        label = body.get("label", f"{lat},{lng}")
+
+        if lat is None or lng is None:
+            raise HTTPException(status_code=400, detail="lat and lng are required")
+
+        db = get_db()
+        ensure_schema(db)
+
+        counts = ingest_bc_data(lat, lng, radius_km=radius_km)
+
+        return {
+            "status": "ok",
+            "label": label,
+            "lat": lat,
+            "lng": lng,
+            "radius_km": radius_km,
+            **counts,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/map/segments")
 def get_map_segments(
     north: float,

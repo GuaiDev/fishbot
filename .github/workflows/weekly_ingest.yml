@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # ── Ontario ────────────────────────────────────────────────────────────
+
       - name: Ingest Grand River / Dunnville
         run: |
           curl -X POST \
@@ -50,4 +52,90 @@ jobs:
             -H "X-Api-Key: ${{ secrets.FISHBOT_API_KEY }}" \
             -d '{"lat": 42.984, "lng": -81.244, "radius_km": 30, "label": "Thames River London"}' \
             https://web-production-e2094.up.railway.app/ingest/data
+          echo ""
+          sleep 5
+
+      # ── British Columbia — global sources ─────────────────────────────────
+      # iNat, GBIF, WSC, OSM via /ingest/data (same as Ontario)
+
+      - name: BC iNat/GBIF/WSC/OSM — Fraser River / Lower Mainland
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.FISHBOT_API_KEY }}" \
+            -d '{"lat": 49.12, "lng": -122.05, "radius_km": 60, "label": "Fraser River Lower Mainland"}' \
+            https://web-production-e2094.up.railway.app/ingest/data
+          echo ""
+          sleep 5
+
+      - name: BC iNat/GBIF/WSC/OSM — Thompson River / Kamloops
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.FISHBOT_API_KEY }}" \
+            -d '{"lat": 50.67, "lng": -120.33, "radius_km": 50, "label": "Thompson River Kamloops"}' \
+            https://web-production-e2094.up.railway.app/ingest/data
+          echo ""
+          sleep 5
+
+      - name: BC iNat/GBIF/WSC/OSM — Okanagan / Vernon
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.FISHBOT_API_KEY }}" \
+            -d '{"lat": 50.27, "lng": -119.27, "radius_km": 40, "label": "Okanagan Vernon"}' \
+            https://web-production-e2094.up.railway.app/ingest/data
+          echo ""
+          sleep 5
+
+      - name: BC iNat/GBIF/WSC/OSM — Skeena River / Terrace
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.FISHBOT_API_KEY }}" \
+            -d '{"lat": 54.51, "lng": -128.60, "radius_km": 50, "label": "Skeena River Terrace"}' \
+            https://web-production-e2094.up.railway.app/ingest/data
+          echo ""
+          sleep 5
+
+      # ── British Columbia — BC-specific sources ─────────────────────────────
+      # FWA stream network + FISS fish observations via /ingest/data-bc
+
+      - name: BC FWA/FISS — Fraser River / Lower Mainland
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.FISHBOT_API_KEY }}" \
+            -d '{"lat": 49.12, "lng": -122.05, "radius_km": 60, "label": "Fraser River Lower Mainland"}' \
+            https://web-production-e2094.up.railway.app/ingest/data-bc
+          echo ""
+          sleep 5
+
+      - name: BC FWA/FISS — Thompson River / Kamloops
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.FISHBOT_API_KEY }}" \
+            -d '{"lat": 50.67, "lng": -120.33, "radius_km": 50, "label": "Thompson River Kamloops"}' \
+            https://web-production-e2094.up.railway.app/ingest/data-bc
+          echo ""
+          sleep 5
+
+      - name: BC FWA/FISS — Okanagan / Vernon
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.FISHBOT_API_KEY }}" \
+            -d '{"lat": 50.27, "lng": -119.27, "radius_km": 40, "label": "Okanagan Vernon"}' \
+            https://web-production-e2094.up.railway.app/ingest/data-bc
+          echo ""
+          sleep 5
+
+      - name: BC FWA/FISS — Skeena River / Terrace
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.FISHBOT_API_KEY }}" \
+            -d '{"lat": 54.51, "lng": -128.60, "radius_km": 50, "label": "Skeena River Terrace"}' \
+            https://web-production-e2094.up.railway.app/ingest/data-bc
           echo ""

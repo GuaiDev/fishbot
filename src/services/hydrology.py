@@ -474,10 +474,11 @@ def ingest_hydro_network(
 
     now = datetime.utcnow().isoformat()
 
+    # Delete only CA-ON rows so other jurisdictions' data is preserved
     if "stream_segments" in db.table_names():
-        db["stream_segments"].delete_where()
+        db["stream_segments"].delete_where("jurisdiction = ?", ["CA-ON"])
     if "barriers" in db.table_names():
-        db["barriers"].delete_where()
+        db["barriers"].delete_where("jurisdiction = ?", ["CA-ON"])
 
     seg_rows = [
         {
@@ -487,11 +488,13 @@ def ingest_hydro_network(
             "flow_verified": int(s.flow_verified),
             "permanency": s.permanency,
             "flow_classification": s.flow_classification,
+            "stream_order": s.stream_order,
             "length_m": s.length_m,
             "geom_wkt": s.geom_wkt,
             "start_node": s.start_node,
             "end_node": s.end_node,
             "jurisdiction": s.jurisdiction,
+            "segment_source": s.segment_source,
             "ingested_at": now,
         }
         for s in segments
@@ -540,11 +543,13 @@ def _load_segments(db) -> list[StreamSegment]:
                     flow_verified=bool(row["flow_verified"]),
                     permanency=row["permanency"] or "Permanent",
                     flow_classification=row["flow_classification"],
+                    stream_order=row.get("stream_order"),
                     length_m=row["length_m"] or 0.0,
                     geom_wkt=row["geom_wkt"],
                     start_node=row["start_node"],
                     end_node=row["end_node"],
                     jurisdiction=row["jurisdiction"] or "CA-ON",
+                    segment_source=row.get("segment_source") or "OHN",
                 )
             )
         except Exception as exc:

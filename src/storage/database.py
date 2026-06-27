@@ -19,6 +19,8 @@ def get_db(path: Path | None = None) -> Database:
     migrate_stops(db)
     migrate_angler_context_multi_user(db)
     migrate_user_fields(db)
+    migrate_stream_segments_multi_jurisdiction(db)
+    migrate_observations_source(db)
     return db
 
 
@@ -905,6 +907,54 @@ def migrate_user_fields(db: Database) -> None:
             db.conn.commit()
     except Exception:
         pass
+
+
+def migrate_stream_segments_multi_jurisdiction(db: Database) -> None:
+    """Add stream_order and segment_source columns to stream_segments. Idempotent.
+
+    stream_order: Strahler order (NULL for existing OHN rows that predate this migration)
+    segment_source: 'OHN' for Ontario Hydro Network, 'FWA' for BC Freshwater Atlas
+    """
+    if "stream_segments" not in db.table_names():
+        return
+    cols = {c.name for c in db["stream_segments"].columns}
+    if "stream_order" not in cols:
+        try:
+            db.execute("ALTER TABLE stream_segments ADD COLUMN stream_order INTEGER")
+        except Exception:
+            pass
+    if "segment_source" not in cols:
+        try:
+            db.execute(
+                "ALTER TABLE stream_segments ADD COLUMN segment_source TEXT DEFAULT 'OHN'"
+            )
+            db.execute(
+                "UPDATE stream_segments SET segment_source = 'OHN' WHERE segment_source IS NULL"
+            )
+            db.conn.commit()
+        except Exception:
+            pass
+
+
+def migrate_observations_source(db: Database) -> None:
+    """Add source column to observations table. Idempotent.
+
+    Existing rows (all iNaturalist) receive source='iNaturalist'.
+    """
+    if "observations" not in db.table_names():
+        return
+    cols = {c.name for c in db["observations"].columns}
+    if "source" not in cols:
+        try:
+            db.execute(
+                "ALTER TABLE observations ADD COLUMN source TEXT DEFAULT 'iNaturalist'"
+            )
+            db.execute(
+                "UPDATE observations SET source = 'iNaturalist' WHERE source IS NULL"
+            )
+            db.conn.commit()
+        except Exception:
+            pass
 
 
 def cleanup_old_gauge_readings(db: Database, days: int = 7) -> None:

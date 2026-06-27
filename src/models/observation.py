@@ -24,3 +24,5 @@ class Observation(BaseModel):
     is_obscured: bool = False
     # 22.0 km for obscured observations (iNat randomises within ~0.2° box)
     obscuration_radius_km: float | None = None
+    # origin system: "iNaturalist", "FISS", etc.
+    source: str = "iNaturalist"

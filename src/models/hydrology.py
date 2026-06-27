@@ -10,11 +10,13 @@ class StreamSegment(BaseModel):
     flow_verified: bool  # FLOW_DIRECTION_VERIFIED_IND == "Yes"
     permanency: str  # "Permanent" | seasonal
     flow_classification: str | None = None
+    stream_order: int | None = None  # Strahler stream order (FWA: STREAM_ORDER)
     length_m: float
-    geom_wkt: str  # WKT LineString, coords as (lon lat)
+    geom_wkt: str  # WKT LineString or MultiLineString, coords as (lon lat)
     start_node: str  # "lon,lat" rounded to 5 decimal places
     end_node: str  # "lon,lat" rounded to 5 decimal places
     jurisdiction: str = "CA-ON"
+    segment_source: str = "OHN"  # source system: "OHN" (Ontario) or "FWA" (BC)
 
 
 class HydroBarrier(BaseModel):
