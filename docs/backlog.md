@@ -1,6 +1,6 @@
 # FishDex Backlog
 
-Last updated: June 2026
+Last updated: June 27 2026
 Previously: FishBot
 
 ## Project rename
@@ -114,6 +114,8 @@ Insight #37 (evening-only) correctly versioned out by #40 (morning viable).
 ### Synthesis cache ✅
 Location-based cache, invalidates on insight update.
 5 spots pre-warmed.
+Time-forward and live-conditions queries bypass cache entirely (June 27 2026).
+Forecast responses not written to cache.
 
 ### Message router ✅
 Reflex/synthesis/memory routing. ~95% cost reduction.
@@ -140,12 +142,31 @@ Build when data is there:
 - Conditions-based pattern detection (need 10+ enriched sessions)
 - Seasonal gap detector
 
-## Prediction system 📋
-June 20 Willoway failure analysis: bot had wrong weather data (forecast vs actual).
-Enrichment pipeline fixes this going forward.
-Next test: predict before next session, compare to reality.
-Build: live conditions wired into predictions (get_stream_conditions_for_agent
-called before making time-window predictions).
+## Prediction system ✅
+Root cause of June 20 Willoway failure identified and fixed (June 27 2026).
+Two compounding bugs:
+1. get_tactical_recommendation always fetched when="now" regardless of whether
+   the question was about tomorrow or the weekend — predictions were silently
+   grounded in today's conditions.
+2. Forecast responses (tomorrow/in_3_days/this_weekend) have no pressure trend
+   data — even a correct fetch couldn't return pressure for future windows.
+
+Fixes applied:
+- get_tactical_recommendation now accepts `when` parameter, passes through to
+  get_conditions_for_agent. For forecast windows, pressure call is skipped and
+  a sentinel string is returned: "unavailable for forecasts — treat as neutral".
+- Tool input schema updated — agent can now pass when="tomorrow" etc.
+- System prompt updated: conditions routing rule explicitly requires the correct
+  `when` value for future questions; cites June 20 as the reason.
+- Synthesis cache bypassed for time-forward and live-conditions queries (keywords:
+  tomorrow, this weekend, saturday, sunday, in 3 days, next week, forecast,
+  right now, today, currently, at the moment, conditions, weather).
+  Time-forward responses also excluded from cache writes.
+
+Remaining gap: forecast windows still return no pressure trend. This is a data
+availability limit (Open-Meteo doesn't provide pressure forecasts in the current
+call), not a code bug. The agent is told to treat it as neutral and flag it to
+the user.
 
 ## SDM improvements 📋
 Current AUC 0.51-0.61 — honest but improvable.
@@ -218,6 +239,19 @@ No Bootstrap needed going forward.
 Local: Jason's 22 sessions, all behavioral insights, full trip history.
 Railway: Fresh database, beta tester data.
 Accepted split — local for personal analysis, Railway for beta.
+
+### /chat endpoint message assembly bug ✅ (June 27 2026)
+Endpoint was reading body.get("messages", []) instead of building the messages
+array from the documented schema fields (message + conversation_history).
+Result: curl calls with {"message": "..."} produced an empty messages array,
+causing "at least one message is required" from the Claude API.
+Fix: endpoint now builds messages from history + appends current message.
+make run was unaffected (CLI bypasses the HTTP endpoint entirely).
+Deploy status: committed (067b616), Railway redeploy pending confirmation.
+
+### Known dead code
+ChatRequest Pydantic model (src/api/main.py:154) is unused — endpoint takes
+body: dict directly. Harmless but should be cleaned up or wired in.
 
 ### GitHub Actions weekly ingest ✅
 Sunday 6am UTC. 4 Ontario areas.
