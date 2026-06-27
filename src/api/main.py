@@ -238,7 +238,12 @@ def chat(body: dict, user: dict = Depends(get_current_user)):
         )
 
     try:
-        messages = body.get("messages", [])
+        message = body.get("message", "").strip()
+        if not message:
+            raise HTTPException(status_code=400, detail="'message' field is required")
+        history = body.get("conversation_history", [])
+        messages = [{"role": m["role"], "content": m["content"]} for m in history]
+        messages.append({"role": "user", "content": message})
         session_id = body.get("session_id")
         result = run_chat_api(messages, session_id=session_id, user_id=user["id"])
         increment_usage(db, user["id"])
