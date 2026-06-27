@@ -4,9 +4,23 @@ Exposes the chat agent over HTTP for mobile and web clients.
 Start with: uv run fishbot serve
 """
 
+import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 from typing import Optional
+
+# Configure stdout logging before any other module runs.
+# basicConfig is a no-op if handlers are already attached (e.g. a parent process
+# configured logging); the explicit setLevel always runs and prevents the root
+# logger's default WARNING level from silently dropping INFO messages in
+# background tasks on Railway.
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logging.getLogger().setLevel(logging.INFO)
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,8 +71,16 @@ def get_current_user_or_apikey(
     raise HTTPException(status_code=401, detail="Not authenticated")
 
 
+_log = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(app):
+    # Re-assert INFO level after uvicorn's own logging.config.dictConfig() runs.
+    # Without this, uvicorn leaves the root logger at WARNING and silently drops
+    # every INFO message emitted by background ingest tasks.
+    logging.getLogger().setLevel(logging.INFO)
+
     from src.storage.database import ensure_schema, get_db
     db = get_db()
     ensure_schema(db)
@@ -507,10 +529,8 @@ def ingest(body: dict):
 def _run_global_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
     """Background task: run iNat, GBIF, WSC, OSM, and SDM check for a location."""
     import json as _json
-    import logging
     import os as _os
 
-    _log = logging.getLogger(__name__)
     _log.info("[%s] Global ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
 
     from src.services.gbif import fetch_and_store as gbif_fetch
@@ -625,8 +645,6 @@ def ingest_data(
 
 def _run_bc_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
     """Background task: run FWA, FISS, and BC EMS ingest for a BC location."""
-    import logging
-    _log = logging.getLogger(__name__)
     _log.info("[%s] BC ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
 
     from src.services.bc_ingest import (
