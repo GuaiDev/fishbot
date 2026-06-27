@@ -8,9 +8,9 @@ import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -504,9 +504,86 @@ def ingest(body: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _run_global_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
+    """Background task: run iNat, GBIF, WSC, OSM, and SDM check for a location."""
+    import json as _json
+    import logging
+    import os as _os
+
+    _log = logging.getLogger(__name__)
+    _log.info("Background ingest started: %s (%.4f, %.4f, %.0fkm)", label, lat, lng, radius_km)
+
+    from src.services.gbif import fetch_and_store as gbif_fetch
+    from src.services.observations import fetch_and_store as inat_fetch
+    from src.services.osm import fetch_and_store as osm_fetch
+    from src.services.stream_gauge import fetch_and_store as wsc_fetch
+    from src.storage.database import ensure_schema, get_db
+
+    db = get_db()
+    ensure_schema(db)
+
+    try:
+        inat_fetch(lat, lng, radius_km=radius_km, days_back=90)
+    except Exception as e:
+        _log.error("iNat fetch failed for %s: %s", label, e)
+
+    try:
+        gbif_fetch(lat, lng, radius_km=radius_km)
+    except Exception as e:
+        _log.error("GBIF fetch failed for %s: %s", label, e)
+
+    try:
+        wsc_fetch(lat, lng, radius_km=radius_km)
+    except Exception as e:
+        _log.error("WSC fetch failed for %s: %s", label, e)
+
+    try:
+        osm_fetch(lat, lng)
+    except Exception as e:
+        _log.error("OSM fetch failed for %s: %s", label, e)
+
+    # SDM retrain check — non-fatal if it errors
+    try:
+        import joblib as _joblib
+        from src.services.species_mapping import COMMON_TO_SCIENTIFIC as _c2s
+
+        model_dir = "data/processed/sdm_models"
+        if _os.path.exists(model_dir):
+            trip_counts: dict = {}
+            for (sc_json,) in db.execute(
+                "SELECT species_caught FROM stops WHERE was_productive = 1"
+            ).fetchall():
+                for common in _json.loads(sc_json or "[]"):
+                    clean = common.lower().replace("(uncertain)", "").strip()
+                    sci = _c2s.get(clean)
+                    if sci:
+                        trip_counts[sci] = trip_counts.get(sci, 0) + 1
+            retrain_candidates = []
+            for f in _os.listdir(model_dir):
+                if not f.endswith(".joblib"):
+                    continue
+                b = _joblib.load(_os.path.join(model_dir, f))
+                species = b.get("species")
+                baseline = (b.get("n_inat", 0) or 0) + (b.get("n_gbif", 0) or 0)
+                n_trip = b.get("n_trip_log", 0) or 0
+                current = trip_counts.get(species, 0)
+                if baseline > 0 and (current - n_trip) >= baseline * 0.20:
+                    retrain_candidates.append(species)
+            if retrain_candidates:
+                _log.info("SDM retrain recommended for: %s", retrain_candidates)
+    except Exception as e:
+        _log.warning("SDM retrain check failed: %s", e)
+
+    _log.info("Background ingest complete: %s", label)
+
+
 @app.post("/ingest/data")
-def ingest_data(body: dict, _: None = Depends(verify_api_key)):
-    """Trigger full data ingest for a location.
+def ingest_data(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    _: None = Depends(verify_api_key),
+):
+    """Trigger global data ingest for a location (runs in background).
 
     Body: {
         "lat": float,
@@ -515,105 +592,52 @@ def ingest_data(body: dict, _: None = Depends(verify_api_key)):
         "label": str (optional, human-readable name for logging)
     }
     Runs iNaturalist, GBIF, WSC, and OSM data sources for the given location.
+    Returns 202 immediately; ingest runs after the response is sent.
     Protected by X-Api-Key header.
     """
+    lat = body.get("lat")
+    lng = body.get("lng")
+    radius_km = body.get("radius_km", 50.0)
+    label = body.get("label", f"{lat},{lng}")
+
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="lat and lng are required")
+
+    background_tasks.add_task(_run_global_ingest, lat, lng, radius_km, label)
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "accepted",
+            "label": label,
+            "message": "ingest started in background",
+        },
+    )
+
+
+def _run_bc_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
+    """Background task: run FWA, FISS, and BC EMS ingest for a BC location."""
+    import logging
+    _log = logging.getLogger(__name__)
+    _log.info("BC background ingest started: %s (%.4f, %.4f, %.0fkm)", label, lat, lng, radius_km)
     try:
-        from src.services.gbif import fetch_and_store as gbif_fetch
-        from src.services.observations import fetch_and_store as inat_fetch
-        from src.services.osm import fetch_and_store as osm_fetch
-        from src.services.stream_gauge import fetch_and_store as wsc_fetch
+        from src.services.bc_ingest import ingest_bc_data
         from src.storage.database import ensure_schema, get_db
-
-        lat = body.get("lat")
-        lng = body.get("lng")
-        radius_km = body.get("radius_km", 50.0)
-        label = body.get("label", f"{lat},{lng}")
-
-        if lat is None or lng is None:
-            raise HTTPException(status_code=400, detail="lat and lng are required")
-
         db = get_db()
         ensure_schema(db)
-
-        results = {}
-
-        try:
-            n = inat_fetch(lat, lng, radius_km=radius_km, days_back=90)
-            results["inat_observations"] = n
-        except Exception as e:
-            results["inat_error"] = str(e)
-
-        try:
-            n = gbif_fetch(lat, lng, radius_km=radius_km)
-            results["gbif_records"] = n
-        except Exception as e:
-            results["gbif_error"] = str(e)
-
-        try:
-            n = wsc_fetch(lat, lng, radius_km=radius_km)
-            results["wsc_stations"] = n
-        except Exception as e:
-            results["wsc_error"] = str(e)
-
-        try:
-            osm_water, osm_access = osm_fetch(lat, lng)
-            results["osm_water_features"] = osm_water
-            results["osm_access_points"] = osm_access
-        except Exception as e:
-            results["osm_error"] = str(e)
-
-        results["label"] = label
-        results["lat"] = lat
-        results["lng"] = lng
-        results["radius_km"] = radius_km
-        results["status"] = "ok"
-
-        # Check if SDM retraining is warranted
-        try:
-            from src.cli.main import _check_sdm_retrain_needed as _sdm_check
-            import json as _json
-            import os as _os
-            import joblib as _joblib
-            from src.services.species_mapping import COMMON_TO_SCIENTIFIC as _c2s
-
-            model_dir = "data/processed/sdm_models"
-            retrain_candidates = []
-            if _os.path.exists(model_dir):
-                trip_counts: dict = {}
-                for (sc_json,) in db.execute(
-                    "SELECT species_caught FROM stops WHERE was_productive = 1"
-                ).fetchall():
-                    for common in _json.loads(sc_json or "[]"):
-                        clean = common.lower().replace("(uncertain)", "").strip()
-                        sci = _c2s.get(clean)
-                        if sci:
-                            trip_counts[sci] = trip_counts.get(sci, 0) + 1
-                for f in _os.listdir(model_dir):
-                    if not f.endswith(".joblib"):
-                        continue
-                    b = _joblib.load(_os.path.join(model_dir, f))
-                    species = b.get("species")
-                    baseline = (b.get("n_inat", 0) or 0) + (b.get("n_gbif", 0) or 0)
-                    n_trip = b.get("n_trip_log", 0) or 0
-                    current = trip_counts.get(species, 0)
-                    if baseline > 0 and (current - n_trip) >= baseline * 0.20:
-                        retrain_candidates.append(species)
-            results["sdm_retrain_recommended"] = len(retrain_candidates) > 0
-            results["sdm_retrain_species"] = retrain_candidates
-        except Exception:
-            results["sdm_retrain_recommended"] = False
-
-        return results
-
-    except HTTPException:
-        raise
+        counts = ingest_bc_data(lat, lng, radius_km=radius_km)
+        _log.info("BC background ingest complete: %s — %s", label, counts)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _log.error("BC background ingest failed for %s: %s", label, e)
 
 
 @app.post("/ingest/data-bc")
-def ingest_data_bc(body: dict, _: None = Depends(verify_api_key)):
-    """Trigger BC-specific data ingest for a location.
+def ingest_data_bc(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    _: None = Depends(verify_api_key),
+):
+    """Trigger BC-specific data ingest for a location (runs in background).
 
     Body: {
         "lat": float,
@@ -621,40 +645,29 @@ def ingest_data_bc(body: dict, _: None = Depends(verify_api_key)):
         "radius_km": float (optional, default 50),
         "label": str (optional, human-readable name for logging)
     }
-    Runs FWA stream network, FISS fish observations, and BC EMS water quality
-    for the given location. Protected by X-Api-Key header.
+    Runs FWA stream network, FISS fish observations, and BC EMS water quality.
+    Returns 202 immediately; ingest runs after the response is sent.
     Global sources (iNat, GBIF, WSC, OSM) are handled by /ingest/data.
+    Protected by X-Api-Key header.
     """
-    try:
-        from src.services.bc_ingest import ingest_bc_data
-        from src.storage.database import ensure_schema, get_db
+    lat = body.get("lat")
+    lng = body.get("lng")
+    radius_km = body.get("radius_km", 50.0)
+    label = body.get("label", f"{lat},{lng}")
 
-        lat = body.get("lat")
-        lng = body.get("lng")
-        radius_km = body.get("radius_km", 50.0)
-        label = body.get("label", f"{lat},{lng}")
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="lat and lng are required")
 
-        if lat is None or lng is None:
-            raise HTTPException(status_code=400, detail="lat and lng are required")
+    background_tasks.add_task(_run_bc_ingest, lat, lng, radius_km, label)
 
-        db = get_db()
-        ensure_schema(db)
-
-        counts = ingest_bc_data(lat, lng, radius_km=radius_km)
-
-        return {
-            "status": "ok",
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "accepted",
             "label": label,
-            "lat": lat,
-            "lng": lng,
-            "radius_km": radius_km,
-            **counts,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+            "message": "ingest started in background",
+        },
+    )
 
 
 @app.get("/map/segments")
