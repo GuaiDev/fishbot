@@ -11,8 +11,18 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_benthic_data() -> int:
-    """Download and upsert CABIN benthic data for Ontario. Returns record count."""
+    """Download and upsert CABIN benthic data for Ontario only. Returns record count."""
+    return ingest_benthic_samples(get_db(), province_filter="ON")
+
+
+def ingest_benthic_samples(db=None, province_filter: str | None = None) -> int:
+    """Download and upsert CABIN benthic data for all (or filtered) provinces.
+
+    province_filter: 2-letter province code ("ON", "BC", …) or None for all.
+    Returns total record count stored.
+    """
     from src.ingest.jurisdictions.ca_on.benthic import (
+        _PROVINCE_TO_JURISDICTION,
         build_samples,
         download_benthic,
         download_study,
@@ -20,16 +30,28 @@ def ingest_benthic_data() -> int:
         parse_benthic,
     )
 
+    if db is None:
+        db = get_db()
+
     study_path = download_study()
     benthic_path = download_benthic()
-    study_meta, on_visit_ids = load_study(study_path)
-    if not on_visit_ids:
-        logger.warning("No Ontario visits found in CABIN study file")
+    study_meta, visit_jurisdictions = load_study(study_path)
+
+    if province_filter:
+        jur_filter = _PROVINCE_TO_JURISDICTION.get(province_filter.upper())
+        visit_jurisdictions = {
+            vid: jur for vid, jur in visit_jurisdictions.items()
+            if jur == jur_filter
+        }
+
+    if not visit_jurisdictions:
+        logger.warning("No Canadian visits found in CABIN study file")
         return 0
-    benthic_agg = parse_benthic(benthic_path, on_visit_ids)
-    records = build_samples(study_meta, benthic_agg)
+
+    benthic_agg = parse_benthic(benthic_path, visit_jurisdictions)
+    records = build_samples(study_meta, benthic_agg, visit_jurisdictions)
     if records:
-        upsert_benthic_samples(get_db(), records)
+        upsert_benthic_samples(db, records)
     return len(records)
 
 

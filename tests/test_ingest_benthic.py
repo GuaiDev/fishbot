@@ -85,22 +85,22 @@ def test_habitat_quality_impaired():
 
 
 def test_load_study_on_visits():
-    _, on_visits = load_study(STUDY_FIXTURE)
-    assert "SV001" in on_visits
-    assert "SV002" in on_visits
-    assert "SV003" in on_visits
-    assert "SV004" in on_visits
-    assert "SV006" in on_visits
+    _, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    assert visit_jurisdictions.get("SV001") == "CA-ON"
+    assert visit_jurisdictions.get("SV002") == "CA-ON"
+    assert visit_jurisdictions.get("SV003") == "CA-ON"
+    assert visit_jurisdictions.get("SV004") == "CA-ON"
+    assert visit_jurisdictions.get("SV006") == "CA-ON"
 
 
-def test_load_study_excludes_qc():
-    _, on_visits = load_study(STUDY_FIXTURE)
-    assert "SV005" not in on_visits
+def test_load_study_includes_qc_with_correct_jurisdiction():
+    _, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    assert visit_jurisdictions.get("SV005") == "CA-QC"
 
 
-def test_load_study_on_count():
-    _, on_visits = load_study(STUDY_FIXTURE)
-    assert len(on_visits) == 5
+def test_load_study_all_provinces_count():
+    _, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    assert len(visit_jurisdictions) == 6
 
 
 def test_load_study_metadata():
@@ -124,58 +124,58 @@ def test_load_study_lake_erie_basin():
 # --- Integration: parse_benthic ---
 
 
-def test_parse_benthic_excludes_qc_rows():
-    _, on_visits = load_study(STUDY_FIXTURE)
-    agg = parse_benthic(BENTHIC_FIXTURE, on_visits)
-    assert "SV005" not in agg
+def test_parse_benthic_includes_qc_rows():
+    _, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    agg = parse_benthic(BENTHIC_FIXTURE, visit_jurisdictions)
+    assert "SV005" in agg
 
 
-def test_parse_benthic_ontario_visit_count():
-    _, on_visits = load_study(STUDY_FIXTURE)
-    agg = parse_benthic(BENTHIC_FIXTURE, on_visits)
-    assert len(agg) == 5
+def test_parse_benthic_all_visit_count():
+    _, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    agg = parse_benthic(BENTHIC_FIXTURE, visit_jurisdictions)
+    assert len(agg) == 6
 
 
 def test_parse_benthic_sv001_ept_count():
     """SV001: EPT raw = 30+20+25+15+10+40+20 = 160."""
-    _, on_visits = load_study(STUDY_FIXTURE)
-    agg = parse_benthic(BENTHIC_FIXTURE, on_visits)
+    _, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    agg = parse_benthic(BENTHIC_FIXTURE, visit_jurisdictions)
     assert agg["SV001"]["ept_count"] == pytest.approx(160.0)
 
 
 def test_parse_benthic_sv001_total_count():
     """SV001: total raw = 160 + 15 + 10 = 185."""
-    _, on_visits = load_study(STUDY_FIXTURE)
-    agg = parse_benthic(BENTHIC_FIXTURE, on_visits)
+    _, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    agg = parse_benthic(BENTHIC_FIXTURE, visit_jurisdictions)
     assert agg["SV001"]["total_count"] == pytest.approx(185.0)
 
 
 def test_parse_benthic_sv001_ept_richness():
     """SV001: 7 distinct EPT families."""
-    _, on_visits = load_study(STUDY_FIXTURE)
-    agg = parse_benthic(BENTHIC_FIXTURE, on_visits)
+    _, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    agg = parse_benthic(BENTHIC_FIXTURE, visit_jurisdictions)
     assert len(agg["SV001"]["ept_taxa_seen"]) == 7
 
 
 def test_parse_benthic_sv001_all_taxa():
     """SV001: 9 total distinct taxa."""
-    _, on_visits = load_study(STUDY_FIXTURE)
-    agg = parse_benthic(BENTHIC_FIXTURE, on_visits)
+    _, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    agg = parse_benthic(BENTHIC_FIXTURE, visit_jurisdictions)
     assert len(agg["SV001"]["all_taxa_seen"]) == 9
 
 
 def test_parse_benthic_sv003_subsample_zero():
     """SV003 SubSample=0: raw counts used directly — ept_count=20, total_count=130."""
-    _, on_visits = load_study(STUDY_FIXTURE)
-    agg = parse_benthic(BENTHIC_FIXTURE, on_visits)
+    _, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    agg = parse_benthic(BENTHIC_FIXTURE, visit_jurisdictions)
     assert agg["SV003"]["ept_count"] == pytest.approx(20.0)
     assert agg["SV003"]["total_count"] == pytest.approx(130.0)
 
 
 def test_parse_benthic_sv003_ept_richness():
     """SV003: Baetidae, Ephemerellidae, Heptageniidae, Hydropsychidae = 4 EPT taxa."""
-    _, on_visits = load_study(STUDY_FIXTURE)
-    agg = parse_benthic(BENTHIC_FIXTURE, on_visits)
+    _, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    agg = parse_benthic(BENTHIC_FIXTURE, visit_jurisdictions)
     assert len(agg["SV003"]["ept_taxa_seen"]) == 4
 
 
@@ -183,25 +183,26 @@ def test_parse_benthic_sv003_ept_richness():
 
 
 def _full_parse() -> list[BenthicSample]:
-    study_meta, on_visits = load_study(STUDY_FIXTURE)
-    benthic_agg = parse_benthic(BENTHIC_FIXTURE, on_visits)
-    return build_samples(study_meta, benthic_agg)
+    study_meta, visit_jurisdictions = load_study(STUDY_FIXTURE)
+    benthic_agg = parse_benthic(BENTHIC_FIXTURE, visit_jurisdictions)
+    return build_samples(study_meta, benthic_agg, visit_jurisdictions)
 
 
 def test_build_samples_count():
     records = _full_parse()
-    assert len(records) == 5
+    assert len(records) == 6
 
 
-def test_build_samples_jurisdiction():
+def test_build_samples_on_jurisdiction():
     records = _full_parse()
-    assert all(r.jurisdiction == "CA-ON" for r in records)
+    on_records = [r for r in records if r.site_visit_id != "SV005"]
+    assert all(r.jurisdiction == "CA-ON" for r in on_records)
 
 
-def test_build_samples_no_qc():
+def test_build_samples_qc_jurisdiction():
     records = _full_parse()
-    visit_ids = {r.site_visit_id for r in records}
-    assert "SV005" not in visit_ids
+    qc_record = next(r for r in records if r.site_visit_id == "SV005")
+    assert qc_record.jurisdiction == "CA-QC"
 
 
 def test_build_samples_sv001_high_quality():
@@ -244,9 +245,9 @@ def test_build_samples_sv006_lake_erie():
 # --- Edge cases ---
 
 
-def test_parse_benthic_empty_on_visits():
-    """Empty on_visit_ids → no aggregation."""
-    agg = parse_benthic(BENTHIC_FIXTURE, set())
+def test_parse_benthic_empty_visit_jurisdictions():
+    """Empty visit_jurisdictions dict → no aggregation."""
+    agg = parse_benthic(BENTHIC_FIXTURE, {})
     assert len(agg) == 0
 
 
@@ -258,7 +259,7 @@ def test_parse_benthic_zero_count_skipped(tmp_path):
         '"TotalSample/Échantillontotal","Order/Ordre","Family/Famille","Count/Décompte"\n'
         '"SV001","300","500","Ephemeroptera","Baetidae","0"\n'
     )
-    agg = parse_benthic(csv_path, {"SV001"})
+    agg = parse_benthic(csv_path, {"SV001": "CA-ON"})
     assert len(agg) == 0
 
 

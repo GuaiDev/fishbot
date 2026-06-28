@@ -110,11 +110,12 @@ register(JurisdictionConfig(
         "hydro_network":     True,   # FWA via DataBC WFS
         "fish_observations": True,   # FISS via DataBC WFS
         "water_quality":     True,   # BC EMS stations via DataBC WFS (results stubbed)
-        "stocking":          False,  # FFSBC data not publicly available in bulk
-        "regulations":       False,  # BC regs PDF adapter not yet built
+        "stocking":          True,   # FISS stocking extraction (ACTIVITY_CODE filter)
+        "regulations":       True,   # BC 2025-2027 synopsis PDF
         "species_ranges":    False,  # not yet built
-        "benthic":           True,   # CABIN (federal; filtered to BC)
+        "benthic":           True,   # CABIN (federal; all provinces)
         "geology":           False,  # BC surficial geology adapter not yet built
+        "salmon_escapement": True,   # NuSEDS DFO (openpyxl required)
     },
     api_endpoints={
         "hydro_network": (
@@ -127,17 +128,220 @@ register(JurisdictionConfig(
         ),
         "water_quality_stations": (
             "https://openmaps.gov.bc.ca/geo/pub/"
-            "WHSE_ENVIRONMENTAL_MONITORING.ENV_MONITORING_LOCATIONS_SVW/ows"
+            "WHSE_ENVIRONMENTAL_MONITORING.EMS_MONITORING_LOCN_TYPES_SVW/ows"
+        ),
+        "salmon_escapement": (
+            "https://api-proxy.edh-cde.dfo-mpo.gc.ca/catalogue/records/"
+            "c48669a3-045b-400d-b730-48aafe8c5ee6/attachments/"
+            "All Areas Simplified Version_20251030.xlsx"
+        ),
+        "regulations": (
+            "https://www2.gov.bc.ca/assets/gov/sports-recreation-arts-and-culture/"
+            "outdoor-recreation/freshwater-fishing/fishing-regulations/"
+            "freshwater-fishing-regulations-synopsis-2025-2027.pdf"
         ),
     },
     notes=(
         "Global sources (iNat, GBIF, WSC, OSM, eBird) work automatically for any BC lat/lng. "
-        "BENTHIC: use the existing CABIN federal adapter with province='BC' filter. "
-        "STOCKING: BC FFSBC (Freshwater Fisheries Society of BC) does not publish bulk stocking "
-        "records via a public API as of 2026. "
-        "REGULATIONS: https://www2.gov.bc.ca/gov/content/sports-culture/recreation/fishing — "
-        "HTML/PDF; adapter not yet built. "
-        "WATER QUALITY: EMS results (measurements) require the DataBC Distribution API; "
+        "STOCKING: derived from FISS via ACTIVITY_CODE filter — no quantity data available. "
+        "SALMON_ESCAPEMENT: NuSEDS XLSX, annual DFO release; requires openpyxl. "
+        "WATER QUALITY: EMS results (measurements) require DataBC Distribution API; "
         "see water_quality.py TODO for resource IDs and query approach."
+    ),
+))
+
+register(JurisdictionConfig(
+    jurisdiction_code="CA-AB",
+    display_name="Alberta",
+    cron_areas=[
+        CronArea("Bow River Calgary",                   51.05,  -114.07, 50),
+        CronArea("North Saskatchewan River Edmonton",   53.53,  -113.49, 50),
+        CronArea("Oldman River Lethbridge",             49.70,  -112.84, 40),
+    ],
+    data_sources={
+        "hydro_network":     False,  # NHN stub — OSM covers this adequately
+        "fish_observations": False,  # AB FWMIS not publicly accessible
+        "water_quality":     False,  # stub — no public API
+        "stocking":          True,   # planned stocking XLSX from Open Alberta (openpyxl required)
+        "regulations":       False,  # stub — PDF adapter not yet implemented
+        "species_ranges":    False,  # not yet built
+        "benthic":           True,   # CABIN (federal; all provinces)
+        "geology":           False,  # not yet built
+    },
+    api_endpoints={
+        "stocking": (
+            "https://open.alberta.ca/dataset/ae7521d6-7629-4b69-ac45-857fc798c10c/"
+            "resource/48b6985f-a110-488e-8508-5546dd6e10fd/download/"
+            "fp-fish-stocking-planned-dates-2026.xlsx"
+        ),
+        "regulations": "https://mywildalberta.ca/fishing/regulations/",
+    },
+    notes=(
+        "Global sources (iNat, GBIF, WSC, OSM, eBird) work automatically for any AB lat/lng. "
+        "HYDRO: NHN GeoPackage tiles are available via FTP but no WFS exists; "
+        "OSM covers AB streams adequately at order 3+. "
+        "WATER QUALITY: AEMERA portal is map-based with no public API; "
+        "DataStream (ca_national/) covers some AB watersheds. "
+        "STOCKING: coordinates not included in Alberta data — waterbody name only."
+    ),
+))
+
+register(JurisdictionConfig(
+    jurisdiction_code="CA-QC",
+    display_name="Quebec",
+    cron_areas=[
+        CronArea("St. Lawrence River Montreal",  45.50,  -73.56,  60),
+        CronArea("Rivière Saint-Maurice",        46.35,  -72.55,  40),
+        CronArea("Saguenay River",               48.42,  -71.07,  40),
+        CronArea("Rivière Gatineau",             45.48,  -75.70,  40),
+    ],
+    data_sources={
+        "hydro_network":     False,  # RHN adapter not yet built
+        "fish_observations": False,  # Faune Québec not publicly accessible
+        "water_quality":     False,  # stub — MELCCFP RSQER has no public API
+        "stocking":          False,  # not publicly available
+        "regulations":       False,  # stub — PDF adapter not yet implemented
+        "species_ranges":    True,   # MELCCFP GeoJSON via données.gouv.qc.ca
+        "benthic":           True,   # CABIN (federal; all provinces)
+        "geology":           False,  # not yet built
+    },
+    api_endpoints={
+        "species_ranges": (
+            "https://www.donneesquebec.ca/recherche/dataset/aires-de-repartition-faune"
+        ),
+        "regulations": (
+            "https://www.quebec.ca/en/tourism-recreation-sport/"
+            "sporting-and-outdoor-activities/sport-fishing/printable-versions"
+        ),
+    },
+    notes=(
+        "Global sources (iNat, GBIF, WSC, OSM, eBird) work automatically for any QC lat/lng. "
+        "HYDRO: Réseau hydrographique du Québec (RHN) — no queryable WFS found as of 2026; "
+        "OSM covers QC rivers adequately. "
+        "WATER QUALITY: MELCCFP RSQER is PDF-only; DataStream covers some QC watersheds. "
+        "SPECIES_RANGES: MELCCFP GeoJSON — 118 freshwater fish species, COSEWIC status included."
+    ),
+))
+
+register(JurisdictionConfig(
+    jurisdiction_code="CA-MB",
+    display_name="Manitoba",
+    cron_areas=[
+        CronArea("Red River Winnipeg",      49.90,  -97.14,  50),
+        CronArea("Lake Winnipeg South",     50.70,  -96.90,  60),
+        CronArea("Assiniboine River",       50.07,  -99.95,  40),
+    ],
+    data_sources={
+        "hydro_network":     False,  # no public WFS found
+        "fish_observations": False,  # MB Wildlife Atlas not publicly accessible
+        "water_quality":     False,  # DataStream covers some MB watersheds (ca_national/)
+        "stocking":          False,  # not publicly available
+        "regulations":       False,  # not yet built
+        "benthic":           True,   # CABIN (federal; all provinces)
+    },
+    notes=(
+        "Global sources (iNat, GBIF, WSC, OSM, eBird) cover Manitoba adequately. "
+        "DataStream water quality covers Lake Winnipeg basin — use ca_national/ adapter."
+    ),
+))
+
+register(JurisdictionConfig(
+    jurisdiction_code="CA-SK",
+    display_name="Saskatchewan",
+    cron_areas=[
+        CronArea("South Saskatchewan River Saskatoon", 52.13, -106.67, 50),
+        CronArea("Qu'Appelle River",                   50.44, -103.82, 40),
+        CronArea("Churchill River",                    55.75, -108.45, 50),
+    ],
+    data_sources={
+        "hydro_network":     False,  # no public WFS found
+        "fish_observations": False,  # SK Fish and Wildlife not publicly accessible
+        "water_quality":     False,  # DataStream covers some SK watersheds (ca_national/)
+        "stocking":          False,  # not publicly available
+        "regulations":       False,  # not yet built
+        "benthic":           True,   # CABIN (federal; all provinces)
+    },
+    notes=(
+        "Global sources (iNat, GBIF, WSC, OSM, eBird) cover Saskatchewan adequately. "
+        "DataStream water quality may cover some SK watersheds — use ca_national/ adapter."
+    ),
+))
+
+register(JurisdictionConfig(
+    jurisdiction_code="CA-NS",
+    display_name="Nova Scotia",
+    cron_areas=[
+        CronArea("Annapolis River NS",  44.98,  -65.50,  40),
+        CronArea("Margaree River NS",   46.17,  -61.07,  30),
+    ],
+    data_sources={
+        "hydro_network":     False,  # no public WFS found
+        "fish_observations": False,  # NS Inland Fisheries not publicly accessible
+        "water_quality":     False,  # DataStream covers Atlantic Canada (ca_national/)
+        "stocking":          False,  # not publicly available
+        "regulations":       False,  # DFO federal + NS supplement; not yet built
+        "benthic":           True,   # CABIN (federal; all provinces)
+        "tidal":             True,   # CHS tidal API (ca_national/)
+    },
+    api_endpoints={
+        "regulations": "https://novascotia.ca/fish",
+        "tidal": "https://api-sine.dfo-mpo.gc.ca/stations",
+    },
+    notes=(
+        "Global sources (iNat, GBIF, WSC, OSM, eBird) cover Nova Scotia. "
+        "CHS tidal API provides tide predictions for coastal fishing (ca_national/tidal.py). "
+        "DataStream covers Atlantic Canada watersheds."
+    ),
+))
+
+register(JurisdictionConfig(
+    jurisdiction_code="CA-NB",
+    display_name="New Brunswick",
+    cron_areas=[
+        CronArea("Miramichi River NB",  46.97,  -65.54,  50),
+        CronArea("Saint John River NB", 45.97,  -66.64,  50),
+    ],
+    data_sources={
+        "hydro_network":     False,  # no public WFS found
+        "fish_observations": False,  # NB Fish and Wildlife not publicly accessible
+        "water_quality":     False,  # DataStream covers Atlantic Canada (ca_national/)
+        "stocking":          False,  # not publicly available
+        "regulations":       False,  # not yet built
+        "benthic":           True,   # CABIN (federal; all provinces)
+        "tidal":             True,   # CHS tidal API (ca_national/)
+    },
+    api_endpoints={
+        "regulations": "https://www2.gnb.ca/content/dam/gnb/Departments/nr-rn/pdf/en/Fish/Fish.pdf",
+        "tidal": "https://api-sine.dfo-mpo.gc.ca/stations",
+    },
+    notes=(
+        "Global sources (iNat, GBIF, WSC, OSM, eBird) cover New Brunswick. "
+        "Miramichi is one of the world's best Atlantic salmon rivers — iNat + GBIF coverage good. "
+        "CHS tidal API for tidal reach fishing (Miramichi tidal, Saint John tidal). "
+        "DataStream covers Atlantic Canada watersheds."
+    ),
+))
+
+register(JurisdictionConfig(
+    jurisdiction_code="CA-PE",
+    display_name="Prince Edward Island",
+    cron_areas=[],  # PEI is small; add cron areas when needed
+    data_sources={
+        "hydro_network":     False,  # OSM adequate for PEI's small streams
+        "fish_observations": False,  # PEI Agriculture and Fisheries not publicly accessible
+        "water_quality":     False,  # DataStream covers Atlantic Canada (ca_national/)
+        "stocking":          False,  # not publicly available
+        "regulations":       False,  # DFO federal regulations apply
+        "benthic":           True,   # CABIN (federal; all provinces)
+        "tidal":             True,   # CHS tidal API (ca_national/)
+    },
+    api_endpoints={
+        "regulations": "https://www.dfo-mpo.gc.ca/fisheries-peches/regs/index-eng.html",
+        "tidal": "https://api-sine.dfo-mpo.gc.ca/stations",
+    },
+    notes=(
+        "Global sources (iNat, GBIF, WSC, OSM, eBird) cover PEI. "
+        "PEI has no large freshwater systems — tidal and coastal fishing dominate. "
+        "DFO federal regulations apply for most species."
     ),
 ))

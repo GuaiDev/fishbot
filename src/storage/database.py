@@ -21,6 +21,7 @@ def get_db(path: Path | None = None) -> Database:
     migrate_user_fields(db)
     migrate_stream_segments_multi_jurisdiction(db)
     migrate_observations_source(db)
+    migrate_regulation_chunks_zone_name(db)
     return db
 
 
@@ -478,6 +479,69 @@ def ensure_schema(db: Database) -> None:
             },
             pk="ogf_id",
         )
+
+    if "critical_habitat" not in db.table_names():
+        db["critical_habitat"].create(
+            {
+                "habitat_id": str,
+                "species_name": str,
+                "species_common_name": str,
+                "habitat_type": str,
+                "jurisdiction": str,
+                "geom_centroid_lat": float,
+                "geom_centroid_lng": float,
+                "sara_status": str,
+                "source": str,
+                "ingested_at": str,
+            },
+            pk="habitat_id",
+        )
+        db["critical_habitat"].create_index(["jurisdiction"], if_not_exists=True)
+        db["critical_habitat"].create_index(
+            ["geom_centroid_lat", "geom_centroid_lng"], if_not_exists=True
+        )
+
+    if "tidal_readings" not in db.table_names():
+        db["tidal_readings"].create(
+            {
+                "record_id": str,
+                "station_id": str,
+                "station_name": str,
+                "lat": float,
+                "lng": float,
+                "jurisdiction": str,
+                "prediction_datetime": str,
+                "water_level_m": float,
+                "data_type": str,
+                "tide_type": str,
+                "fetched_at": str,
+            },
+            pk="record_id",
+        )
+        db["tidal_readings"].create_index(["station_id"], if_not_exists=True)
+        db["tidal_readings"].create_index(["prediction_datetime"], if_not_exists=True)
+
+    if "salmon_escapement" not in db.table_names():
+        db["salmon_escapement"].create(
+            {
+                "record_id": str,
+                "population_id": str,
+                "waterbody_name": str,
+                "gazetted_name": str,
+                "watershed_code": str,
+                "species": str,
+                "analysis_year": int,
+                "max_estimate": int,
+                "stream_lat": float,
+                "stream_lng": float,
+                "jurisdiction": str,
+                "source": str,
+                "ingested_at": str,
+            },
+            pk="record_id",
+        )
+        db["salmon_escapement"].create_index(["species"], if_not_exists=True)
+        db["salmon_escapement"].create_index(["waterbody_name"], if_not_exists=True)
 
 
     if "sessions" not in db.table_names():
@@ -952,6 +1016,23 @@ def migrate_observations_source(db: Database) -> None:
             db.execute(
                 "UPDATE observations SET source = 'iNaturalist' WHERE source IS NULL"
             )
+            db.conn.commit()
+        except Exception:
+            pass
+
+
+def migrate_regulation_chunks_zone_name(db: Database) -> None:
+    """Add zone_name column to regulation_chunks for human-readable region names.
+
+    Idempotent. BC uses region names ("Vancouver Island"), QC uses zone names.
+    The existing zone INTEGER column remains the PK component; zone_name is metadata.
+    """
+    if "regulation_chunks" not in db.table_names():
+        return
+    cols = {c.name for c in db["regulation_chunks"].columns}
+    if "zone_name" not in cols:
+        try:
+            db.execute("ALTER TABLE regulation_chunks ADD COLUMN zone_name TEXT")
             db.conn.commit()
         except Exception:
             pass

@@ -41,6 +41,11 @@ _USER_AGENT = "fishbot/1.0 (personal fishing exploration bot)"
 # FISS records without a date use this sentinel so the model validates
 _UNKNOWN_DATE = date(1900, 1, 1)
 
+# FISS ACTIVITY_CODE values that indicate stocking events (not wild observations)
+_STOCKING_ACTIVITY_CODES: frozenset[str] = frozenset({
+    "STO", "STK", "STOCK", "PLANT", "STOCKING", "HATCHERY",
+})
+
 logger = logging.getLogger(__name__)
 
 
@@ -157,6 +162,80 @@ def _parse_observation(feat: dict) -> Observation | None:
     except (ValueError, TypeError) as exc:
         logger.warning("FISS: skipping observation ID=%s: %s", fid, exc)
         return None
+
+
+def fetch_stocking_from_fiss(
+    lat: float,
+    lng: float,
+    radius_km: float = 50.0,
+) -> list[dict]:
+    """Extract stocking records from FISS (same WFS call, hits cache on second call).
+
+    Filters features where ACTIVITY_CODE matches known stocking codes.
+    Returns list of row dicts for stocking_records table.
+    Note: FISS stocking records lack quantity data; quantity is set to None.
+    """
+    min_lon, min_lat, max_lon, max_lat = _bbox(lat, lng, radius_km)
+    bbox_str = f"{min_lon:.5f},{min_lat:.5f},{max_lon:.5f},{max_lat:.5f},CRS:84"
+    base_params = {
+        "service": "WFS",
+        "version": "2.0.0",
+        "request": "GetFeature",
+        "typeName": _TYPE_NAME,
+        "outputFormat": "application/json",
+        "srsName": "EPSG:4326",
+        "bbox": bbox_str,
+    }
+    features = _wfs_paginate(_WFS_URL, base_params)
+
+    stocking_rows: list[dict] = []
+    seen: set[str] = set()
+    for feat in features:
+        props = feat.get("properties") or {}
+        activity_code = (props.get("ACTIVITY_CODE") or "").strip().upper()
+        if activity_code not in _STOCKING_ACTIVITY_CODES:
+            continue
+
+        geojson_geom = feat.get("geometry") or {}
+        if geojson_geom.get("type") != "Point":
+            continue
+        coords = geojson_geom.get("coordinates", [])
+        if len(coords) < 2:
+            continue
+        lon, feat_lat = float(coords[0]), float(coords[1])
+
+        fid = props.get("FISH_OBSERVATION_POINT_ID")
+        if fid is None or str(fid) in seen:
+            continue
+        seen.add(str(fid))
+
+        species = (props.get("SPECIES_NAME") or props.get("SPECIES_CODE") or "Unknown").strip()
+        raw_date = props.get("OBSERVATION_DATE")
+        obs_date = _parse_date(raw_date)
+        year = obs_date.year if obs_date.year > 1900 else None
+        place = (props.get("GAZETTED_NAME") or props.get("WATERBODY_IDENTIFIER") or "").strip()
+
+        stocking_rows.append({
+            "record_id": f"FISS_STO_{fid}",
+            "waterbody_name": place or None,
+            "waterbody_code": (props.get("WATERBODY_IDENTIFIER") or "").strip() or None,
+            "municipality": None,
+            "county": None,
+            "lat": feat_lat,
+            "lng": lon,
+            "jurisdiction": "CA-BC",
+            "species": species,
+            "species_code": activity_code,
+            "year": year,
+            "month": None,
+            "quantity": None,
+            "life_stage": None,
+            "stocking_purpose": "hatchery",
+            "stocked_at": obs_date.isoformat() if obs_date.year > 1900 else None,
+        })
+
+    logger.info("FISS stocking: %d stocking records extracted from FISS", len(stocking_rows))
+    return stocking_rows
 
 
 def _parse_date(raw: str | None) -> date:

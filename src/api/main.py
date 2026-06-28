@@ -720,6 +720,166 @@ def ingest_data_bc(
     )
 
 
+def _run_ab_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
+    """Background task: run Alberta-specific ingest adapters."""
+    _log.info("[%s] AB ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+    from src.services.ab_ingest import ingest_ab_data
+    from src.storage.database import ensure_schema, get_db
+    db = get_db()
+    ensure_schema(db)
+    try:
+        counts = ingest_ab_data(lat, lng, radius_km)
+        _log.info("[%s] AB ingest complete: %s", label, counts)
+    except Exception:
+        _log.exception("[%s] AB ingest failed", label)
+
+
+@app.post("/ingest/data-ab")
+def ingest_data_ab(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    _: None = Depends(verify_api_key),
+):
+    """Trigger Alberta-specific data ingest for a location (runs in background).
+
+    Body: {"lat": float, "lng": float, "radius_km": float (optional), "label": str (optional)}
+    Runs AB stocking, regulations, water quality.
+    Returns 202 immediately. Protected by X-Api-Key.
+    """
+    lat = body.get("lat")
+    lng = body.get("lng")
+    radius_km = body.get("radius_km", 50.0)
+    label = body.get("label", f"{lat},{lng}")
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="lat and lng are required")
+    background_tasks.add_task(_run_ab_ingest, lat, lng, radius_km, label)
+    return JSONResponse(status_code=202, content={"status": "accepted", "label": label, "message": "AB ingest started in background"})
+
+
+def _run_qc_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
+    """Background task: run Quebec-specific ingest adapters."""
+    _log.info("[%s] QC ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+    from src.services.qc_ingest import ingest_qc_data
+    from src.storage.database import ensure_schema, get_db
+    db = get_db()
+    ensure_schema(db)
+    try:
+        counts = ingest_qc_data(lat, lng, radius_km)
+        _log.info("[%s] QC ingest complete: %s", label, counts)
+    except Exception:
+        _log.exception("[%s] QC ingest failed", label)
+
+
+@app.post("/ingest/data-qc")
+def ingest_data_qc(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    _: None = Depends(verify_api_key),
+):
+    """Trigger Quebec-specific data ingest for a location (runs in background).
+
+    Body: {"lat": float, "lng": float, "radius_km": float (optional), "label": str (optional)}
+    Runs QC species ranges, regulations, water quality.
+    Returns 202 immediately. Protected by X-Api-Key.
+    """
+    lat = body.get("lat")
+    lng = body.get("lng")
+    radius_km = body.get("radius_km", 50.0)
+    label = body.get("label", f"{lat},{lng}")
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="lat and lng are required")
+    background_tasks.add_task(_run_qc_ingest, lat, lng, radius_km, label)
+    return JSONResponse(status_code=202, content={"status": "accepted", "label": label, "message": "QC ingest started in background"})
+
+
+def _run_national_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
+    """Background task: run national/federal ingest adapters."""
+    _log.info("[%s] National ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+    from src.services.national_ingest import ingest_national_data
+    from src.storage.database import ensure_schema, get_db
+    db = get_db()
+    ensure_schema(db)
+
+    _log.info("[%s] DFO critical habitat: fetching", label)
+    try:
+        from src.services.national_ingest import ingest_dfo_critical_habitat
+        n = ingest_dfo_critical_habitat(lat, lng, radius_km)
+        _log.info("[%s] DFO critical habitat: %d records stored", label, n)
+    except Exception:
+        _log.exception("[%s] DFO critical habitat fetch failed", label)
+
+    _log.info("[%s] DataStream water quality: fetching", label)
+    try:
+        from src.services.national_ingest import ingest_datastream_water_quality
+        n = ingest_datastream_water_quality(lat, lng, radius_km)
+        _log.info("[%s] DataStream: %d readings stored", label, n)
+    except Exception:
+        _log.exception("[%s] DataStream fetch failed", label)
+
+    _log.info("[%s] National ingest complete", label)
+
+
+@app.post("/ingest/data-national")
+def ingest_data_national(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    _: None = Depends(verify_api_key),
+):
+    """Trigger national/federal data ingest for a location (runs in background).
+
+    Body: {"lat": float, "lng": float, "radius_km": float (optional), "label": str (optional)}
+    Runs DFO critical habitat and DataStream water quality.
+    Returns 202 immediately. Protected by X-Api-Key.
+    """
+    lat = body.get("lat")
+    lng = body.get("lng")
+    radius_km = body.get("radius_km", 100.0)
+    label = body.get("label", f"{lat},{lng}")
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="lat and lng are required")
+    background_tasks.add_task(_run_national_ingest, lat, lng, radius_km, label)
+    return JSONResponse(status_code=202, content={"status": "accepted", "label": label, "message": "National ingest started in background"})
+
+
+def _run_tidal_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
+    """Background task: run CHS tidal predictions ingest."""
+    _log.info("[%s] Tidal ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+    from src.storage.database import ensure_schema, get_db
+    db = get_db()
+    ensure_schema(db)
+    try:
+        from src.ingest.jurisdictions.ca_national.tidal import fetch_tidal_readings
+        rows = fetch_tidal_readings(lat, lng, radius_km)
+        if rows:
+            db["tidal_readings"].upsert_all(rows, pk="record_id")
+        _log.info("[%s] Tidal ingest: %d records stored", label, len(rows))
+    except Exception:
+        _log.exception("[%s] Tidal ingest failed", label)
+
+
+@app.post("/ingest/data-tidal")
+def ingest_data_tidal(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    _: None = Depends(verify_api_key),
+):
+    """Trigger CHS tidal predictions ingest for a coastal location (runs in background).
+
+    Body: {"lat": float, "lng": float, "radius_km": float (optional, default 100), "label": str (optional)}
+    Runs CHS SINE API for nearby tidal stations and their high/low tide predictions.
+    Relevant for BC coast, NS, NB, PEI. Returns 202 immediately.
+    Protected by X-Api-Key.
+    """
+    lat = body.get("lat")
+    lng = body.get("lng")
+    radius_km = body.get("radius_km", 100.0)
+    label = body.get("label", f"{lat},{lng}")
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="lat and lng are required")
+    background_tasks.add_task(_run_tidal_ingest, lat, lng, radius_km, label)
+    return JSONResponse(status_code=202, content={"status": "accepted", "label": label, "message": "Tidal ingest started in background"})
+
+
 @app.get("/map/segments")
 def get_map_segments(
     north: float,

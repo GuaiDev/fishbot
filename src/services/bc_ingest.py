@@ -1,9 +1,12 @@
 """Service entry point for BC-specific data ingest.
 
-Orchestrates the three CA-BC adapters:
+Orchestrates the CA-BC adapters:
   - FWA stream network  (ca_bc/hydro_network.py)
   - FISS fish observations (ca_bc/fish_observations.py)
-  - BC EMS water quality (ca_bc/water_quality.py — stub)
+  - FISS stocking extraction (ca_bc/fish_observations.py)
+  - NuSEDS salmon escapement (ca_bc/nuseds.py — province-wide, not bbox)
+  - BC fishing regulations (ca_bc/regulations.py — province-wide, not bbox)
+  - BC EMS water quality (ca_bc/water_quality.py — stations only; results stubbed)
 
 Called from the CLI `ingest-bc` command or the /ingest/data-bc API endpoint.
 Global sources (iNat, GBIF, WSC, OSM, eBird) are handled by the standard
@@ -105,6 +108,77 @@ def ingest_bc_water_quality(
     return len(readings)
 
 
+def ingest_fiss_stocking(
+    lat: float,
+    lng: float,
+    radius_km: float = 50.0,
+) -> int:
+    """Extract stocking records from FISS and write to stocking_records table.
+
+    Re-uses the cached WFS response from the FISS observations call — no
+    additional HTTP request is made if called after ingest_fiss_observations.
+    Returns count stored.
+    """
+    _fiss = importlib.import_module("src.ingest.jurisdictions.ca_bc.fish_observations")
+    db = get_db()
+    logger.info("FISS stocking: extracting stocking records — lat=%.4f lng=%.4f", lat, lng)
+    rows = _fiss.fetch_stocking_from_fiss(lat, lng, radius_km)
+    if rows:
+        now = datetime.utcnow().isoformat()
+        for r in rows:
+            r.setdefault("ingested_at", now)
+        db["stocking_records"].upsert_all(rows, pk="record_id")
+    logger.info("FISS stocking: %d stocking records stored", len(rows))
+    return len(rows)
+
+
+def ingest_bc_nuseds() -> int:
+    """Download NuSEDS salmon escapement XLSX and store to salmon_escapement table.
+
+    Province-wide (not bbox-scoped). Requires openpyxl.
+    Returns record count stored.
+    """
+    _nuseds = importlib.import_module("src.ingest.jurisdictions.ca_bc.nuseds")
+    db = get_db()
+    logger.info("NuSEDS: downloading and parsing salmon escapement …")
+    rows = _nuseds.fetch_salmon_escapement()
+    if rows:
+        now = datetime.utcnow().isoformat()
+        for r in rows:
+            r["ingested_at"] = now
+        db["salmon_escapement"].upsert_all(rows, pk="record_id")
+    logger.info("NuSEDS: %d escapement records stored", len(rows))
+    return len(rows)
+
+
+def ingest_bc_regulations() -> int:
+    """Download and parse BC fishing regulations PDF. Returns chunk count."""
+    _regs = importlib.import_module("src.ingest.jurisdictions.ca_bc.regulations")
+    db = get_db()
+    logger.info("BC regulations: fetching and parsing PDF …")
+    chunks = _regs.fetch_regulations()
+    if chunks:
+        _upsert_regulation_chunks(db, chunks)
+    logger.info("BC regulations: %d chunks stored", len(chunks))
+    return len(chunks)
+
+
+def _upsert_regulation_chunks(db, chunks: list[dict]) -> None:
+    for chunk in chunks:
+        row = {
+            "zone": chunk["zone"],
+            "jurisdiction": chunk["jurisdiction"],
+            "regulation_year": chunk["regulation_year"],
+            "raw_text": chunk["raw_text"],
+            "char_count": chunk["char_count"],
+            "source_url": chunk.get("source_url", ""),
+            "ingested_at": chunk.get("ingested_at", datetime.utcnow().isoformat()),
+        }
+        if chunk.get("zone_name"):
+            row["zone_name"] = chunk["zone_name"]
+        db["regulation_chunks"].upsert(row, pk=["zone", "jurisdiction", "regulation_year"])
+
+
 def ingest_bc_data(
     lat: float,
     lng: float,
@@ -113,10 +187,12 @@ def ingest_bc_data(
     """Run all BC-specific ingest adapters for a location. Returns counts per source."""
     fwa_segs, fwa_barriers = ingest_bc_hydro_network(lat, lng, radius_km)
     fiss_count = ingest_fiss_observations(lat, lng, radius_km)
+    fiss_stocking = ingest_fiss_stocking(lat, lng, radius_km)
     wq_count = ingest_bc_water_quality(lat, lng, radius_km)
     return {
         "fwa_segments": fwa_segs,
         "fwa_barriers": fwa_barriers,
         "fiss_observations": fiss_count,
+        "fiss_stocking": fiss_stocking,
         "water_quality_readings": wq_count,
     }

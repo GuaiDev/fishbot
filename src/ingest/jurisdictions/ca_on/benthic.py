@@ -1,4 +1,4 @@
-"""CABIN benthic macroinvertebrate ingestion for Ontario (CA-ON).
+"""CABIN benthic macroinvertebrate ingestion — all Canadian provinces.
 
 Downloads two CSV files from cabin-rcba.ec.gc.ca (Environment and Climate
 Change Canada) with a 30-day cache:
@@ -6,9 +6,10 @@ Change Canada) with a 30-day cache:
   cabin_study_data_mda02_1987-present.csv   (~4 MB)   — site visit metadata
   cabin_benthic_data_mda02_1987-present.csv (~95 MB)  — long-format taxon counts
 
-The benthic file has one row per taxon per site visit. Rows are filtered to
-Ontario by joining on SiteVisitID against Province == 'ON' in the study file.
-Province is blank in benthic rows so the study file is authoritative.
+The benthic file has one row per taxon per site visit. Province filtering is
+done via the study file (Province field); all Canadian provinces are ingested
+with jurisdiction codes derived from the Province abbreviation. Province is
+blank in benthic rows so the study file is authoritative.
 
 EPT (Ephemeroptera, Plecoptera, Trichoptera) proportion is a standard proxy
 for benthic habitat quality: high-EPT reaches have clean, well-oxygenated
@@ -183,22 +184,40 @@ def download_benthic() -> Path:
     return _download_if_stale(_BENTHIC_URL, _BENTHIC_PATH, _TTL)
 
 
-def load_study(path: Path) -> tuple[dict[str, dict], set[str]]:
+# Province abbreviation → ISO 3166-2 jurisdiction code
+_PROVINCE_TO_JURISDICTION: dict[str, str] = {
+    "ON": "CA-ON",
+    "BC": "CA-BC",
+    "AB": "CA-AB",
+    "QC": "CA-QC",
+    "MB": "CA-MB",
+    "SK": "CA-SK",
+    "NB": "CA-NB",
+    "NS": "CA-NS",
+    "PE": "CA-PE",
+    "NL": "CA-NL",
+    "NT": "CA-NT",
+    "YT": "CA-YT",
+    "NU": "CA-NU",
+}
+
+
+def load_study(path: Path) -> tuple[dict[str, dict], dict[str, str]]:
     """Parse the study CSV.
 
     Returns:
-        study_meta  — {visit_id: {site_code, site_name, lat, lng, year,
-                                   julian_day, stream_order, local_basin}}
-        on_visit_ids — set of SiteVisitIDs where Province == 'ON'
+        study_meta         — {visit_id: {site_code, site_name, lat, lng, year,
+                                         julian_day, stream_order, local_basin}}
+        visit_jurisdictions — {visit_id: jurisdiction_code} for all Canadian provinces
     """
     study_meta: dict[str, dict] = {}
-    on_visit_ids: set[str] = set()
+    visit_jurisdictions: dict[str, str] = {}
     enc = _detect_encoding(path)
     with path.open(newline="", encoding=enc) as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
             logger.warning("Study CSV %s has no header row", path)
-            return study_meta, on_visit_ids
+            return study_meta, visit_jurisdictions
         norm = {raw: _normalize_col(raw) for raw in reader.fieldnames}
         for row in reader:
             r = {norm[k]: v.strip() for k, v in row.items() if k}
@@ -206,8 +225,9 @@ def load_study(path: Path) -> tuple[dict[str, dict], set[str]]:
             if not visit_id:
                 continue
             province = r.get("Province", "").strip().upper()
-            if province == "ON":
-                on_visit_ids.add(visit_id)
+            jur = _PROVINCE_TO_JURISDICTION.get(province)
+            if jur:
+                visit_jurisdictions[visit_id] = jur
             year = _parse_int(r.get("Year", ""))
             if year is None:
                 continue
@@ -221,19 +241,25 @@ def load_study(path: Path) -> tuple[dict[str, dict], set[str]]:
                 "stream_order": _parse_int(r.get("StreamOrder", "")),
                 "local_basin": r.get("LocalBasinName", "").strip() or None,
             }
+
+    by_jur: dict[str, int] = {}
+    for jur in visit_jurisdictions.values():
+        by_jur[jur] = by_jur.get(jur, 0) + 1
     logger.info(
-        "Study file: %d total visits, %d Ontario visits",
+        "Study file: %d total visits, %d Canadian visits by jurisdiction: %s",
         len(study_meta),
-        len(on_visit_ids),
+        len(visit_jurisdictions),
+        by_jur,
     )
-    return study_meta, on_visit_ids
+    return study_meta, visit_jurisdictions
 
 
-def parse_benthic(path: Path, on_visit_ids: set[str]) -> dict[str, dict]:
-    """Stream the benthic CSV, aggregating taxon counts per Ontario visit.
+def parse_benthic(path: Path, visit_jurisdictions: dict[str, str]) -> dict[str, dict]:
+    """Stream the benthic CSV, aggregating taxon counts per visit for all provinces.
 
     Returns {visit_id: {ept_count, total_count, ept_richness, ept_taxa_seen}}.
-    Province is blank in benthic rows — ON filtering is done via on_visit_ids.
+    Province is blank in benthic rows — jurisdiction filtering is done via
+    visit_jurisdictions (keyed by SiteVisitID from the study file).
 
     SubSample handling: raw Count values are used for all arithmetic.
     EPT proportion (ept_count / total_count) is invariant to SubSample scaling,
@@ -252,7 +278,7 @@ def parse_benthic(path: Path, on_visit_ids: set[str]) -> dict[str, dict]:
         for raw_row in reader:
             r = {norm[k]: v.strip() for k, v in raw_row.items() if k}
             visit_id = r.get("SiteVisitID", "").strip()
-            if visit_id not in on_visit_ids:
+            if visit_id not in visit_jurisdictions:
                 continue
             count_str = r.get("Count", "").strip()
             if not count_str:
@@ -286,7 +312,7 @@ def parse_benthic(path: Path, on_visit_ids: set[str]) -> dict[str, dict]:
             rows_processed += 1
 
     logger.info(
-        "Benthic file: %d ON rows processed → %d site visits aggregated",
+        "Benthic file: %d Canadian rows processed → %d site visits aggregated",
         rows_processed,
         len(agg),
     )
@@ -296,8 +322,12 @@ def parse_benthic(path: Path, on_visit_ids: set[str]) -> dict[str, dict]:
 def build_samples(
     study_meta: dict[str, dict],
     benthic_agg: dict[str, dict],
+    visit_jurisdictions: dict[str, str],
 ) -> list[BenthicSample]:
-    """Join benthic aggregates with study metadata → list[BenthicSample]."""
+    """Join benthic aggregates with study metadata → list[BenthicSample].
+
+    Jurisdiction is derived from visit_jurisdictions (province code from study file).
+    """
     records: list[BenthicSample] = []
     for visit_id, counts in benthic_agg.items():
         total = counts["total_count"]
@@ -306,6 +336,7 @@ def build_samples(
         ept = counts["ept_count"]
         ept_prop = ept / total
         meta = study_meta.get(visit_id, {})
+        jur = visit_jurisdictions.get(visit_id, "CA-ON")
         records.append(
             BenthicSample(
                 site_visit_id=visit_id,
@@ -313,7 +344,7 @@ def build_samples(
                 site_name=meta.get("site_name"),
                 lat=meta.get("lat"),
                 lng=meta.get("lng"),
-                jurisdiction="CA-ON",
+                jurisdiction=jur,
                 sampled_year=meta.get("year", 0),
                 sampled_julian_day=meta.get("julian_day"),
                 stream_order=meta.get("stream_order"),
@@ -326,5 +357,9 @@ def build_samples(
                 habitat_quality=_habitat_quality(ept_prop),
             )
         )
-    logger.info("Built %d BenthicSample records for Ontario", len(records))
+
+    by_jur: dict[str, int] = {}
+    for s in records:
+        by_jur[s.jurisdiction] = by_jur.get(s.jurisdiction, 0) + 1
+    logger.info("Built %d BenthicSample records by jurisdiction: %s", len(records), by_jur)
     return records
