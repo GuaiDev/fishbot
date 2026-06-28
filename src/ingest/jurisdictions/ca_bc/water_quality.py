@@ -3,10 +3,15 @@
 Source: DataBC Open Data — WFS 2.0.0 (stations) + DataBC Distribution API (results)
 
 STATIONS
-  Layer: WHSE_ENVIRONMENTAL_MONITORING.ENV_MONITORING_LOCATIONS_SVW
+  Layer: WHSE_ENVIRONMENTAL_MONITORING.EMS_MONITORING_LOCN_TYPES_SVW
   Endpoint: https://openmaps.gov.bc.ca/geo/pub/
-            WHSE_ENVIRONMENTAL_MONITORING.ENV_MONITORING_LOCATIONS_SVW/ows
-  This WFS returns monitoring station metadata (EMS_ID, name, lat/lng) within a bbox.
+            WHSE_ENVIRONMENTAL_MONITORING.EMS_MONITORING_LOCN_TYPES_SVW/ows
+  This WFS returns monitoring station metadata (MONITORING_LOCATION_ID, name, lat/lng)
+  within a bbox. The original layer name ENV_MONITORING_LOCATIONS_SVW returns 404 —
+  it does not exist in the DataBC WFS catalogue. EMS_MONITORING_LOCN_TYPES_SVW is the
+  closest available layer (43,626 stations province-wide, 295 near Fraser River).
+  Note: the LONGITUDE property is stored as a positive value in this layer; use
+  geometry coordinates instead.
 
 RESULTS (water quality measurements)
   TODO: The EMS monitoring results are published via the BC Data Catalogue at:
@@ -40,9 +45,9 @@ import httpx
 
 _STATIONS_WFS_URL = (
     "https://openmaps.gov.bc.ca/geo/pub/"
-    "WHSE_ENVIRONMENTAL_MONITORING.ENV_MONITORING_LOCATIONS_SVW/ows"
+    "WHSE_ENVIRONMENTAL_MONITORING.EMS_MONITORING_LOCN_TYPES_SVW/ows"
 )
-_STATIONS_TYPE_NAME = "pub:WHSE_ENVIRONMENTAL_MONITORING.ENV_MONITORING_LOCATIONS_SVW"
+_STATIONS_TYPE_NAME = "pub:WHSE_ENVIRONMENTAL_MONITORING.EMS_MONITORING_LOCN_TYPES_SVW"
 _PAGE_SIZE = 500
 _CACHE_DIR = Path("data/cache/bc_ems")
 _CACHE_TTL_SECONDS = 30 * 86400
@@ -69,13 +74,13 @@ def fetch_water_quality_readings(
     station_ids = [s["ems_id"] for s in stations if s.get("ems_id")]
     logger.warning(
         "BC EMS: found %d stations near (%.4f, %.4f) — "
-        "EMS_IDs: %s … "
+        "MONITORING_LOCATION_IDs: %s … "
         "water quality results fetch not yet implemented; returning 0 readings. "
         "See water_quality.py TODO for how to implement result ingestion.",
         len(stations),
         lat,
         lng,
-        ", ".join(station_ids[:5]),
+        ", ".join(str(s) for s in station_ids[:5]),
     )
     # TODO: implement results fetch — see module docstring for approach
     return []
@@ -87,7 +92,9 @@ def fetch_water_quality_readings(
 def _fetch_stations(lat: float, lng: float, radius_km: float) -> list[dict]:
     """Return list of {ems_id, name, lat, lng} for stations within bbox."""
     min_lon, min_lat, max_lon, max_lat = _bbox(lat, lng, radius_km)
-    bbox_str = f"{min_lon:.5f},{min_lat:.5f},{max_lon:.5f},{max_lat:.5f}"
+    # ",CRS:84" tells the server to interpret bbox as lon/lat and reproject into
+    # the layer's native BC Albers CRS. Without it, 0 results are returned.
+    bbox_str = f"{min_lon:.5f},{min_lat:.5f},{max_lon:.5f},{max_lat:.5f},CRS:84"
 
     base_params = {
         "service": "WFS",
@@ -97,7 +104,12 @@ def _fetch_stations(lat: float, lng: float, radius_km: float) -> list[dict]:
         "outputFormat": "application/json",
         "srsName": "EPSG:4326",
         "bbox": bbox_str,
-        "propertyName": "EMS_ID,MONITORING_LOCATION,LATITUDE,LONGITUDE",
+        # sortBy=OBJECTID required for startIndex pagination on this layer —
+        # GeoServer rejects startIndex without a sort key when there's no PK.
+        "sortBy": "OBJECTID",
+        # propertyName omitted — MONITORING_LOCATION_ID replaces EMS_ID and
+        # the LONGITUDE property is stored as a positive value in this layer.
+        # Use geometry coordinates for reliable lon/lat.
     }
 
     features: list[dict] = []
@@ -111,6 +123,7 @@ def _fetch_stations(lat: float, lng: float, radius_km: float) -> list[dict]:
             break
         page = data.get("features", [])
         features.extend(page)
+        logger.info("BC EMS stations WFS startIndex=%d: %d on page", start, len(page))
         if len(page) < _PAGE_SIZE:
             break
         start += _PAGE_SIZE
@@ -121,13 +134,13 @@ def _fetch_stations(lat: float, lng: float, radius_km: float) -> list[dict]:
         geom = feat.get("geometry") or {}
         coords = geom.get("coordinates", [])
         if len(coords) >= 2:
+            # Geometry coords are reliable; LONGITUDE property is stored unsigned.
             feature_lon, feature_lat = coords[0], coords[1]
         else:
-            feature_lat = props.get("LATITUDE")
-            feature_lon = props.get("LONGITUDE")
+            continue
         stations.append({
-            "ems_id": props.get("EMS_ID"),
-            "name": props.get("MONITORING_LOCATION"),
+            "ems_id": props.get("MONITORING_LOCATION_ID"),
+            "name": props.get("MONITORING_LOCATION_NAME"),
             "lat": feature_lat,
             "lng": feature_lon,
         })
@@ -155,6 +168,12 @@ def _cached_get(url: str, params: dict) -> dict:
         headers={"User-Agent": _USER_AGENT},
         timeout=60,
     )
+    if response.status_code >= 400:
+        logger.error(
+            "BC EMS WFS HTTP %d — response body: %s",
+            response.status_code,
+            response.text[:500],
+        )
     response.raise_for_status()
     data = response.json()
     cache_file.write_text(json.dumps(data))

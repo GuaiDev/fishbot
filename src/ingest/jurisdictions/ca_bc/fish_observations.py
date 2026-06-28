@@ -51,7 +51,9 @@ def fetch_observations(
 ) -> list[Observation]:
     """Fetch FISS fish observation points within radius_km of lat/lng. Cached 7 days."""
     min_lon, min_lat, max_lon, max_lat = _bbox(lat, lng, radius_km)
-    bbox_str = f"{min_lon:.5f},{min_lat:.5f},{max_lon:.5f},{max_lat:.5f}"
+    # ",CRS:84" tells the server to interpret bbox coords as lon/lat; without it
+    # the server treats them as native BC Albers metres and returns 0 results.
+    bbox_str = f"{min_lon:.5f},{min_lat:.5f},{max_lon:.5f},{max_lat:.5f},CRS:84"
 
     base_params = {
         "service": "WFS",
@@ -61,10 +63,8 @@ def fetch_observations(
         "outputFormat": "application/json",
         "srsName": "EPSG:4326",
         "bbox": bbox_str,
-        "propertyName": (
-            "FISH_OBSERVATION_POINT_ID,SPECIES_NAME,SPECIES_CODE,"
-            "OBSERVATION_DATE,WATERBODY_IDENTIFIER,LOCATION_DESCRIPTION,ACTIVITY_CODE"
-        ),
+        # propertyName omitted — FISS layer rejects unknown field names with 400.
+        # Fetch all properties and filter client-side.
     }
 
     features = _wfs_paginate(_WFS_URL, base_params)
@@ -130,10 +130,10 @@ def _parse_observation(feat: dict) -> Observation | None:
 
     observed_on = _parse_date(props.get("OBSERVATION_DATE"))
 
-    place = None
-    waterbody = (props.get("WATERBODY_IDENTIFIER") or "").strip() or None
-    location_desc = (props.get("LOCATION_DESCRIPTION") or "").strip() or None
-    place = location_desc or waterbody
+    # GAZETTED_NAME is the official waterbody name; fall back to WATERBODY_IDENTIFIER
+    place = (props.get("GAZETTED_NAME") or "").strip() or None
+    if not place:
+        place = (props.get("WATERBODY_IDENTIFIER") or "").strip() or None
 
     try:
         return Observation(
@@ -163,7 +163,8 @@ def _parse_date(raw: str | None) -> date:
     """Parse FISS observation date; returns _UNKNOWN_DATE for missing/unparseable values."""
     if not raw:
         return _UNKNOWN_DATE
-    raw = raw.strip()
+    # WFS GeoJSON dates arrive as "1999-04-19Z" or "2010-07-15T00:00:00Z"; strip the Z.
+    raw = raw.strip().rstrip("Z")
     for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y"):
         try:
             return datetime.strptime(raw, fmt).date()
@@ -193,6 +194,12 @@ def _cached_get(url: str, params: dict) -> dict:
         headers={"User-Agent": _USER_AGENT},
         timeout=120,
     )
+    if response.status_code >= 400:
+        logger.error(
+            "FISS WFS HTTP %d — response body: %s",
+            response.status_code,
+            response.text[:500],
+        )
     response.raise_for_status()
     data = response.json()
     cache_file.write_text(json.dumps(data))

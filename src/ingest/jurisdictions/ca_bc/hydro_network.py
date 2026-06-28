@@ -73,7 +73,10 @@ def fetch_watercourses(
 ) -> list[StreamSegment]:
     """Fetch FWA stream segments within radius_km of lat/lon. Cached 30 days."""
     min_lon, min_lat, max_lon, max_lat = _bbox(lat, lon, radius_km)
-    bbox_str = f"{min_lon:.5f},{min_lat:.5f},{max_lon:.5f},{max_lat:.5f}"
+    # Appending ",CRS:84" tells the WFS to interpret bbox coords as lon/lat and
+    # reproject into the layer's native BC Albers CRS before spatial filtering.
+    # Without it, the server treats lon/lat values as Albers metres → 0 results.
+    bbox_str = f"{min_lon:.5f},{min_lat:.5f},{max_lon:.5f},{max_lat:.5f},CRS:84"
 
     base_params = {
         "service": "WFS",
@@ -83,9 +86,12 @@ def fetch_watercourses(
         "outputFormat": "application/json",
         "srsName": "EPSG:4326",
         "bbox": bbox_str,
+        # GEOMETRY must be listed explicitly; omitting propertyName returns
+        # native BC Albers coords, and srsName=EPSG:4326 without GEOMETRY
+        # returns null geometry. This combination gives reprojected lon/lat.
         "propertyName": (
             "LINEAR_FEATURE_ID,GNIS_NAME,STREAM_ORDER,STREAM_MAGNITUDE,"
-            "EDGE_TYPE,WATERSHED_GROUP_CODE,FEATURE_LENGTH_M"
+            "EDGE_TYPE,WATERSHED_GROUP_CODE,FEATURE_LENGTH_M,GEOMETRY"
         ),
     }
 
@@ -115,14 +121,20 @@ def _wfs_paginate(url: str, base_params: dict) -> list[dict]:
     start = 0
     while True:
         params = {**base_params, "startIndex": start, "count": _PAGE_SIZE}
+        import urllib.parse
+        full_url = url + "?" + urllib.parse.urlencode(params)
+        logger.info("FWA WFS request: %s", full_url)
         try:
             data = _cached_get(url, params)
         except Exception as exc:
             logger.error("FWA WFS request failed at startIndex=%d: %s", start, exc)
             break
         page = data.get("features", [])
+        logger.info(
+            "FWA WFS startIndex=%d: %d features on page (totalFeatures=%s)",
+            start, len(page), data.get("totalFeatures"),
+        )
         features.extend(page)
-        logger.debug("FWA WFS startIndex=%d: %d features on page", start, len(page))
         if len(page) < _PAGE_SIZE:
             break
         start += _PAGE_SIZE
