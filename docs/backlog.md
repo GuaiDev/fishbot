@@ -1,6 +1,6 @@
 # FishDex Backlog
 
-Last updated: June 27 2026
+Last updated: June 28 2026
 Previously: FishBot
 
 ## Project rename
@@ -133,6 +133,40 @@ Trip log flywheel wired in.
 Auto-import on Railway startup.
 /map/segments and /map/my-stops endpoints.
 
+## Multi-jurisdiction ingest pipeline ✅ (June 28 2026)
+Reusable adapter pattern built; BC is the first non-Ontario jurisdiction.
+
+### What was built
+- `src/ingest/jurisdictions/config.py` — central registry (JurisdictionConfig, CronArea dataclasses)
+- `src/ingest/jurisdictions/JURISDICTION_TEMPLATE.md` — checklist + schema reference for future jurisdictions
+- `src/ingest/jurisdictions/ca_bc/` — three BC adapters:
+  - `hydro_network.py` (FWA stream network via DataBC WFS) — working; ~1,400 segments per 10km radius
+  - `fish_observations.py` (FISS fish observations via DataBC WFS) — working; ~4,200 obs per 10km radius
+  - `water_quality.py` (BC EMS stations) — stations discoverable; results stubbed (see below)
+- `src/services/bc_ingest.py` — BC service layer
+- `/ingest/data-bc` endpoint — X-Api-Key protected, returns 202 (background task)
+- Model additions: `stream_order` + `segment_source` on StreamSegment; `source` on Observation
+- DB migrations: idempotent column additions, jurisdiction-scoped deletes on ingest
+
+### Critical bug fixed during build
+`ingest_hydro_network()` called `delete_where()` with no filter — wiped ALL stream
+segments (both ON and BC) on every Ontario ingest. Fixed to scope by jurisdiction.
+
+### DataBC WFS quirks (document for future jurisdictions)
+- All BC layers are native BC Albers (EPSG:3005). Bbox must append `,CRS:84` so the
+  server reprojects lon/lat input before spatial filtering — without it, 0 results.
+- `srsName=EPSG:4326` only reprojects output geometry if `GEOMETRY` is explicitly in
+  `propertyName`; omitting it returns null geometry.
+- `startIndex` pagination requires `sortBy=<col>` on layers without a natural PK
+  (GeoServer: "Cannot do natural order without a primary key").
+- `propertyName` with a non-existent field name returns HTTP 400, not 404.
+
+### BC EMS water quality results — stubbed 📋
+Layer `EMS_MONITORING_LOCN_TYPES_SVW` is correct (456 stations near Fraser River).
+Results live in a separate multi-GB CSV at data.gov.bc.ca, resource ID
+`76be8cdb-95b7-4a96-aae4-f3f59455fbcb`. Not queryable by bbox.
+Plan: download full CSV annually, filter to nearby MONITORING_LOCATION_IDs, index locally.
+
 ## Coaching improvements 📋
 Wait for data accumulation (need 10+ stops with time_of_day).
 Currently only 3 stops have time_of_day — not enough for pattern detection.
@@ -186,6 +220,7 @@ Expand to:
 
 Data sources to add per region:
 - GBIF + iNaturalist already global — just need targeted ingest areas
+- BC: FWA + FISS live (June 28 2026); EMS water quality results still stubbed
 - US: USGS NHD (equivalent of OHN), FishBase species ranges
 - Saltwater: OBIS (Ocean Biodiversity Information System), NOAA data
 
@@ -254,7 +289,18 @@ ChatRequest Pydantic model (src/api/main.py:154) is unused — endpoint takes
 body: dict directly. Harmless but should be cleaned up or wired in.
 
 ### GitHub Actions weekly ingest ✅
-Sunday 6am UTC. 4 Ontario areas.
+Sunday 6am UTC. 4 Ontario areas + 4 BC areas (added June 28 2026).
+BC areas hit /ingest/data (iNat/GBIF/WSC/OSM) and /ingest/data-bc (FWA+FISS) separately.
+
+### Ingest background tasks ✅ (June 28 2026)
+Both /ingest/data and /ingest/data-bc return 202 immediately via FastAPI BackgroundTasks.
+Prevents Railway from killing the connection during long ingest runs.
+Each source logs start, record count, and full traceback on error (logger.exception).
+
+### Railway logging root cause fixed ✅ (June 28 2026)
+Background task INFO messages were silently dropped — uvicorn's dictConfig leaves the
+root logger at WARNING. Fixed: logging.basicConfig(stdout, INFO) at module import +
+lifespan re-asserts setLevel(INFO) after uvicorn's own setup runs.
 
 ---
 
