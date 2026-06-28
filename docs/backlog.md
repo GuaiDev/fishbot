@@ -1,6 +1,6 @@
 # FishDex Backlog
 
-Last updated: June 28 2026
+Last updated: June 28 2026 (session 2)
 Previously: FishBot
 
 ## Project rename
@@ -134,14 +134,15 @@ Auto-import on Railway startup.
 /map/segments and /map/my-stops endpoints.
 
 ## Multi-jurisdiction ingest pipeline ✅ (June 28 2026)
-Reusable adapter pattern built; BC is the first non-Ontario jurisdiction.
+Reusable adapter pattern. Ontario complete (Phase 1). BC, AB, QC, federal, and
+Maritime province stubs added in two sessions June 28 2026.
 
-### What was built
+### Phase 1 (BC first jurisdiction)
 - `src/ingest/jurisdictions/config.py` — central registry (JurisdictionConfig, CronArea dataclasses)
-- `src/ingest/jurisdictions/JURISDICTION_TEMPLATE.md` — checklist + schema reference for future jurisdictions
-- `src/ingest/jurisdictions/ca_bc/` — three BC adapters:
-  - `hydro_network.py` (FWA stream network via DataBC WFS) — working; ~1,400 segments per 10km radius
-  - `fish_observations.py` (FISS fish observations via DataBC WFS) — working; ~4,200 obs per 10km radius
+- `src/ingest/jurisdictions/JURISDICTION_TEMPLATE.md` — checklist + schema reference
+- `src/ingest/jurisdictions/ca_bc/` — BC adapters:
+  - `hydro_network.py` (FWA stream network via DataBC WFS) — ~1,400 segments per 10km radius
+  - `fish_observations.py` (FISS fish observations via DataBC WFS) — ~4,200 obs per 10km radius
   - `water_quality.py` (BC EMS stations) — stations discoverable; results stubbed (see below)
 - `src/services/bc_ingest.py` — BC service layer
 - `/ingest/data-bc` endpoint — X-Api-Key protected, returns 202 (background task)
@@ -166,6 +167,63 @@ Layer `EMS_MONITORING_LOCN_TYPES_SVW` is correct (456 stations near Fraser River
 Results live in a separate multi-GB CSV at data.gov.bc.ca, resource ID
 `76be8cdb-95b7-4a96-aae4-f3f59455fbcb`. Not queryable by bbox.
 Plan: download full CSV annually, filter to nearby MONITORING_LOCATION_IDs, index locally.
+
+### Phase 2 — national + AB + QC + Maritimes expansion (June 28 2026)
+
+**Federal/national** (`src/ingest/jurisdictions/ca_national/`):
+- `dfo_critical_habitat.py` — DFO SARA critical habitat via ArcGIS REST → `critical_habitat` table
+- `dfo_sar_range.py` — DFO SAR species range GDB → `species_ranges` table; requires fiona/GDAL (graceful fallback)
+- `tidal.py` — CHS SINE API (no auth required); high/low tide predictions → `tidal_readings` table
+- `datastream_water_quality.py` — DataStream OData API → `water_quality_readings` table;
+  requires `DATASTREAM_API_KEY` env var (free registration at datastream.org); returns 0 with warning if absent
+
+**BC additions** (`src/ingest/jurisdictions/ca_bc/`):
+- `nuseds.py` — NuSEDS salmon escapement XLSX from DFO EDH → `salmon_escapement` table; requires openpyxl
+- `regulations.py` — BC 2025-2027 fishing regulations PDF; split by Region 1-8 → `regulation_chunks` table
+- `fish_observations.py` — stocking extraction added: same WFS call, filters by ACTIVITY_CODE → `stocking_records` table;
+  NOTE: FISS stocking records have no quantity field
+
+**Alberta** (`src/ingest/jurisdictions/ca_ab/`):
+- `stocking.py` — planned stocking XLSX from Open Alberta → `stocking_records` table; requires openpyxl;
+  NOTE: AB stocking data has no coordinates — waterbody name only, lat/lng are null
+- `hydro_network.py` — stub; NHN has no queryable WFS (FTP tiles only); OSM covers AB adequately
+- `regulations.py` — stub (mywildalberta.ca PDF adapter not yet built)
+- `water_quality.py` — stub (AEMERA portal is map-only; DataStream covers some AB watersheds)
+
+**Quebec** (`src/ingest/jurisdictions/ca_qc/`):
+- `species_ranges.py` — MELCCFP GeoJSON via données.gouv.qc.ca (118 freshwater fish spp, COSEWIC status) → `species_ranges`
+- `regulations.py` — stub
+- `water_quality.py` — stub (MELCCFP RSQER is PDF-only; DataStream covers some QC watersheds)
+
+**Province stubs** (MB, SK, NS, NB, PE `__init__.py`):
+- Documents which federal/global sources cover each province
+- iNat, GBIF, WSC, OSM, eBird work globally — just need targeted cron areas
+- CABIN benthic covers all provinces (see below)
+- Coastal provinces (NS, NB, PE): CHS tidal adapter applies
+
+**CABIN benthic expanded**: `load_study`/`parse_benthic`/`build_samples` now return
+all Canadian provinces via `visit_jurisdictions: dict[str, str]` (visit_id → jurisdiction).
+`ingest_benthic_data()` wrapper preserved for backward compatibility.
+Test suite updated to match new signatures (35 tests pass).
+
+**New DB tables**: `critical_habitat`, `tidal_readings`, `salmon_escapement`
+**New migration**: `regulation_chunks.zone_name TEXT` added via idempotent `ALTER TABLE`
+
+**New service entry points**:
+- `src/services/ab_ingest.py` — AB stocking, regulations, water quality
+- `src/services/qc_ingest.py` — QC species ranges, regulations, water quality
+- `src/services/national_ingest.py` — DFO critical habitat, DataStream water quality
+- `src/services/tidal.py` — agent tool: `get_tidal_conditions_for_agent(lat, lng)`
+
+**New API endpoints** (all X-Api-Key protected, BackgroundTask, return 202):
+- `POST /ingest/data-ab` — Alberta-specific adapters
+- `POST /ingest/data-qc` — Quebec-specific adapters
+- `POST /ingest/data-national` — DFO critical habitat + DataStream water quality
+- `POST /ingest/data-tidal` — CHS tidal predictions
+
+**Jurisdiction config** (`config.py`): CA-AB, CA-QC, CA-MB, CA-SK, CA-NS, CA-NB, CA-PE
+registered with cron areas and data_sources dicts. CA-BC updated with
+stocking=True, regulations=True, salmon_escapement=True.
 
 ## Coaching improvements 📋
 Wait for data accumulation (need 10+ stops with time_of_day).
@@ -210,19 +268,55 @@ Roadmap:
 - Ensemble models (RF + MaxEnt + BRT)
 - Integrated SDMs when enough trip log data exists
 
-## Data expansion 📋
-Currently: Ontario only (Grand River, Credit River, Bronte Creek, Thames).
-Expand to:
-- Other Ontario watersheds (Saugeen, Nottawasaga, Trent, St. Lawrence)
-- Other provinces (BC, Alberta, Quebec, Maritimes)
-- US states (Great Lakes region first: Michigan, Minnesota, Wisconsin)
-- Saltwater (East Coast, West Coast, Gulf)
+## Data expansion
+Status by region:
 
-Data sources to add per region:
-- GBIF + iNaturalist already global — just need targeted ingest areas
-- BC: FWA + FISS live (June 28 2026); EMS water quality results still stubbed
-- US: USGS NHD (equivalent of OHN), FishBase species ranges
-- Saltwater: OBIS (Ocean Biodiversity Information System), NOAA data
+### Ontario ✅
+Grand River, Credit River, Bronte Creek, Thames (4 cron areas).
+Full adapter coverage: OHN, PWQMN, MNRF stocking, MNRF regs, CABIN, GBIF, iNat, eBird, OSM.
+
+### British Columbia ✅ (June 28 2026)
+4 cron areas (Fraser, Thompson, Okanagan, Skeena).
+FWA hydro + FISS observations + FISS stocking + BC regs PDF + NuSEDS salmon escapement live.
+EMS water quality: stations indexed, results stubbed (multi-GB CSV — see EMS note above).
+
+### Alberta 🔨 (June 28 2026 — partial)
+3 cron areas (Bow/Calgary, North Saskatchewan/Edmonton, Oldman/Lethbridge).
+Stocking (planned dates XLSX) live — no coordinates in source data.
+Hydro, water quality, regulations: stubbed.
+DataStream covers some AB watersheds via /ingest/data-national.
+
+### Quebec 🔨 (June 28 2026 — partial)
+4 cron areas (St. Lawrence/Montreal, Saint-Maurice, Saguenay, Gatineau).
+Species ranges (MELCCFP GeoJSON, 118 spp) live.
+Regulations, water quality: stubbed (DataStream covers some QC watersheds).
+
+### Manitoba + Saskatchewan 📋
+3 cron areas each. Global sources only (iNat, GBIF, WSC, OSM).
+DataStream covers some MB/SK watersheds via /ingest/data-national.
+No province-specific adapters with public APIs found as of 2026.
+
+### Maritimes (NS, NB, PEI) 📋
+4 cron areas (Miramichi NB, Saint John NB, Annapolis NS, Margaree NS).
+Global sources + CHS tidal API for coastal/tidal reach fishing.
+DataStream covers Atlantic Canada watersheds.
+No province-specific fish observation APIs found as of 2026.
+
+### Federal sources 🔨 (June 28 2026 — partial)
+DFO critical habitat, DFO SAR species ranges (requires fiona), CHS tidal predictions,
+DataStream water quality (requires DATASTREAM_API_KEY) — all adapters built;
+data ingested on first /ingest/data-national run per area.
+
+### US states 📋
+Great Lakes region first: Michigan, Minnesota, Wisconsin.
+- USGS NHD (equivalent of OHN)
+- FishBase species ranges
+- GBIF + iNat already global
+
+### Saltwater 💡
+East Coast, West Coast, Gulf.
+- OBIS (Ocean Biodiversity Information System)
+- NOAA data
 
 ## Voice trip logging 💡
 Critical path for activating personal model at scale.
@@ -289,8 +383,14 @@ ChatRequest Pydantic model (src/api/main.py:154) is unused — endpoint takes
 body: dict directly. Harmless but should be cleaned up or wired in.
 
 ### GitHub Actions weekly ingest ✅
-Sunday 6am UTC. 4 Ontario areas + 4 BC areas (added June 28 2026).
-BC areas hit /ingest/data (iNat/GBIF/WSC/OSM) and /ingest/data-bc (FWA+FISS) separately.
+Sunday 6am UTC. 25 cron areas total (June 28 2026):
+- 4 ON — hit /ingest/data
+- 4 BC — hit /ingest/data + /ingest/data-bc
+- 3 AB — hit /ingest/data + /ingest/data-ab
+- 4 QC — hit /ingest/data + /ingest/data-qc
+- 3 MB + 3 SK — hit /ingest/data only
+- 4 Maritimes (Miramichi NB, Saint John NB, Annapolis NS, Margaree NS) — hit /ingest/data
+- 2 tidal (Miramichi NB, Annapolis NS) — additionally hit /ingest/data-tidal
 
 ### Ingest background tasks ✅ (June 28 2026)
 Both /ingest/data and /ingest/data-bc return 202 immediately via FastAPI BackgroundTasks.
