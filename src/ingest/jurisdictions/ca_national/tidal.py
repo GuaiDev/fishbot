@@ -1,12 +1,12 @@
 """CHS (Canadian Hydrographic Service) Tidal API — tide predictions.
 
 Fetches tide station metadata and high/low tide predictions from DFO's
-CHS SINE API. Relevant for coastal provinces: BC, NS, NB, PEI, NL.
+CHS IWLS API. Relevant for coastal provinces: BC, NS, NB, PEI, NL.
 
 API:
-  Base: https://api-sine.dfo-mpo.gc.ca
-  Stations: GET /stations
-  Data:     GET /stations/{id}/data?time-series-code=wlp-hilo
+  Base: https://api-iwls.dfo-mpo.gc.ca
+  Stations: GET /api/v1/stations
+  Data:     GET /api/v1/stations/{id}/data?time-series-code=wlp-hilo
 
 No API key required — public endpoint.
 
@@ -30,8 +30,8 @@ import httpx
 
 from src.jurisdictions.geo import jurisdiction_for_coords
 
-_BASE_URL = "https://api-sine.dfo-mpo.gc.ca"
-_STATIONS_URL = f"{_BASE_URL}/stations"
+_BASE_URL = "https://api-iwls.dfo-mpo.gc.ca"
+_STATIONS_URL = f"{_BASE_URL}/api/v1/stations"
 _CACHE_DIR = Path("data/cache/chs_tidal")
 _STATIONS_TTL = 30 * 86400
 _PREDICTIONS_TTL = 24 * 3600
@@ -106,7 +106,7 @@ def _fetch_nearby_stations(lat: float, lng: float, radius_km: float) -> list[dic
 
 def _fetch_predictions(station_id: str) -> list[dict]:
     """Fetch high/low tide predictions for a station."""
-    url = f"{_BASE_URL}/stations/{station_id}/data"
+    url = f"{_BASE_URL}/api/v1/stations/{station_id}/data"
     params = {"time-series-code": "wlp-hilo"}
     query = "&".join(f"{k}={v}" for k, v in params.items())
     data = _cached_get(f"{url}?{query}", {}, _PREDICTIONS_TTL)

@@ -1,174 +1,236 @@
-"""DFO Species at Risk — Distribution/Range (national).
+"""DFO Species at Risk — Critical Habitat (national).
 
-Downloads the DFO SAR species range GDB zip from the DFO EDH catalogue and
-extracts freshwater fish range polygons for all Canadian provinces.
+Fetches DFO SAR critical habitat polygons from the ESRI REST MapServer
+and stores freshwater fish entries in the species_ranges table.
 
 Source:
-  https://api-proxy.edh-cde.dfo-mpo.gc.ca/catalogue/records/
-  e0fabad5-9379-4077-87b9-5705f28c490b/attachments/Distribution_SAR_EN_2026.gdb.zip
+  https://egisp.dfo-mpo.gc.ca/arcgis/rest/services/open_data_donnees_ouvertes/
+  CritHab_HabEss_2025/MapServer/0
 
-Requirements:
-  fiona >= 1.9 (requires GDAL).
-  Install with: uv add fiona
-  Without fiona this module returns 0 records with a clear warning.
+Pagination: geometry bbox filter + resultOffset, same pattern as OHN hydro_network.py.
+No fiona / GDAL required.
 
-Table: species_ranges (same schema as Ontario's ranges, source='DFO_SAR_RANGE')
+Table: species_ranges (shared schema — source='DFO_SAR')
 
-Cache TTL: 365 days (annual GDB release).
+Cache TTL: 30 days.
 """
 
+import hashlib
+import json
 import logging
 import time
-import zipfile
-from io import BytesIO
 from pathlib import Path
 
 import httpx
 
-logger = logging.getLogger(__name__)
+from src.jurisdictions.geo import jurisdiction_for_coords
 
-_GDB_URL = (
-    "https://api-proxy.edh-cde.dfo-mpo.gc.ca/catalogue/records/"
-    "e0fabad5-9379-4077-87b9-5705f28c490b/attachments/Distribution_SAR_EN_2026.gdb.zip"
+_SERVICE_URL = (
+    "https://egisp.dfo-mpo.gc.ca/arcgis/rest/services/"
+    "open_data_donnees_ouvertes/CritHab_HabEss_2025/MapServer/0/query"
 )
-_GDB_ZIP_PATH = Path("data/raw/dfo_sar_range.gdb.zip")
-_GDB_PATH = Path("data/raw/dfo_sar_range.gdb")
-_CACHE_TTL_SECONDS = 365 * 86400
+_PAGE_SIZE = 1000
+_CACHE_DIR = Path("data/cache/dfo_sar_range")
+_CACHE_TTL_SECONDS = 30 * 86400
 _USER_AGENT = "fishbot/1.0 (personal fishing exploration bot)"
 
-# Province name → ISO 3166-2 jurisdiction code
-_PROVINCE_TO_CODE: dict[str, str] = {
-    "ontario": "CA-ON",
-    "british columbia": "CA-BC",
-    "alberta": "CA-AB",
-    "quebec": "CA-QC",
-    "québec": "CA-QC",
-    "manitoba": "CA-MB",
-    "saskatchewan": "CA-SK",
-    "nova scotia": "CA-NS",
-    "new brunswick": "CA-NB",
-    "prince edward island": "CA-PE",
-    "newfoundland": "CA-NL",
-    "northwest territories": "CA-NT",
-    "yukon": "CA-YT",
-    "nunavut": "CA-NU",
-}
+# Canada bounding box (WGS84)
+_CANADA_BBOX = (-141.0, 42.0, -52.0, 84.0)
 
-# Taxonomic groups that include freshwater fish
-_FRESHWATER_GROUPS = frozenset({
-    "Fish",
-    "Fishes",
-    "Freshwater fish",
-    "Poissons d'eau douce",
-})
+# Sub-tile size in degrees. ~5° ≈ 350–550 km; keeps per-tile counts well under PAGE_SIZE.
+_TILE_DEG = 5.0
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_sar_ranges() -> list[dict]:
-    """Download and parse DFO SAR range GDB. Returns rows for species_ranges table.
+    """Fetch DFO SAR critical habitat via ESRI REST. Returns rows for species_ranges table."""
+    base_params = {
+        "where": "1=1",
+        "geometryType": "esriGeometryEnvelope",
+        "spatialRel": "esriSpatialRelIntersects",
+        "outFields": "*",
+        "returnGeometry": "true",
+        "outSR": "4326",
+        "resultRecordCount": _PAGE_SIZE,
+        "f": "json",
+    }
 
-    Returns empty list if fiona is not installed or the download fails.
-    """
-    try:
-        import fiona  # type: ignore
-    except ImportError:
-        logger.warning(
-            "DFO SAR range: fiona not installed — cannot parse GDB files. "
-            "Install with: uv add fiona  (requires GDAL). Returning 0 records."
-        )
-        return []
+    min_lon, min_lat, max_lon, max_lat = _CANADA_BBOX
+    tiles = _grid_tiles(min_lon, min_lat, max_lon, max_lat)
+    logger.info("DFO SAR range: fetching %d tiles across Canada bbox", len(tiles))
 
-    _download_gdb_if_stale()
-    if not _GDB_PATH.exists():
-        logger.error("DFO SAR range: GDB directory not found at %s", _GDB_PATH)
-        return []
+    seen: dict[str, dict] = {}
+    for t_bbox in tiles:
+        for feat in _fetch_tile(base_params, *t_bbox):
+            attrs = feat.get("attributes") or {}
+            key = _feature_key(attrs)
+            if key and key not in seen:
+                seen[key] = feat
+
+    logger.info("DFO SAR range: %d unique features fetched", len(seen))
 
     rows: list[dict] = []
-    try:
-        layers = fiona.listlayers(str(_GDB_PATH))
-        logger.info("DFO SAR range: GDB layers: %s", layers)
+    for feat in seen.values():
+        row = _parse_feature(feat)
+        if row:
+            rows.append(row)
 
-        for layer in layers:
-            with fiona.open(str(_GDB_PATH), layer=layer) as src:
-                for feat in src:
-                    props = dict(feat.get("properties") or {})
-                    taxon_group = (
-                        props.get("TAXON_GROUP_EN") or props.get("TAXONOMIC_GROUP") or ""
-                    ).strip()
-                    if taxon_group.lower() not in {g.lower() for g in _FRESHWATER_GROUPS}:
-                        continue
-
-                    species_sci = (
-                        props.get("SCIENTIFIC_NAME") or props.get("NomScientifique") or ""
-                    ).strip()
-                    common_name = (
-                        props.get("COMMON_NAME_EN") or props.get("COMMON_NAME") or ""
-                    ).strip()
-                    sara_status = (
-                        props.get("SARA_STATUS_EN") or props.get("STATUS_EN") or ""
-                    ).strip()
-
-                    # Determine jurisdiction from province field or geometry
-                    province_raw = (props.get("PROVINCE_EN") or "").strip().lower()
-                    jur = _PROVINCE_TO_CODE.get(province_raw, "CA")
-
-                    if not species_sci:
-                        continue
-
-                    rows.append({
-                        "species": common_name or species_sci,
-                        "scientific_name": species_sci,
-                        "native_to_ontario": 1 if jur == "CA-ON" else 0,
-                        "native_to_great_lakes": 0,
-                        "introduced": 0,
-                        "extirpated_from_ontario": 0,
-                        "general_range": f"DFO SAR range: {province_raw}",
-                        "habitat_notes": taxon_group or None,
-                        "jurisdictions_present": f'["{jur}"]',
-                        "sara_status": sara_status or None,
-                        "ontario_status": None,
-                        "cosewic_status": None,
-                        "fishing_notes": None,
-                        "last_updated": "2026-01-01T00:00:00",
-                    })
-
-    except Exception as exc:
-        logger.error("DFO SAR range: GDB parse failed: %s", exc)
-        return []
-
-    logger.info("DFO SAR range: %d freshwater fish range records extracted", len(rows))
+    logger.info("DFO SAR range: %d records extracted", len(rows))
     return rows
 
 
-def _download_gdb_if_stale() -> None:
-    """Download the GDB zip and extract it unless cached."""
-    _GDB_ZIP_PATH.parent.mkdir(parents=True, exist_ok=True)
+def _parse_feature(feat: dict) -> dict | None:
+    attrs = feat.get("attributes") or {}
+    geom = feat.get("geometry") or {}
 
-    if _GDB_PATH.exists():
-        age = time.time() - _GDB_PATH.stat().st_mtime
+    common = (
+        attrs.get("COMMON_NAME_E") or attrs.get("COMMON_NAME_EN") or
+        attrs.get("COMMON_NAME") or ""
+    ).strip()
+    sci = (
+        attrs.get("SCIENTIFIC_NAME") or attrs.get("SCIENTIFICNAME") or ""
+    ).strip()
+    if not sci and not common:
+        return None
+
+    sara_status = (
+        attrs.get("SARA_SCHEDULE_E") or attrs.get("SARA_STATUS_E") or
+        attrs.get("SCHEDULE") or ""
+    ).strip()
+
+    clat, clng = _centroid_from_geometry(geom)
+    jur = "CA"
+    if clat is not None and clng is not None:
+        jur = jurisdiction_for_coords(clat, clng) or "CA"
+
+    return {
+        "species": common or sci,
+        "scientific_name": sci or None,
+        "native_to_ontario": 1 if jur == "CA-ON" else 0,
+        "native_to_great_lakes": 0,
+        "introduced": 0,
+        "extirpated_from_ontario": 0,
+        "general_range": f"DFO SAR critical habitat — {jur}",
+        "habitat_notes": "critical habitat",
+        "jurisdictions_present": f'["{jur}"]',
+        "sara_status": sara_status or None,
+        "ontario_status": None,
+        "cosewic_status": None,
+        "fishing_notes": None,
+        "last_updated": "2025-01-01T00:00:00",
+    }
+
+
+def _centroid_from_geometry(geom: dict) -> tuple[float | None, float | None]:
+    """Return (lat, lng) centroid from an ESRI JSON geometry, or (None, None)."""
+    if not geom:
+        return None, None
+
+    # Point
+    if "x" in geom and "y" in geom:
+        try:
+            return float(geom["y"]), float(geom["x"])
+        except (TypeError, ValueError):
+            return None, None
+
+    # Polygon / Multipolygon — use first ring
+    rings = geom.get("rings", [])
+    if rings and rings[0]:
+        pts = rings[0][:100]
+        try:
+            xs = [float(p[0]) for p in pts]
+            ys = [float(p[1]) for p in pts]
+            return sum(ys) / len(ys), sum(xs) / len(xs)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return None, None
+
+    return None, None
+
+
+def _feature_key(attrs: dict) -> str | None:
+    sci = (attrs.get("SCIENTIFIC_NAME") or attrs.get("SCIENTIFICNAME") or "").strip()
+    obj_id = attrs.get("OBJECTID") or attrs.get("FID")
+    if obj_id is not None:
+        return f"{sci}_{obj_id}"
+    return sci or None
+
+
+# ── tiling + pagination ────────────────────────────────────────────────────────
+
+
+def _grid_tiles(
+    min_lon: float,
+    min_lat: float,
+    max_lon: float,
+    max_lat: float,
+) -> list[tuple[float, float, float, float]]:
+    tiles: list[tuple[float, float, float, float]] = []
+    lat = min_lat
+    while lat < max_lat:
+        t_max_lat = min(lat + _TILE_DEG, max_lat)
+        lon = min_lon
+        while lon < max_lon:
+            t_max_lon = min(lon + _TILE_DEG, max_lon)
+            tiles.append((lon, lat, t_max_lon, t_max_lat))
+            lon = t_max_lon
+        lat = t_max_lat
+    return tiles
+
+
+def _fetch_tile(
+    base_params: dict,
+    min_lon: float,
+    min_lat: float,
+    max_lon: float,
+    max_lat: float,
+) -> list[dict]:
+    """Paginate a single bbox tile with resultOffset."""
+    bbox_str = f"{min_lon:.4f},{min_lat:.4f},{max_lon:.4f},{max_lat:.4f}"
+    features: list[dict] = []
+    offset = 0
+
+    while True:
+        params = {**base_params, "geometry": bbox_str, "resultOffset": offset}
+        try:
+            data = _cached_get(_SERVICE_URL, params)
+        except Exception as exc:
+            logger.warning("DFO SAR range: tile fetch failed at offset %d: %s", offset, exc)
+            break
+
+        page = data.get("features", [])
+        features.extend(page)
+
+        if not page or len(page) < _PAGE_SIZE:
+            break
+        offset += _PAGE_SIZE
+
+    return features
+
+
+# ── HTTP + file cache ──────────────────────────────────────────────────────────
+
+
+def _cached_get(url: str, params: dict) -> dict:
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    raw_key = url + str(sorted(params.items()))
+    key = hashlib.sha256(raw_key.encode()).hexdigest()[:16]
+    cache_file = _CACHE_DIR / f"{key}.json"
+
+    if cache_file.exists():
+        age = time.time() - cache_file.stat().st_mtime
         if age < _CACHE_TTL_SECONDS:
-            logger.info("DFO SAR range: GDB cache fresh, skipping download")
-            return
+            return json.loads(cache_file.read_text())
 
-    logger.info("DFO SAR range: downloading GDB zip from DFO EDH …")
-    try:
-        response = httpx.get(
-            _GDB_URL,
-            follow_redirects=True,
-            headers={"User-Agent": _USER_AGENT},
-            timeout=300,
-        )
-        response.raise_for_status()
-    except Exception as exc:
-        logger.error("DFO SAR range: download failed: %s", exc)
-        return
-
-    _GDB_ZIP_PATH.write_bytes(response.content)
-    logger.info("DFO SAR range: downloaded %.1f MB", len(response.content) / 1_048_576)
-
-    with zipfile.ZipFile(BytesIO(response.content)) as zf:
-        gdb_names = [n for n in zf.namelist() if ".gdb/" in n or n.endswith(".gdb")]
-        if gdb_names:
-            zf.extractall(_GDB_ZIP_PATH.parent)
-            logger.info("DFO SAR range: extracted GDB to %s", _GDB_ZIP_PATH.parent)
-        else:
-            logger.error("DFO SAR range: no .gdb found in zip — contents: %s", zf.namelist()[:10])
+    response = httpx.get(
+        url,
+        params=params,
+        headers={"User-Agent": _USER_AGENT},
+        timeout=60,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if "error" in data:
+        raise RuntimeError(f"ESRI error: {data['error']}")
+    cache_file.write_text(json.dumps(data))
+    return data

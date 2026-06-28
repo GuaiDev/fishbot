@@ -91,7 +91,9 @@ def _find_fish_geojson_url() -> str | None:
     for resource in pkg.get("resources", []):
         name_lower = (resource.get("name") or "").lower()
         fmt = (resource.get("format") or "").lower()
-        if fmt in ("geojson", "json") or any(kw in name_lower for kw in _FISH_KEYWORDS):
+        is_geojson = fmt in ("geojson", "json")
+        has_fish_kw = any(kw in name_lower for kw in _FISH_KEYWORDS)
+        if is_geojson and has_fish_kw:
             url = resource.get("url") or ""
             if url:
                 logger.info("QC species ranges: found GeoJSON resource: %s", url)
