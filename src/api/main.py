@@ -792,29 +792,48 @@ def ingest_data_qc(
     return JSONResponse(status_code=202, content={"status": "accepted", "label": label, "message": "QC ingest started in background"})
 
 
-def _run_national_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
+def _run_national_ingest(lat: float | None, lng: float | None, radius_km: float, label: str) -> None:
     """Background task: run national/federal ingest adapters."""
-    _log.info("[%s] National ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
-    from src.services.national_ingest import ingest_national_data
+    if lat is not None and lng is not None:
+        _log.info("[%s] National ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+    else:
+        _log.info("[%s] National ingest started — no location filter (national scope)", label)
     from src.storage.database import ensure_schema, get_db
     db = get_db()
     ensure_schema(db)
 
-    _log.info("[%s] DFO critical habitat: fetching", label)
+    _log.info("[%s] DFO SAR range: fetching", label)
     try:
-        from src.services.national_ingest import ingest_dfo_critical_habitat
-        n = ingest_dfo_critical_habitat(lat, lng, radius_km)
-        _log.info("[%s] DFO critical habitat: %d records stored", label, n)
+        from src.services.national_ingest import ingest_dfo_sar_range
+        n = ingest_dfo_sar_range()
+        _log.info("[%s] DFO SAR range: %d records stored", label, n)
     except Exception:
-        _log.exception("[%s] DFO critical habitat fetch failed", label)
+        _log.exception("[%s] DFO SAR range fetch failed", label)
 
-    _log.info("[%s] DataStream water quality: fetching", label)
+    _log.info("[%s] CABIN (all provinces): fetching", label)
     try:
-        from src.services.national_ingest import ingest_datastream_water_quality
-        n = ingest_datastream_water_quality(lat, lng, radius_km)
-        _log.info("[%s] DataStream: %d readings stored", label, n)
+        from src.services.national_ingest import ingest_cabin_all_provinces
+        n = ingest_cabin_all_provinces()
+        _log.info("[%s] CABIN: %d samples stored", label, n)
     except Exception:
-        _log.exception("[%s] DataStream fetch failed", label)
+        _log.exception("[%s] CABIN fetch failed", label)
+
+    if lat is not None and lng is not None:
+        _log.info("[%s] DFO critical habitat: fetching", label)
+        try:
+            from src.services.national_ingest import ingest_dfo_critical_habitat
+            n = ingest_dfo_critical_habitat(lat, lng, radius_km)
+            _log.info("[%s] DFO critical habitat: %d records stored", label, n)
+        except Exception:
+            _log.exception("[%s] DFO critical habitat fetch failed", label)
+
+        _log.info("[%s] DataStream water quality: fetching", label)
+        try:
+            from src.services.national_ingest import ingest_datastream_water_quality
+            n = ingest_datastream_water_quality(lat, lng, radius_km)
+            _log.info("[%s] DataStream: %d readings stored", label, n)
+        except Exception:
+            _log.exception("[%s] DataStream fetch failed", label)
 
     _log.info("[%s] National ingest complete", label)
 
@@ -825,18 +844,17 @@ def ingest_data_national(
     background_tasks: BackgroundTasks,
     _: None = Depends(verify_api_key),
 ):
-    """Trigger national/federal data ingest for a location (runs in background).
+    """Trigger national/federal data ingest (runs in background).
 
-    Body: {"lat": float, "lng": float, "radius_km": float (optional), "label": str (optional)}
-    Runs DFO critical habitat and DataStream water quality.
+    Body: {"lat": float (optional), "lng": float (optional), "radius_km": float (optional, default 100), "label": str (optional)}
+    Always runs: DFO SAR range, CABIN (all provinces).
+    When lat+lng provided: also runs DFO critical habitat and DataStream water quality.
     Returns 202 immediately. Protected by X-Api-Key.
     """
     lat = body.get("lat")
     lng = body.get("lng")
     radius_km = body.get("radius_km", 100.0)
-    label = body.get("label", f"{lat},{lng}")
-    if lat is None or lng is None:
-        raise HTTPException(status_code=400, detail="lat and lng are required")
+    label = body.get("label", f"{lat},{lng}" if lat is not None and lng is not None else "national")
     background_tasks.add_task(_run_national_ingest, lat, lng, radius_km, label)
     return JSONResponse(status_code=202, content={"status": "accepted", "label": label, "message": "National ingest started in background"})
 
