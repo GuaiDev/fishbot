@@ -471,12 +471,28 @@ def get_db_stats(_: None = Depends(verify_api_key)):
         GROUP BY source
         ORDER BY COUNT(*) DESC
     """).fetchall()
-    cols = ["source", "count", "lat_min", "lat_max", "lng_min", "lng_max", "date_min", "date_max"]
+    obs_cols = ["source", "count", "lat_min", "lat_max", "lng_min", "lng_max", "date_min", "date_max"]
+
+    gbif_rows = db.execute("""
+        SELECT
+            'gbif'              AS source,
+            COUNT(*)            AS count,
+            MIN(lat)            AS lat_min,
+            MAX(lat)            AS lat_max,
+            MIN(lng)            AS lng_min,
+            MAX(lng)            AS lng_max,
+            MIN(observed_on)    AS date_min,
+            MAX(observed_on)    AS date_max
+        FROM gbif_observations
+    """).fetchall()
+    gbif_cols = ["source", "count", "lat_min", "lat_max", "lng_min", "lng_max", "date_min", "date_max"]
+
     return {
         "db_path": str(DB_PATH),
         "db_exists": DB_PATH.exists(),
         "data_dir_env": os.environ.get("DATA_DIR", "NOT SET"),
-        "observations_by_source": [dict(zip(cols, r)) for r in rows],
+        "observations_by_source": [dict(zip(obs_cols, r)) for r in rows],
+        "gbif_by_source": [dict(zip(gbif_cols, r)) for r in gbif_rows],
     }
 
 
