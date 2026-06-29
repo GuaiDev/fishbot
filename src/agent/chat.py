@@ -213,7 +213,18 @@ def run_chat_api(
         lng = loc.get("lng")
         location_name = loc.get("location_name")
 
-        if lat is not None or location_name is not None:
+        # Live-conditions and time-forward questions must never be served from cache.
+        _cache_bypass_patterns = (
+            # Future windows
+            "tomorrow", "this weekend", "saturday", "sunday",
+            "in 3 days", "next week", "forecast", "this friday",
+            # Present-tense conditions (also require a live fetch, not cached synthesis)
+            "right now", "today", "currently", "at the moment",
+            "conditions", "conditions like", "weather",
+        )
+        _is_time_forward = any(p in latest_user.lower() for p in _cache_bypass_patterns)
+
+        if not _is_time_forward and (lat is not None or location_name is not None):
             cached = get_cached_synthesis(db, lat=lat, lng=lng,
                                           location_name=location_name)
             if cached:
@@ -250,8 +261,9 @@ def run_chat_api(
         # Cache miss (or no location) — run full pipeline
         result = _run_full_pipeline(messages, session_id, mode="synthesis", user_id=user_id)
 
-        # Store result in cache if we have a location
-        if (lat is not None or location_name is not None) and result.get("reply"):
+        # Store result in cache if we have a location — never cache time-forward responses
+        has_location = lat is not None or location_name is not None
+        if not _is_time_forward and has_location and result.get("reply"):
             try:
                 store_synthesis(
                     db,
@@ -578,6 +590,7 @@ def _execute_tool(name: str, inputs: dict, user_id: int = 1) -> str:
             water_temp_c=inputs.get("water_temp_c"),
             time_of_day=inputs.get("time_of_day"),
             notes=inputs.get("notes"),
+            when=inputs.get("when", "now"),
         )
     if name == "get_behavioral_insights":
         from src.services.insights import get_behavioral_insights_for_agent
@@ -957,9 +970,12 @@ def _tools(profile: Any) -> list[dict]:
         {
             "name": "get_recent_observations",
             "description": (
-                "Query locally-cached iNaturalist fish observation data. "
+                "Query locally-cached fish observation data from multiple sources. "
+                "Returns: (1) iNaturalist crowdsourced sightings filtered to days_back, "
+                "and (2) ALL government survey records (FISS BC fish surveys, etc.) "
+                "regardless of date — these are historical by nature and always included. "
                 "Use when the user asks what fish have been seen near a location, "
-                "about recent sightings, species presence, or what's been observed nearby. "
+                "about species presence, recent sightings, or historical survey records. "
                 "Data is cached locally and may be up to 24 hours old."
             ),
             "input_schema": {
@@ -979,7 +995,11 @@ def _tools(profile: Any) -> list[dict]:
                     },
                     "days_back": {
                         "type": "integer",
-                        "description": "How many days of history to include. Default 90.",
+                        "description": (
+                            "How many days of iNaturalist history to include. Default 90. "
+                            "Does not affect government survey sources — "
+                            "those always return all records."
+                        ),
                     },
                     "species_filter": {
                         "type": "string",
@@ -1511,6 +1531,16 @@ def _tools(profile: Any) -> list[dict]:
                         "type": "string",
                         "description": (
                             "Any extra context: recent rain, specific location type, etc."
+                        ),
+                    },
+                    "when": {
+                        "type": "string",
+                        "enum": ["now", "tomorrow", "in_3_days", "this_weekend"],
+                        "description": (
+                            "Time window for the recommendation. Defaults to 'now'. "
+                            "Use 'tomorrow', 'in_3_days', or 'this_weekend' for forward "
+                            "predictions. Forecast windows return weather conditions but "
+                            "no pressure trend — the response will note this explicitly."
                         ),
                     },
                 },

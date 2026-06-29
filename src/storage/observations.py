@@ -26,7 +26,13 @@ def query_observations(
     deg = radius_km / _KM_PER_DEGREE
     since = (date.today() - timedelta(days=days_back)).isoformat()
 
-    where = "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND observed_on >= ?"
+    # days_back applies only to iNaturalist crowdsourced records.
+    # Government survey sources (FISS, etc.) are historical by nature and are
+    # always returned regardless of observation date.
+    where = (
+        "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? "
+        "AND (source != 'iNaturalist' OR observed_on >= ?)"
+    )
     params: list[Any] = [lat - deg, lat + deg, lng - deg, lng + deg, since]
 
     if species_filter:

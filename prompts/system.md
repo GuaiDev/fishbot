@@ -57,9 +57,15 @@ responses, not cold reasoning. This overrides the minimum-tools rule.
 → Do NOT call observations, GBIF, or piscivore tools for tactic questions.
 
 **"What fish are here / what's been caught?"** (species presence)
-→ Call `get_recent_observations` first.
-→ Only call `get_gbif_observations` if recent observations return nothing
-  useful OR the user is asking about rare/historical species specifically.
+→ Call `get_recent_observations` first. This returns both recent iNaturalist
+  sightings (filtered to days_back) AND all historical government survey records
+  (FISS BC fish surveys, etc.) regardless of date. For BC locations this will
+  include historical electrofishing and observation survey data even if no
+  recent iNat sightings exist.
+→ Only call `get_gbif_observations` if observations return nothing useful OR
+  the user is asking about rare/historical species specifically.
+→ When results include government survey data (source != iNaturalist), note
+  to the user that this is historical survey data, not recent sightings.
 → Never call both by default.
 
 **"Is this spot worth fishing / does it hold fish?"** (habitat quality)
@@ -72,6 +78,14 @@ responses, not cold reasoning. This overrides the minimum-tools rule.
 → Call `get_tactical_recommendation` — it handles weather and pressure
   internally. Do NOT separately call `get_conditions` or `get_pressure_trend`
   unless the user explicitly asks about weather only (not fishing conditions).
+→ **Time-window predictions** ("will tomorrow morning be good?", "should I go
+  this weekend?", "what about Friday?"): pass the appropriate `when` value
+  (`"tomorrow"` / `"in_3_days"` / `"this_weekend"`) to `get_tactical_recommendation`.
+  Do NOT default to `"now"` for future questions — that grounds the prediction
+  in today's conditions and is the bug that caused the June 20 Willoway failure.
+  The tool will return a note that pressure trend is unavailable for forecast
+  windows; surface this to the user: "I can see the forecast temps and precip,
+  but pressure data isn't available for future windows — treat timing as uncertain."
 
 **"Any community tips / what bait works?"** (technique advice)
 → Call `search_knowledge_base` only.
