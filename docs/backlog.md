@@ -1,6 +1,6 @@
 # FishDex Backlog
 
-Last updated: June 28 2026 (session 2)
+Last updated: June 28 2026 (session 3)
 Previously: FishBot
 
 ## Project rename
@@ -172,8 +172,8 @@ Plan: download full CSV annually, filter to nearby MONITORING_LOCATION_IDs, inde
 
 **Federal/national** (`src/ingest/jurisdictions/ca_national/`):
 - `dfo_critical_habitat.py` — DFO SARA critical habitat via ArcGIS REST → `critical_habitat` table
-- `dfo_sar_range.py` — DFO SAR species range GDB → `species_ranges` table; requires fiona/GDAL (graceful fallback)
-- `tidal.py` — CHS SINE API (no auth required); high/low tide predictions → `tidal_readings` table
+- `dfo_sar_range.py` — DFO SAR critical habitat via ESRI REST (`dfo_sara_critical_habitat/MapServer/0`) → `species_ranges` table; no fiona required
+- `tidal.py` — CHS IWLS API (no auth required); `wlp-hilo` series; requires `from`/`to` date params → `tidal_readings` table
 - `datastream_water_quality.py` — DataStream OData API → `water_quality_readings` table;
   requires `DATASTREAM_API_KEY` env var (free registration at datastream.org); returns 0 with warning if absent
 
@@ -224,6 +224,23 @@ Test suite updated to match new signatures (35 tests pass).
 **Jurisdiction config** (`config.py`): CA-AB, CA-QC, CA-MB, CA-SK, CA-NS, CA-NB, CA-PE
 registered with cron areas and data_sources dicts. CA-BC updated with
 stocking=True, regulations=True, salmon_escapement=True.
+
+### Bug fixes — session 3 (June 28 2026)
+Bugs found and fixed during first Railway test run of multi-province adapters:
+- **openpyxl** added to pyproject.toml (required by NuSEDS and AB stocking XLSX adapters)
+- **CHS tidal**: wrong base URL (`api-sine` → `api-iwls`); missing `/api/v1` prefix on endpoints;
+  API requires `from`/`to` date params (400 without them) — now sends today 00:00Z to +7 days,
+  rounded to midnight so cache key is stable within a day
+- **DFO SAR range**: replaced GDB/fiona approach (GDAL unavailable on Railway) with ESRI REST;
+  initial service path `CritHab_HabEss_2025` was 404 — corrected to `dfo_sara_critical_habitat`;
+  field names corrected (`COMMON_E`, `SCIENTIFIC`, `SARASTAT_E`); bbox tiles returned 0 features
+  because `inSR=4326` was missing — layer is Web Mercator and the server was interpreting
+  WGS84 degree values as metre coordinates
+- **QC species ranges**: CKAN package lists FGDB resources before GeoJSON; `or` condition in
+  resource selection matched the FGDB entry first; fixed to require both format==geojson AND
+  fish keyword — resolves to `Aires_repartition_poisson_eau_douce.geojson`
+- **CABIN benthic**: `AttributeError` on `v.strip()` when a CSV field value is `None`
+  (csv.DictReader returns None for missing trailing columns); fixed with `v is not None` guard
 
 ## Coaching improvements 📋
 Wait for data accumulation (need 10+ stops with time_of_day).
@@ -302,10 +319,9 @@ Global sources + CHS tidal API for coastal/tidal reach fishing.
 DataStream covers Atlantic Canada watersheds.
 No province-specific fish observation APIs found as of 2026.
 
-### Federal sources 🔨 (June 28 2026 — partial)
-DFO critical habitat, DFO SAR species ranges (requires fiona), CHS tidal predictions,
-DataStream water quality (requires DATASTREAM_API_KEY) — all adapters built;
-data ingested on first /ingest/data-national run per area.
+### Federal sources ✅ (June 28 2026)
+DFO critical habitat, DFO SAR critical habitat (ESRI REST, no fiona), CHS tidal predictions,
+DataStream water quality (requires DATASTREAM_API_KEY) — all adapters built and verified working.
 
 ### US states 📋
 Great Lakes region first: Michigan, Minnesota, Wisconsin.
