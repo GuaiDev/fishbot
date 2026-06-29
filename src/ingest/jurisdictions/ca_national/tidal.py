@@ -23,7 +23,7 @@ import json
 import logging
 import math
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -107,9 +107,16 @@ def _fetch_nearby_stations(lat: float, lng: float, radius_km: float) -> list[dic
 def _fetch_predictions(station_id: str) -> list[dict]:
     """Fetch high/low tide predictions for a station."""
     url = f"{_BASE_URL}/api/v1/stations/{station_id}/data"
-    params = {"time-series-code": "wlp-hilo"}
-    query = "&".join(f"{k}={v}" for k, v in params.items())
-    data = _cached_get(f"{url}?{query}", {}, _PREDICTIONS_TTL)
+    # Round to start of today UTC so the cache key is stable within a day
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    from_dt = today.strftime("%Y-%m-%dT%H:%M:%SZ")
+    to_dt = (today + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    params = {
+        "time-series-code": "wlp-hilo",
+        "from": from_dt,
+        "to": to_dt,
+    }
+    data = _cached_get(url, params, _PREDICTIONS_TTL)
     if isinstance(data, list):
         return data
     return data.get("data", [])
