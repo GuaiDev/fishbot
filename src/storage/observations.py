@@ -22,13 +22,17 @@ def query_observations(
     radius_km: float,
     days_back: int,
     species_filter: str | None = None,
-) -> list[Observation]:
+    limit: int = 50,
+) -> tuple[list[Observation], int]:
+    """Return (observations, total_count).
+
+    Hard cap of `limit` rows (default 50) to prevent context overflow.
+    days_back applies only to iNaturalist records; survey sources (FISS, etc.)
+    are always included regardless of date.
+    """
     deg = radius_km / _KM_PER_DEGREE
     since = (date.today() - timedelta(days=days_back)).isoformat()
 
-    # days_back applies only to iNaturalist crowdsourced records.
-    # Government survey sources (FISS, etc.) are historical by nature and are
-    # always returned regardless of observation date.
     where = (
         "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? "
         "AND (source != 'iNaturalist' OR observed_on >= ?)"
@@ -40,8 +44,17 @@ def query_observations(
         pattern = f"%{species_filter.lower()}%"
         params += [pattern, pattern]
 
-    rows = db["observations"].rows_where(where, params, order_by="observed_on desc")
-    return [_row_to_obs(r) for r in rows]
+    total: int = db.execute(
+        f"SELECT COUNT(*) FROM observations WHERE {where}", params
+    ).fetchone()[0]
+
+    cursor = db.execute(
+        f"SELECT * FROM observations WHERE {where} ORDER BY observed_on DESC LIMIT ?",
+        params + [limit],
+    )
+    col_names = [d[0] for d in cursor.description]
+    rows = [dict(zip(col_names, r)) for r in cursor.fetchall()]
+    return [_row_to_obs(r) for r in rows], total
 
 
 def get_obscured_observations(db: Database) -> list[Observation]:

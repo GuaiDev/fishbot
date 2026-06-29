@@ -39,7 +39,7 @@ def query_for_agent(
 
     # Cross-reference local iNaturalist records only — no live API calls
     inat_days = days_back if days_back is not None else 36500
-    inat_obs = query_observations(db, lat, lng, radius_km, inat_days, species_filter)
+    inat_obs, _ = query_observations(db, lat, lng, radius_km, inat_days, species_filter)
 
     if not gbif_obs and not inat_obs:
         return json.dumps(

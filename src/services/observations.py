@@ -33,12 +33,13 @@ def query_for_agent(
     species_filter: str | None = None,
 ) -> str:
     db = get_db()
-    observations = query_observations(db, lat, lng, radius_km, days_back, species_filter)
+    observations, total_count = query_observations(db, lat, lng, radius_km, days_back, species_filter)
 
     if not observations:
         return json.dumps(
             {
                 "count": 0,
+                "total_count": total_count,
                 "observations": [],
                 "note": (
                     "No observations found in the local database for this area and time range. "
@@ -59,4 +60,4 @@ def query_for_agent(
         }
         for o in observations
     ]
-    return json.dumps({"count": len(records), "observations": records})
+    return json.dumps({"count": len(records), "total_count": total_count, "observations": records})
