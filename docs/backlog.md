@@ -1,6 +1,6 @@
 # FishDex Backlog
 
-Last updated: June 28 2026 (session 3)
+Last updated: June 29 2026 (session 4)
 Previously: FishBot
 
 ## Project rename
@@ -371,10 +371,14 @@ Design pending:
 
 ## Infrastructure
 
-### Railway deployment ✅
+### Railway deployment 🔨
 URL: https://web-production-e2094.up.railway.app
-Volume "data" mounted at /data, DATA_DIR=/data confirmed.
-Database persists across deploys.
+Volume vol_wc8gnr3fyrcdcydx is attached but DATA_DIR env var is NOT set in
+Railway dashboard. Database is writing to the container's ephemeral filesystem
+and is wiped on every redeploy.
+Fix: set DATA_DIR to the volume's mount path in Railway → service → Variables.
+Once set, db_path in /admin/db-stats response will show an absolute path
+confirming the volume is being used.
 
 ### Token refresh ✅
 POST /admin/token with X-Api-Key returns fresh Bearer token.
@@ -393,6 +397,22 @@ causing "at least one message is required" from the Claude API.
 Fix: endpoint now builds messages from history + appends current message.
 make run was unaffected (CLI bypasses the HTTP endpoint entirely).
 Deploy status: committed (067b616), Railway redeploy pending confirmation.
+
+### FISS context overflow — fixed ✅ (June 29 2026)
+46,294 FISS observations were being returned to Claude, exceeding context limits.
+Root cause: query_observations had no LIMIT; all survey records returned regardless
+of count. Fix: hard cap of 50 results (ORDER BY observed_on DESC), plus a separate
+COUNT(*) query so total_count is included in the tool response. iNat records with
+real dates sort first; FISS sentinel dates (1900-01-01) sort last.
+Files: src/storage/observations.py, src/services/observations.py, src/services/gbif.py.
+
+### /admin/db-stats diagnostic endpoint 🔨 (June 29 2026)
+Temporary endpoint for Railway database diagnosis. Returns:
+- db_path: resolved DB_PATH (shows whether relative or absolute)
+- db_exists: bool — whether the file actually exists at that path
+- data_dir_env: value of DATA_DIR env var, or "NOT SET"
+- observations_by_source: count/lat-lng/date range per source
+Remove once Railway persistence is confirmed working.
 
 ### Known dead code
 ChatRequest Pydantic model (src/api/main.py:154) is unused — endpoint takes
