@@ -474,6 +474,8 @@ def get_db_stats(_: None = Depends(verify_api_key)):
     cols = ["source", "count", "lat_min", "lat_max", "lng_min", "lng_max", "date_min", "date_max"]
     return {
         "db_path": str(DB_PATH),
+        "db_exists": DB_PATH.exists(),
+        "data_dir_env": os.environ.get("DATA_DIR", "NOT SET"),
         "observations_by_source": [dict(zip(cols, r)) for r in rows],
     }
 
