@@ -49,6 +49,7 @@ def fetch_sar_ranges() -> list[dict]:
         "where": "1=1",
         "geometryType": "esriGeometryEnvelope",
         "spatialRel": "esriSpatialRelIntersects",
+        "inSR": "4326",
         "outFields": "*",
         "returnGeometry": "true",
         "outSR": "4326",
