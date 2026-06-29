@@ -6,9 +6,10 @@ that blocks normal import syntax.
 
 import importlib
 import json
+import logging
 import math
 import warnings
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import httpx
 
@@ -16,6 +17,11 @@ from src.storage.database import get_db
 from src.storage.osm_features import upsert_access_points, upsert_water_features
 
 _osm = importlib.import_module("src.ingest.global.osm")
+_log = logging.getLogger(__name__)
+
+_OSM_CACHE_DAYS = 30
+_OSM_WATER_RADIUS_KM = 50.0
+_OSM_DEG_PER_KM = 1.0 / 111.0
 
 _NON_FISHABLE_TYPES = frozenset({"ditch", "drain"})
 _MIN_FISHABLE_AREA_M2 = 50.0
@@ -212,9 +218,43 @@ def _has_recent_bird_activity(
 def fetch_and_store(lat: float, lng: float) -> tuple[int, int]:
     """Fetch and upsert OSM features. Called by the ingest CLI.
 
-    Returns (0, 0) if all Overpass endpoints are unavailable so that make ingest
-    can continue with the other data sources rather than crashing.
+    Skips the Overpass fetch entirely if fresh data (< 30 days old) already
+    exists within the fetch radius — prevents redundant calls and the concurrent
+    memory pressure that causes Railway OOM when multiple ingests overlap.
+    Returns (0, 0) if Overpass is unavailable.
     """
+    db = get_db()
+
+    if "water_features" in db.table_names():
+        deg = _OSM_WATER_RADIUS_KM * _OSM_DEG_PER_KM
+        cutoff = (datetime.utcnow() - timedelta(days=_OSM_CACHE_DAYS)).isoformat()
+        cached = db.execute(
+            """SELECT COUNT(*) FROM water_features
+               WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?
+               AND fetched_at >= ?""",
+            [lat - deg, lat + deg, lng - deg, lng + deg, cutoff],
+        ).fetchone()[0]
+        if cached > 0:
+            water_count = db.execute(
+                """SELECT COUNT(*) FROM water_features
+                   WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?""",
+                [lat - deg, lat + deg, lng - deg, lng + deg],
+            ).fetchone()[0]
+            access_count = (
+                db.execute(
+                    """SELECT COUNT(*) FROM access_points
+                       WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?""",
+                    [lat - deg, lat + deg, lng - deg, lng + deg],
+                ).fetchone()[0]
+                if "access_points" in db.table_names()
+                else 0
+            )
+            _log.info(
+                "OSM: skipping fetch — %d cached features within %.0fkm (last fetched < %d days ago)",
+                cached, _OSM_WATER_RADIUS_KM, _OSM_CACHE_DAYS,
+            )
+            return water_count, access_count
+
     try:
         features = _osm.fetch_water_features(lat, lng, radius_km=50)
         points = _osm.fetch_access_points(lat, lng, radius_km=25)
@@ -222,7 +262,6 @@ def fetch_and_store(lat: float, lng: float) -> tuple[int, int]:
         warnings.warn(f"OSM ingest failed after all retries — skipping: {e}", stacklevel=2)
         return 0, 0
 
-    db = get_db()
     upsert_water_features(db, features)
     upsert_access_points(db, points)
 
