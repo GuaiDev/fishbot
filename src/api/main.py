@@ -451,6 +451,30 @@ def get_admin_token(_: None = Depends(verify_api_key)):
     return {"token": token, "bearer": f"Bearer {token}"}
 
 
+@app.get("/admin/db-stats")
+def get_db_stats(_: None = Depends(verify_api_key)):
+    """Diagnostic: observation table stats by source. Temporary endpoint."""
+    from src.storage.database import get_db
+
+    db = get_db()
+    rows = db.execute("""
+        SELECT
+            source,
+            COUNT(*)            AS count,
+            MIN(lat)            AS lat_min,
+            MAX(lat)            AS lat_max,
+            MIN(lng)            AS lng_min,
+            MAX(lng)            AS lng_max,
+            MIN(observed_on)    AS date_min,
+            MAX(observed_on)    AS date_max
+        FROM observations
+        GROUP BY source
+        ORDER BY COUNT(*) DESC
+    """).fetchall()
+    cols = ["source", "count", "lat_min", "lat_max", "lng_min", "lng_max", "date_min", "date_max"]
+    return {"observations_by_source": [dict(zip(cols, r)) for r in rows]}
+
+
 @app.post("/admin/invite")
 def create_invite(body: dict, user: dict = Depends(get_current_user)):
     """Generate an invite code. Admin only."""
