@@ -27,7 +27,7 @@ from src.jurisdictions.geo import jurisdiction_for_coords
 
 _SERVICE_URL = (
     "https://egisp.dfo-mpo.gc.ca/arcgis/rest/services/"
-    "open_data_donnees_ouvertes/CritHab_HabEss_2025/MapServer/0/query"
+    "open_data_donnees_ouvertes/dfo_sara_critical_habitat/MapServer/0/query"
 )
 _PAGE_SIZE = 1000
 _CACHE_DIR = Path("data/cache/dfo_sar_range")
@@ -84,20 +84,12 @@ def _parse_feature(feat: dict) -> dict | None:
     attrs = feat.get("attributes") or {}
     geom = feat.get("geometry") or {}
 
-    common = (
-        attrs.get("COMMON_NAME_E") or attrs.get("COMMON_NAME_EN") or
-        attrs.get("COMMON_NAME") or ""
-    ).strip()
-    sci = (
-        attrs.get("SCIENTIFIC_NAME") or attrs.get("SCIENTIFICNAME") or ""
-    ).strip()
+    common = (attrs.get("COMMON_E") or "").strip()
+    sci = (attrs.get("SCIENTIFIC") or "").strip()
     if not sci and not common:
         return None
 
-    sara_status = (
-        attrs.get("SARA_SCHEDULE_E") or attrs.get("SARA_STATUS_E") or
-        attrs.get("SCHEDULE") or ""
-    ).strip()
+    sara_status = (attrs.get("SARASTAT_E") or "").strip()
 
     clat, clng = _centroid_from_geometry(geom)
     jur = "CA"
@@ -149,7 +141,7 @@ def _centroid_from_geometry(geom: dict) -> tuple[float | None, float | None]:
 
 
 def _feature_key(attrs: dict) -> str | None:
-    sci = (attrs.get("SCIENTIFIC_NAME") or attrs.get("SCIENTIFICNAME") or "").strip()
+    sci = (attrs.get("SCIENTIFIC") or "").strip()
     obj_id = attrs.get("OBJECTID") or attrs.get("FID")
     if obj_id is not None:
         return f"{sci}_{obj_id}"

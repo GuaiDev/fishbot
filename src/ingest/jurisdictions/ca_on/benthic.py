@@ -276,7 +276,7 @@ def parse_benthic(path: Path, visit_jurisdictions: dict[str, str]) -> dict[str, 
             return agg
         norm = {raw: _normalize_col(raw) for raw in reader.fieldnames}
         for raw_row in reader:
-            r = {norm[k]: v.strip() for k, v in raw_row.items() if k}
+            r = {norm[k]: v.strip() for k, v in raw_row.items() if k and v is not None}
             visit_id = r.get("SiteVisitID", "").strip()
             if visit_id not in visit_jurisdictions:
                 continue
