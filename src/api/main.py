@@ -454,7 +454,7 @@ def get_admin_token(_: None = Depends(verify_api_key)):
 @app.get("/admin/db-stats")
 def get_db_stats(_: None = Depends(verify_api_key)):
     """Diagnostic: observation table stats by source. Temporary endpoint."""
-    from src.storage.database import get_db
+    from src.storage.database import DB_PATH, get_db
 
     db = get_db()
     rows = db.execute("""
@@ -472,7 +472,10 @@ def get_db_stats(_: None = Depends(verify_api_key)):
         ORDER BY COUNT(*) DESC
     """).fetchall()
     cols = ["source", "count", "lat_min", "lat_max", "lng_min", "lng_max", "date_min", "date_max"]
-    return {"observations_by_source": [dict(zip(cols, r)) for r in rows]}
+    return {
+        "db_path": str(DB_PATH),
+        "observations_by_source": [dict(zip(cols, r)) for r in rows],
+    }
 
 
 @app.post("/admin/invite")
