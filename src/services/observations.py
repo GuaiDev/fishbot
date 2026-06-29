@@ -15,7 +15,7 @@ def fetch_and_store(
     lat: float,
     lng: float,
     radius_km: float = 50,
-    days_back: int = 90,
+    days_back: int | None = 90,
 ) -> int:
     observations = fetch_observations(lat, lng, radius_km, days_back)
     if not observations:

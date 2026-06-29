@@ -571,7 +571,7 @@ def ingest(body: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _run_global_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
+def _run_global_ingest(lat: float, lng: float, radius_km: float, label: str, days_back: int | None = 90) -> None:
     """Background task: run iNat, GBIF, WSC, OSM, and SDM check for a location."""
     import json as _json
     import os as _os
@@ -587,9 +587,10 @@ def _run_global_ingest(lat: float, lng: float, radius_km: float, label: str) -> 
     db = get_db()
     ensure_schema(db)
 
-    _log.info("[%s] iNat: fetching observations (last 90 days)", label)
+    inat_label = f"last {days_back} days" if days_back else "all history"
+    _log.info("[%s] iNat: fetching observations (%s)", label, inat_label)
     try:
-        n = inat_fetch(lat, lng, radius_km=radius_km, days_back=90)
+        n = inat_fetch(lat, lng, radius_km=radius_km, days_back=days_back)
         _log.info("[%s] iNat: %d observations stored", label, n)
     except Exception:
         _log.exception("[%s] iNat fetch failed", label)
@@ -662,6 +663,7 @@ def ingest_data(
         "lat": float,
         "lng": float,
         "radius_km": float (optional, default 50),
+        "days_back": int | null (optional, default 90; 0 or null = all history),
         "label": str (optional, human-readable name for logging)
     }
     Runs iNaturalist, GBIF, WSC, and OSM data sources for the given location.
@@ -672,11 +674,12 @@ def ingest_data(
     lng = body.get("lng")
     radius_km = body.get("radius_km", 50.0)
     label = body.get("label", f"{lat},{lng}")
+    days_back = body.get("days_back", 90) or None  # 0 or null → None → no date filter
 
     if lat is None or lng is None:
         raise HTTPException(status_code=400, detail="lat and lng are required")
 
-    background_tasks.add_task(_run_global_ingest, lat, lng, radius_km, label)
+    background_tasks.add_task(_run_global_ingest, lat, lng, radius_km, label, days_back)
 
     return JSONResponse(
         status_code=202,

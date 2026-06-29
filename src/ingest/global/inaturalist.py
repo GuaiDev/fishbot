@@ -27,19 +27,19 @@ def fetch_observations(
     lat: float,
     lng: float,
     radius_km: float = 50,
-    days_back: int = 90,
+    days_back: int | None = 90,
 ) -> list[Observation]:
-    since = (date.today() - timedelta(days=days_back)).isoformat()
     base_params = {
         "taxon_id": _TAXON_ID,
         "lat": lat,
         "lng": lng,
         "radius": radius_km,
-        "d1": since,
         "order_by": "observed_on",
         "order": "desc",
         "per_page": _PER_PAGE,
     }
+    if days_back:
+        base_params["d1"] = (date.today() - timedelta(days=days_back)).isoformat()
 
     all_results: list[dict] = []
     page = 1
