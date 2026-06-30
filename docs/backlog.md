@@ -1,6 +1,6 @@
 # FishDex Backlog
 
-Last updated: June 29 2026 (session 4)
+Last updated: June 29 2026 (session 5)
 Previously: FishBot
 
 ## Project rename
@@ -411,8 +411,34 @@ Temporary endpoint for Railway database diagnosis. Returns:
 - db_path: resolved DB_PATH (shows whether relative or absolute)
 - db_exists: bool — whether the file actually exists at that path
 - data_dir_env: value of DATA_DIR env var, or "NOT SET"
-- observations_by_source: count/lat-lng/date range per source
+- observations_by_source: count/lat-lng/date range per source (iNat, FISS, etc.)
+- gbif_by_source: count/lat-lng/date range for gbif_observations table
 Remove once Railway persistence is confirmed working.
+
+### OSM 30-day cache skip ✅ (June 29 2026)
+OSM ingest was causing Railway OOM when multiple cron areas ran concurrently —
+Overpass requests backed up and memory built under rate limiting.
+Fix: fetch_and_store() checks water_features for any rows within the 50km radius
+with fetched_at >= 30 days ago. If found, returns DB counts immediately without
+hitting Overpass. First weekly run fetches; all subsequent runs that week skip.
+File: src/services/osm.py.
+
+### /ingest/data days_back parameter ✅ (June 29 2026)
+Added optional days_back body param (default 90). days_back=0 or null removes
+the d1 date filter from the iNat API call, pulling all historical observations.
+Useful for sparse areas (MB, SK, prairies) where the 90-day window returns 0.
+Passes through: endpoint → _run_global_ingest → fetch_and_store → fetch_observations.
+To run a historical backfill:
+  POST /ingest/data {"lat":49.90,"lng":-97.14,"radius_km":50,"days_back":0,"label":"winnipeg-historical"}
+
+### iNat API pagination cap — known limit (June 29 2026)
+The iNat v1 API serves at most 10,000 records per query regardless of total_results.
+With per_page=200, max fetchable = 50 pages × 200 = 10,000. For queries where
+total_results > 10,000, the fetcher exits on an empty page but silently under-ingests.
+A WARNING is now logged: "iNat: fetched N of M total — API pagination cap reached,
+X records unreachable". No workaround — this is an iNat API constraint. Affects
+densely-observed ON/BC areas more than sparse prairies.
+File: src/ingest/global/inaturalist.py.
 
 ### Known dead code
 ChatRequest Pydantic model (src/api/main.py:154) is unused — endpoint takes
