@@ -7,6 +7,7 @@ Requests are rate-limited to 1/sec between pages.
 
 import hashlib
 import json
+import logging
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -15,6 +16,8 @@ import httpx
 
 from src.jurisdictions.geo import jurisdiction_for_coords
 from src.models.observation import Observation
+
+_log = logging.getLogger(__name__)
 
 _API_URL = "https://api.inaturalist.org/v1/observations"
 _TAXON_ID = 47178  # Actinopterygii — all bony fish
@@ -59,6 +62,12 @@ def fetch_observations(
 
         page += 1
         time.sleep(1)
+
+    if total is not None and len(all_results) < total:
+        _log.warning(
+            "iNat: fetched %d of %d total — API pagination cap reached, %d records unreachable",
+            len(all_results), total, total - len(all_results),
+        )
 
     return [_parse_observation(r) for r in all_results if _has_location(r)]
 
