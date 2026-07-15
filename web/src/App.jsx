@@ -49,11 +49,11 @@ export default function App() {
     return (
       <div style={{
         minHeight: '100vh',
-        background: '#0F1117',
+        background: 'var(--color-base-bark)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: '#6B7A8D',
+        color: 'var(--color-text-ash)',
         fontSize: '14px',
       }}>
         Loading…
@@ -66,12 +66,17 @@ export default function App() {
   }
 
   return (
+    // maxWidth: 480 is an intentional mobile-first constraint, not an
+    // oversight — PRODUCT.md's primary use case is one-handed, stream-side.
+    // Wider viewports (the stated desk/planning use case) currently get the
+    // same centered mobile column; revisit with a real wide-viewport layout
+    // in a future pass rather than stretching this shell ad hoc.
     <div style={{
       maxWidth: 480,
       margin: '0 auto',
       minHeight: '100dvh',
       position: 'relative',
-      background: '#0F1117',
+      background: 'var(--color-base-bark)',
     }}>
       {screen === 'chat' && <Chat onNavigate={setScreen} user={user} onLogout={handleLogout} />}
       {screen === 'map' && <Map />}

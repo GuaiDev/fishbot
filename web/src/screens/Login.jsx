@@ -31,7 +31,7 @@ export default function Login({ onLogin }) {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0F1117',
+      background: 'var(--color-base-bark)',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -39,19 +39,20 @@ export default function Login({ onLogin }) {
       padding: '24px',
     }}>
       <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-        <div style={{ fontSize: '48px', marginBottom: '12px' }}>🎣</div>
-        <h1 style={{ color: '#F0F4F8', fontSize: '24px', margin: 0 }}>FishBot</h1>
-        <p style={{ color: '#6B7A8D', fontSize: '14px', marginTop: '8px' }}>
+        <div aria-hidden="true" style={{ fontSize: '48px', marginBottom: '12px' }}>🎣</div>
+        <h1 style={{ color: 'var(--color-text-bone)', fontSize: '24px', margin: 0 }}>FishBot</h1>
+        <p style={{ color: 'var(--color-text-ash)', fontSize: '14px', marginTop: '8px' }}>
           Enter your invite code to get started
         </p>
       </div>
 
       <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: '360px' }}>
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ color: '#6B7A8D', fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+          <label htmlFor="invite-code" style={{ color: 'var(--color-text-ash)', fontSize: '12px', display: 'block', marginBottom: '6px' }}>
             INVITE CODE
           </label>
           <input
+            id="invite-code"
             type="text"
             value={code}
             onChange={e => setCode(e.target.value.toUpperCase())}
@@ -61,10 +62,10 @@ export default function Login({ onLogin }) {
             style={{
               width: '100%',
               padding: '12px 14px',
-              background: '#1A1D27',
-              border: '1px solid #2A2D3A',
+              background: 'var(--color-surface-loam)',
+              border: '1px solid var(--color-border-twig)',
               borderRadius: '8px',
-              color: '#F0F4F8',
+              color: 'var(--color-text-bone)',
               fontSize: '16px',
               fontFamily: 'monospace',
               letterSpacing: '2px',
@@ -75,10 +76,11 @@ export default function Login({ onLogin }) {
         </div>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ color: '#6B7A8D', fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+          <label htmlFor="username" style={{ color: 'var(--color-text-ash)', fontSize: '12px', display: 'block', marginBottom: '6px' }}>
             USERNAME
           </label>
           <input
+            id="username"
             type="text"
             value={username}
             onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
@@ -89,25 +91,26 @@ export default function Login({ onLogin }) {
             style={{
               width: '100%',
               padding: '12px 14px',
-              background: '#1A1D27',
-              border: '1px solid #2A2D3A',
+              background: 'var(--color-surface-loam)',
+              border: '1px solid var(--color-border-twig)',
               borderRadius: '8px',
-              color: '#F0F4F8',
+              color: 'var(--color-text-bone)',
               fontSize: '16px',
               boxSizing: 'border-box',
               outline: 'none',
             }}
           />
-          <p style={{ color: '#6B7A8D', fontSize: '11px', marginTop: '4px' }}>
+          <p style={{ color: 'var(--color-text-ash)', fontSize: '11px', marginTop: '4px' }}>
             Letters and numbers only, 2–20 characters
           </p>
         </div>
 
         <div style={{ marginBottom: '24px' }}>
-          <label style={{ color: '#6B7A8D', fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+          <label htmlFor="display-name" style={{ color: 'var(--color-text-ash)', fontSize: '12px', display: 'block', marginBottom: '6px' }}>
             DISPLAY NAME (optional)
           </label>
           <input
+            id="display-name"
             type="text"
             value={displayName}
             onChange={e => setDisplayName(e.target.value)}
@@ -116,10 +119,10 @@ export default function Login({ onLogin }) {
             style={{
               width: '100%',
               padding: '12px 14px',
-              background: '#1A1D27',
-              border: '1px solid #2A2D3A',
+              background: 'var(--color-surface-loam)',
+              border: '1px solid var(--color-border-twig)',
               borderRadius: '8px',
-              color: '#F0F4F8',
+              color: 'var(--color-text-bone)',
               fontSize: '16px',
               boxSizing: 'border-box',
               outline: 'none',
@@ -129,12 +132,12 @@ export default function Login({ onLogin }) {
 
         {error && (
           <div style={{
-            background: '#2D1A1A',
-            border: '1px solid #5C2A2A',
+            background: 'var(--color-rust-bg)',
+            border: '1px solid var(--color-rust-border)',
             borderRadius: '8px',
             padding: '12px',
             marginBottom: '16px',
-            color: '#E57373',
+            color: 'var(--color-rust)',
             fontSize: '14px',
           }}>
             {error}
@@ -147,8 +150,8 @@ export default function Login({ onLogin }) {
           style={{
             width: '100%',
             padding: '14px',
-            background: loading ? '#164D3A' : '#1D9E75',
-            color: '#fff',
+            background: loading ? 'var(--color-moss-fill-dim)' : 'var(--color-moss-fill)',
+            color: 'var(--color-text-bone)',
             border: 'none',
             borderRadius: '8px',
             fontSize: '16px',

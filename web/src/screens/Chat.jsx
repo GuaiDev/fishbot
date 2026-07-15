@@ -64,13 +64,13 @@ export default function Chat({ onNavigate, user, onLogout }) {
       display: 'flex',
       flexDirection: 'column',
       height: '100dvh',
-      background: '#0F1117',
+      background: 'var(--color-base-bark)',
     }}>
       {/* Header */}
       <div style={{
         padding: '16px 16px 12px',
-        borderBottom: '1px solid #2A2D3A',
-        background: '#0F1117',
+        borderBottom: '1px solid var(--color-border-twig)',
+        background: 'var(--color-base-bark)',
         position: 'sticky',
         top: 0,
         zIndex: 10,
@@ -78,15 +78,15 @@ export default function Chat({ onNavigate, user, onLogout }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 36, height: 36, borderRadius: '50%',
-            background: '#1D9E75',
+            background: 'var(--color-moss-fill)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 16, fontWeight: 600, color: 'white',
+            fontSize: 16, fontWeight: 600, color: 'var(--color-text-bone)',
           }}>F</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#E8EAF0' }}>
+            <h1 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-bone)', margin: 0 }}>
               FishBot
-            </div>
-            <div style={{ fontSize: 11, color: '#6B7280' }}>
+            </h1>
+            <div style={{ fontSize: 11, color: 'var(--color-text-ash)' }}>
               Ontario freshwater intelligence
             </div>
           </div>
@@ -96,10 +96,10 @@ export default function Chat({ onNavigate, user, onLogout }) {
               title={`Logged in as ${displayName}`}
               style={{
                 background: 'none',
-                border: '1px solid #2A2D3A',
+                border: '1px solid var(--color-border-twig)',
                 borderRadius: '20px',
                 padding: '4px 10px',
-                color: '#6B7280',
+                color: 'var(--color-text-ash)',
                 fontSize: '11px',
                 cursor: 'pointer',
               }}
@@ -126,9 +126,9 @@ export default function Chat({ onNavigate, user, onLogout }) {
             <div style={{
               padding: '10px 14px',
               borderRadius: '4px 14px 14px 14px',
-              background: '#1A1D27',
-              borderLeft: '2px solid #1D9E75',
-              color: '#6B7280',
+              background: 'var(--color-surface-loam)',
+              borderLeft: '2px solid var(--color-moss)',
+              color: 'var(--color-text-ash)',
               fontSize: 14,
             }}>
               thinking...
@@ -146,8 +146,8 @@ export default function Chat({ onNavigate, user, onLogout }) {
         maxWidth: 480,
         margin: '0 auto',
         padding: '10px 12px',
-        background: '#0F1117',
-        borderTop: '1px solid #2A2D3A',
+        background: 'var(--color-base-bark)',
+        borderTop: '1px solid var(--color-border-twig)',
         display: 'flex',
         alignItems: 'flex-end',
         gap: 8,
@@ -156,21 +156,22 @@ export default function Chat({ onNavigate, user, onLogout }) {
         {/* Log button */}
         <button
           onClick={() => onNavigate('log')}
+          aria-label="Log a catch"
+          title="Log a catch"
           style={{
-            width: 40, height: 40,
+            width: 44, height: 44,
             borderRadius: '50%',
-            background: '#1D9E75',
+            background: 'var(--color-moss-fill)',
             border: 'none',
             cursor: 'pointer',
             fontSize: 22,
-            color: 'white',
+            color: 'var(--color-text-bone)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
           }}
-          title="Log a catch"
-        >＋</button>
+        ><span aria-hidden="true">＋</span></button>
 
         {/* Text input */}
         <textarea
@@ -182,11 +183,11 @@ export default function Chat({ onNavigate, user, onLogout }) {
           rows={1}
           style={{
             flex: 1,
-            background: '#1A1D27',
-            border: '1px solid #2A2D3A',
+            background: 'var(--color-surface-loam)',
+            border: '1px solid var(--color-border-twig)',
             borderRadius: 20,
             padding: '10px 14px',
-            color: '#E8EAF0',
+            color: 'var(--color-text-bone)',
             fontSize: 14,
             fontFamily: 'inherit',
             resize: 'none',
@@ -204,21 +205,22 @@ export default function Chat({ onNavigate, user, onLogout }) {
         <button
           onClick={handleSend}
           disabled={!input.trim() || loading}
+          aria-label="Send message"
           style={{
-            width: 40, height: 40,
+            width: 44, height: 44,
             borderRadius: '50%',
-            background: input.trim() && !loading ? '#1D9E75' : '#2A2D3A',
+            background: input.trim() && !loading ? 'var(--color-moss-fill)' : 'var(--color-border-twig)',
             border: 'none',
             cursor: input.trim() && !loading ? 'pointer' : 'default',
             fontSize: 18,
-            color: 'white',
+            color: 'var(--color-text-bone)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
             transition: 'background 0.15s',
           }}
-        >↑</button>
+        ><span aria-hidden="true">↑</span></button>
       </div>
     </div>
   );

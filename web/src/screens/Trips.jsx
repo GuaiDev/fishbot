@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getSessions } from '../api';
+import InstrumentDial from '../components/InstrumentDial';
 
 export default function Trips() {
   const [sessions, setSessions] = useState([]);
@@ -21,23 +22,23 @@ export default function Trips() {
   return (
     <div style={{
       minHeight: '100dvh',
-      background: '#0F1117',
+      background: 'var(--color-base-bark)',
       padding: '16px 16px 100px',
       maxWidth: 480,
       margin: '0 auto',
     }}>
-      <h1 style={{ fontSize: 18, fontWeight: 600, color: '#E8EAF0', marginBottom: 20 }}>
+      <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-text-bone)', marginBottom: 20 }}>
         Your trips
       </h1>
 
       {loading && (
-        <div style={{ color: '#6B7280', fontSize: 14 }}>Loading trips...</div>
+        <div style={{ color: 'var(--color-text-ash)', fontSize: 14 }}>Loading trips...</div>
       )}
 
       {error && (
         <div style={{
-          padding: '12px 14px', background: '#2A1212',
-          color: '#E07B39', borderRadius: 10, fontSize: 14,
+          padding: '12px 14px', background: 'var(--color-rust-bg)',
+          color: 'var(--color-rust)', borderRadius: 10, fontSize: 14,
         }}>
           {error.includes('404') || error.includes('failed')
             ? 'Trip history coming soon — log your first trip to get started.'
@@ -48,7 +49,7 @@ export default function Trips() {
       {!loading && !error && sessions.length === 0 && (
         <div style={{
           padding: '24px 16px', textAlign: 'center',
-          color: '#6B7280', fontSize: 14,
+          color: 'var(--color-text-ash)', fontSize: 14,
         }}>
           No trips logged yet. Tap + to log your first catch.
         </div>
@@ -63,28 +64,36 @@ export default function Trips() {
 
           return (
             <div key={i} style={{
-              background: '#1A1D27',
+              background: 'var(--color-surface-loam)',
               borderRadius: 10,
               padding: '12px 14px',
-              border: '1px solid #2A2D3A',
+              border: '1px solid var(--color-border-twig)',
             }}>
-              <div style={{ fontSize: 14, fontWeight: 500, color: '#E8EAF0', marginBottom: 2 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-bone)', marginBottom: 2 }}>
                 {location}
               </div>
-              <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-ash)', marginBottom: 8 }}>
                 {date}
-                {conditions?.air_temp_c && ` · ${conditions.air_temp_c}°C`}
-                {conditions?.pressure_hpa && ` · ${conditions.pressure_hpa}hPa`}
                 {conditions?.anomaly_flag && conditions.anomaly_flag !== 'normal' && (
-                  <span style={{ color: '#E07B39' }}> · {conditions.anomaly_flag.replace('_', ' ')}</span>
+                  <span style={{ color: 'var(--color-rust)' }}> · {conditions.anomaly_flag.replace('_', ' ')}</span>
                 )}
               </div>
+              {(conditions?.air_temp_c != null || conditions?.pressure_hpa != null) && (
+                <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+                  {conditions?.air_temp_c != null && (
+                    <InstrumentDial value={conditions.air_temp_c} unit="°C" label="Air temp" min={-10} max={35} />
+                  )}
+                  {conditions?.pressure_hpa != null && (
+                    <InstrumentDial value={conditions.pressure_hpa} unit="" label="Pressure hPa" min={970} max={1040} />
+                  )}
+                </div>
+              )}
               {species.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {species.map((sp, j) => (
                     <span key={j} style={{
-                      background: '#0F4D38',
-                      color: '#1D9E75',
+                      background: 'var(--color-sage-tint-bg)',
+                      color: 'var(--color-moss)',
                       borderRadius: 6,
                       padding: '3px 8px',
                       fontSize: 11,

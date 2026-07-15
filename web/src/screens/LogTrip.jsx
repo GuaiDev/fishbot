@@ -139,94 +139,99 @@ export default function LogTrip({ onNavigate }) {
   return (
     <div style={{
       minHeight: '100dvh',
-      background: '#0F1117',
+      background: 'var(--color-base-bark)',
       padding: '16px 16px 100px',
       maxWidth: 480,
       margin: '0 auto',
     }}>
-      <h1 style={{ fontSize: 18, fontWeight: 600, color: '#E8EAF0', marginBottom: 4 }}>
+      <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-text-bone)', marginBottom: 4 }}>
         Log a catch
       </h1>
-      <p style={{ fontSize: 12, color: '#6B7280', marginBottom: 20 }}>
+      <p style={{ fontSize: 12, color: 'var(--color-text-ash)', marginBottom: 20 }}>
         Photo adds GPS + time automatically
       </p>
 
-      {/* Photo zone */}
-      <div
-        onClick={() => fileRef.current?.click()}
+      {/* Photo zone. Once a photo is picked, this becomes a near-full-bleed
+          photography-led card (DESIGN.md's Catch Photo Card): GPS status
+          sits directly on the image via a bottom scrim, not as separate
+          pills below it. Empty state stays a plain dashed dropzone — there's
+          no photo yet for the photograph to carry. */}
+      <label
+        htmlFor="photo-input"
+        className="photo-dropzone"
         style={{
-          border: `1.5px dashed ${preview ? '#1D9E75' : '#2A2D3A'}`,
+          display: 'block',
+          position: 'relative',
+          border: preview ? 'none' : '1.5px dashed var(--color-border-twig)',
           borderRadius: 12,
           padding: preview ? 0 : '24px 16px',
           textAlign: 'center',
           cursor: 'pointer',
-          marginBottom: 12,
+          marginBottom: 16,
           overflow: 'hidden',
+          aspectRatio: preview ? '4 / 5' : 'auto',
         }}
       >
         <input
+          id="photo-input"
           ref={fileRef}
           type="file"
           accept="image/*"
           onChange={handlePhoto}
-          style={{ display: 'none' }}
+          className="sr-only"
         />
         {preview ? (
-          <img src={preview} alt="Trip" style={{
-            width: '100%', maxHeight: 200, objectFit: 'cover', display: 'block',
-          }} />
+          <>
+            <img src={preview} alt="Trip" style={{
+              width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+            }} />
+            <div style={{
+              position: 'absolute', left: 0, right: 0, bottom: 0,
+              padding: '16px',
+              background: 'linear-gradient(to top, color-mix(in srgb, var(--color-base-bark) 95%, transparent), transparent)',
+            }}>
+              {hasGps && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-moss)', fontSize: 13, fontWeight: 600 }}>
+                  <span aria-hidden="true">📍</span> GPS captured · {exifData.takenAt ? new Date(exifData.takenAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}
+                </div>
+              )}
+              {tryingGps && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text-bone)', fontSize: 13 }}>
+                  <span aria-hidden="true">📍</span> Getting location...
+                </div>
+              )}
+              {exifData === null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-rust)', fontSize: 13, fontWeight: 600 }}>
+                  <span aria-hidden="true">📍</span> No GPS — describe location in text
+                </div>
+              )}
+            </div>
+          </>
         ) : (
           <>
-            <div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
-            <div style={{ fontSize: 13, color: '#6B7280' }}>
+            <div aria-hidden="true" style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
+            <div style={{ fontSize: 13, color: 'var(--color-text-ash)' }}>
               Tap to add photo
             </div>
           </>
         )}
-      </div>
+      </label>
 
-      {hasGps && (
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          background: '#0F4D38', color: '#1D9E75',
-          borderRadius: 20, padding: '4px 12px',
-          fontSize: 12, fontWeight: 500, marginBottom: 16,
-        }}>
-          📍 GPS captured · {exifData.takenAt ? new Date(exifData.takenAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}
-        </div>
-      )}
-      {tryingGps && (
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          background: '#1A1D27', color: '#6B7280',
-          borderRadius: 20, padding: '4px 12px',
-          fontSize: 12, marginBottom: 16,
-        }}>
-          📍 Getting location...
-        </div>
-      )}
-      {exifData === null && preview && (
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          background: '#2A1F12', color: '#E07B39',
-          borderRadius: 20, padding: '4px 12px',
-          fontSize: 12, marginBottom: 16,
-        }}>
-          📍 No GPS — describe location in text
-        </div>
-      )}
-
+      <label htmlFor="trip-notes" className="sr-only">
+        What happened on this trip?
+      </label>
       <textarea
+        id="trip-notes"
         value={text}
         onChange={e => setText(e.target.value)}
         placeholder="What happened? Species, location, technique, conditions — as much or as little as you remember."
         style={{
           width: '100%',
-          background: '#1A1D27',
-          border: '1px solid #2A2D3A',
+          background: 'var(--color-surface-loam)',
+          border: '1px solid var(--color-border-twig)',
           borderRadius: 10,
           padding: '12px 14px',
-          color: '#E8EAF0',
+          color: 'var(--color-text-bone)',
           fontSize: 14,
           fontFamily: 'inherit',
           resize: 'none',
@@ -242,8 +247,8 @@ export default function LogTrip({ onNavigate }) {
         disabled={!text.trim() || status === 'loading'}
         style={{
           width: '100%',
-          background: text.trim() && status !== 'loading' ? '#1D9E75' : '#2A2D3A',
-          color: 'white',
+          background: text.trim() && status !== 'loading' ? 'var(--color-moss-fill)' : 'var(--color-border-twig)',
+          color: 'var(--color-text-bone)',
           border: 'none',
           borderRadius: 10,
           padding: '14px',
@@ -259,16 +264,16 @@ export default function LogTrip({ onNavigate }) {
       {status === 'success' && (
         <div style={{
           marginTop: 12, padding: '12px 14px',
-          background: '#0F4D38', color: '#1D9E75',
+          background: 'var(--color-sage-tint-bg)', color: 'var(--color-moss)',
           borderRadius: 10, fontSize: 14,
         }}>
-          ✓ Trip logged. Keep fishing.
+          <span aria-hidden="true">✓</span> Trip logged. Keep fishing.
         </div>
       )}
       {status === 'error' && (
         <div style={{
           marginTop: 12, padding: '12px 14px',
-          background: '#2A1212', color: '#E07B39',
+          background: 'var(--color-rust-bg)', color: 'var(--color-rust)',
           borderRadius: 10, fontSize: 14,
         }}>
           Error: {errorMsg}
