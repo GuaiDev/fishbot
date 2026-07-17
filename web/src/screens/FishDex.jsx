@@ -144,12 +144,12 @@ function DiscoveryHeader({ discovered, total, distinctFamilyCount, isGrouped }) 
           }}>
             My FishDex
           </div>
-          <div style={{
+          <h1 style={{
             fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 27,
-            color: 'var(--fx-text-primary)', lineHeight: 1.15,
+            color: 'var(--fx-text-primary)', lineHeight: 1.15, margin: 0,
           }}>
             Ontario
-          </div>
+          </h1>
         </div>
         <SearchButton />
       </div>
@@ -214,7 +214,7 @@ function CaughtPlate({ species }) {
       border: '1px solid var(--fx-hairline)', marginBottom: 13, background: 'var(--fx-card-fill-quiet)',
     }}>
       {photoUrl ? (
-        <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        <img src={photoUrl} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
       ) : (
         <div style={{
           width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -365,7 +365,7 @@ function FamilyGridCell({ species }) {
       boxShadow: '0 10px 24px rgba(0,0,0,.35)', background: 'var(--fx-card-fill-quiet)',
     }}>
       {photoUrl ? (
-        <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        <img src={photoUrl} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
       ) : (
         <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--fx-text-locked-3)' }}>
           {FISH_GLYPH}
@@ -432,7 +432,7 @@ function CollapsedFamilyBanner({ family, onExpand }) {
         boxShadow: '0 10px 26px rgba(0,0,0,.35)', background: 'var(--fx-card-fill-quiet)',
       }}>
         {photoUrl ? (
-          <img src={photoUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img src={photoUrl} alt="" loading="lazy" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : null}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(9,10,6,.86) 42%, rgba(9,10,6,.15))' }} />
 

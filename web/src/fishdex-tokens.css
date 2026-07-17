@@ -33,10 +33,18 @@
   --fx-text-primary-3: #ece6d8;
   --fx-text-muted: #948f7e;
   --fx-text-dim: #6f6c5b;
-  --fx-text-dim-2: #54564a;
+  /* dim-2 and locked-3 were promoted from #54564a / #5a5c4d — both failed
+     WCAG contrast (2.3:1 / 2.5:1) against every real background they're
+     used on (card-fill-quiet, the header's radial-gradient). Lightened
+     within the same hue family to clear 4.5:1 with margin (verified via
+     WCAG relative-luminance formula): dim-2 ~5.0-5.1:1, locked-3 ~5.1:1
+     against card-fill-quiet. This compresses the bottom of the ramp
+     (both now sit close to locked/locked-2) — expected tradeoff of making
+     genuinely-dark values legible on this background, not an error. */
+  --fx-text-dim-2: #8a8d7a;
   --fx-text-locked: #8f8c7b;
   --fx-text-locked-2: #7c7a6a;
-  --fx-text-locked-3: #5a5c4d;
+  --fx-text-locked-3: #8b8e77;
 
   /* Moss green — primary accent */
   --fx-moss: #869663;

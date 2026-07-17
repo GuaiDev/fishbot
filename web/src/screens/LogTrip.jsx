@@ -315,7 +315,7 @@ export default function LogTrip({ onNavigate }) {
         />
         {preview ? (
           <>
-            <img src={preview} alt="Trip" style={{
+            <img src={preview} alt="Trip" loading="lazy" style={{
               width: '100%', height: '100%', objectFit: 'cover', display: 'block',
             }} />
             <div style={{
@@ -424,7 +424,7 @@ export default function LogTrip({ onNavigate }) {
         </>
       )}
       {status === 'error' && (
-        <div style={{
+        <div role="alert" style={{
           marginTop: 12, padding: '12px 14px',
           background: 'var(--color-rust-bg)', color: 'var(--color-rust)',
           borderRadius: 10, fontFamily: 'var(--fx-font-ui)', fontSize: 14,

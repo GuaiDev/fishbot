@@ -131,7 +131,7 @@ export default function Login({ onLogin }) {
         </div>
 
         {error && (
-          <div style={{
+          <div role="alert" style={{
             background: 'var(--color-rust-bg)',
             border: '1px solid var(--color-rust-border)',
             borderRadius: '8px',

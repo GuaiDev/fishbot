@@ -47,7 +47,7 @@ function TripPlate({ session }) {
       border: '1px solid var(--fx-hairline)', marginBottom: 13, background: 'var(--fx-card-fill-quiet)',
     }}>
       {photoUrl ? (
-        <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        <img src={photoUrl} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
       ) : (
         <div style={{
           width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -160,7 +160,7 @@ export default function Trips() {
       )}
 
       {error && (
-        <div style={{
+        <div role="alert" style={{
           padding: '12px 14px', background: 'var(--color-rust-bg)',
           color: 'var(--color-rust)', borderRadius: 10, fontFamily: 'var(--fx-font-ui)', fontSize: 14,
         }}>

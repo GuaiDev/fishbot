@@ -117,11 +117,16 @@ export default function Chat({ onNavigate, user, onLogout }) {
       </div>
 
       {/* Messages */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '16px 16px 80px',
-      }}>
+      <div
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '16px 16px 80px',
+        }}
+      >
         {messages.map((msg, i) => (
           <Message key={i} role={msg.role} content={msg.content} />
         ))}
@@ -129,7 +134,7 @@ export default function Chat({ onNavigate, user, onLogout }) {
           <div style={{
             display: 'flex', justifyContent: 'flex-start', marginBottom: 8,
           }}>
-            <div style={{
+            <div role="status" style={{
               padding: '10px 14px',
               borderRadius: '4px 14px 14px 14px',
               background: 'var(--fx-card-fill)',
