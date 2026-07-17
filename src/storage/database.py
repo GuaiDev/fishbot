@@ -23,6 +23,7 @@ def get_db(path: Path | None = None) -> Database:
     migrate_stream_segments_multi_jurisdiction(db)
     migrate_observations_source(db)
     migrate_regulation_chunks_zone_name(db)
+    migrate_segment_synthesis_jurisdiction(db)
     return db
 
 
@@ -30,12 +31,12 @@ def migrate_stops(db: Database) -> None:
     """Add columns to stops table. Idempotent."""
     new_columns = [
         ("party_species_caught", "TEXT"),
-        ("time_of_day",  "TEXT"),
-        ("hour_of_day",  "INTEGER"),
-        ("photo_lat",    "REAL"),
-        ("photo_lng",    "REAL"),
+        ("time_of_day", "TEXT"),
+        ("hour_of_day", "INTEGER"),
+        ("photo_lat", "REAL"),
+        ("photo_lng", "REAL"),
         ("photo_taken_at", "TEXT"),
-        ("photo_url",    "TEXT"),
+        ("photo_url", "TEXT"),
     ]
     for col_name, col_type in new_columns:
         try:
@@ -573,7 +574,6 @@ def ensure_schema(db: Database) -> None:
         db["salmon_escapement"].create_index(["species"], if_not_exists=True)
         db["salmon_escapement"].create_index(["waterbody_name"], if_not_exists=True)
 
-
     if "sessions" not in db.table_names():
         db.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
@@ -653,7 +653,7 @@ def ensure_schema(db: Database) -> None:
                 "lng": float,
                 "ogf_id": int,
                 "distance_to_segment_m": float,
-                "species_caught": str,    # JSON array
+                "species_caught": str,  # JSON array
                 "species_observed": str,  # JSON array
                 "species_targeted": str,
                 "water_level": str,
@@ -664,7 +664,7 @@ def ensure_schema(db: Database) -> None:
                 "habitat_notes": str,
                 "spot_type": str,
                 "fish_count": int,
-                "was_productive": int,    # 0/1/null
+                "was_productive": int,  # 0/1/null
                 "gear": str,
                 "notes": str,
                 "raw_text": str,
@@ -684,7 +684,6 @@ def ensure_schema(db: Database) -> None:
                     db.execute(f"ALTER TABLE parsed_trips ADD COLUMN {col} {col_type}")
                 except Exception:
                     pass
-
 
     if "knowledge_sources" not in db.table_names():
         db["knowledge_sources"].create(
@@ -775,7 +774,6 @@ def ensure_schema(db: Database) -> None:
             ON angler_context(user_id)
     """)
 
-
     db.execute("""
         CREATE TABLE IF NOT EXISTS segment_synthesis (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -783,6 +781,7 @@ def ensure_schema(db: Database) -> None:
             lat             REAL,
             lng             REAL,
             location_name   TEXT,
+            jurisdiction    TEXT,
             synthesis       TEXT NOT NULL,
             data_sources    TEXT,
             computed_at     TEXT DEFAULT (datetime('now')),
@@ -911,7 +910,6 @@ def ensure_schema(db: Database) -> None:
         CREATE INDEX IF NOT EXISTS idx_daily_usage_user_date ON daily_usage(user_id, date)
     """)
 
-
     db.execute("""
         CREATE TABLE IF NOT EXISTS map_segments (
             ogf_id              INTEGER PRIMARY KEY,
@@ -982,7 +980,11 @@ def migrate_angler_context_multi_user(db: Database) -> None:
         db.execute(
             "INSERT INTO angler_context (user_id, content, last_updated, session_count) "
             "VALUES (1, ?, ?, ?)",
-            [existing_content, existing_last_updated or datetime.now().isoformat(), existing_session_count],
+            [
+                existing_content,
+                existing_last_updated or datetime.now().isoformat(),
+                existing_session_count,
+            ],
         )
     db.execute("DROP TABLE IF EXISTS angler_context_old")
     db.conn.commit()
@@ -1042,9 +1044,7 @@ def migrate_stream_segments_multi_jurisdiction(db: Database) -> None:
             pass
     if "segment_source" not in cols:
         try:
-            db.execute(
-                "ALTER TABLE stream_segments ADD COLUMN segment_source TEXT DEFAULT 'OHN'"
-            )
+            db.execute("ALTER TABLE stream_segments ADD COLUMN segment_source TEXT DEFAULT 'OHN'")
             db.execute(
                 "UPDATE stream_segments SET segment_source = 'OHN' WHERE segment_source IS NULL"
             )
@@ -1063,12 +1063,8 @@ def migrate_observations_source(db: Database) -> None:
     cols = {c.name for c in db["observations"].columns}
     if "source" not in cols:
         try:
-            db.execute(
-                "ALTER TABLE observations ADD COLUMN source TEXT DEFAULT 'iNaturalist'"
-            )
-            db.execute(
-                "UPDATE observations SET source = 'iNaturalist' WHERE source IS NULL"
-            )
+            db.execute("ALTER TABLE observations ADD COLUMN source TEXT DEFAULT 'iNaturalist'")
+            db.execute("UPDATE observations SET source = 'iNaturalist' WHERE source IS NULL")
             db.conn.commit()
         except Exception:
             pass
@@ -1086,6 +1082,21 @@ def migrate_regulation_chunks_zone_name(db: Database) -> None:
     if "zone_name" not in cols:
         try:
             db.execute("ALTER TABLE regulation_chunks ADD COLUMN zone_name TEXT")
+            db.conn.commit()
+        except Exception:
+            pass
+
+
+def migrate_segment_synthesis_jurisdiction(db: Database) -> None:
+    """Add jurisdiction column to segment_synthesis for cross-jurisdiction cache
+    collision safety — see src/services/synthesis_cache.py. Idempotent.
+    """
+    if "segment_synthesis" not in db.table_names():
+        return
+    cols = {c.name for c in db["segment_synthesis"].columns}
+    if "jurisdiction" not in cols:
+        try:
+            db.execute("ALTER TABLE segment_synthesis ADD COLUMN jurisdiction TEXT")
             db.conn.commit()
         except Exception:
             pass
