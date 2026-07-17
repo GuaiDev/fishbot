@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import Message from '../components/Message';
 import { sendMessage } from '../api';
+import GrainOverlay from '../components/GrainOverlay';
+import '../fishdex-tokens.css';
 
 export default function Chat({ onNavigate, user, onLogout }) {
   const [messages, setMessages] = useState([
@@ -61,16 +63,19 @@ export default function Chat({ onNavigate, user, onLogout }) {
 
   return (
     <div style={{
+      position: 'relative',
       display: 'flex',
       flexDirection: 'column',
       height: '100dvh',
-      background: '#0F1117',
+      background: 'radial-gradient(circle at 50% 0%, var(--fx-bg-grad-1), var(--fx-bg-grad-2) 45%, var(--fx-bg-grad-3) 100%)',
     }}>
+      <GrainOverlay />
+
       {/* Header */}
       <div style={{
         padding: '16px 16px 12px',
-        borderBottom: '1px solid #2A2D3A',
-        background: '#0F1117',
+        borderBottom: '1px solid var(--fx-hairline)',
+        background: 'var(--fx-canvas)',
         position: 'sticky',
         top: 0,
         zIndex: 10,
@@ -78,15 +83,15 @@ export default function Chat({ onNavigate, user, onLogout }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 36, height: 36, borderRadius: '50%',
-            background: '#1D9E75',
+            background: 'var(--fx-moss-light)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 16, fontWeight: 600, color: 'white',
+            fontFamily: 'var(--fx-font-serif)', fontSize: 16, fontWeight: 600, color: 'var(--fx-on-accent)',
           }}>F</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#E8EAF0' }}>
+            <h1 style={{ fontFamily: 'var(--fx-font-serif)', fontSize: 17, fontWeight: 600, color: 'var(--fx-text-primary-2)', margin: 0 }}>
               FishBot
-            </div>
-            <div style={{ fontSize: 11, color: '#6B7280' }}>
+            </h1>
+            <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 11, color: 'var(--fx-text-muted)' }}>
               Ontario freshwater intelligence
             </div>
           </div>
@@ -96,10 +101,11 @@ export default function Chat({ onNavigate, user, onLogout }) {
               title={`Logged in as ${displayName}`}
               style={{
                 background: 'none',
-                border: '1px solid #2A2D3A',
+                border: '1px solid var(--fx-hairline)',
                 borderRadius: '20px',
                 padding: '4px 10px',
-                color: '#6B7280',
+                color: 'var(--fx-text-muted)',
+                fontFamily: 'var(--fx-font-ui)',
                 fontSize: '11px',
                 cursor: 'pointer',
               }}
@@ -111,11 +117,16 @@ export default function Chat({ onNavigate, user, onLogout }) {
       </div>
 
       {/* Messages */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '16px 16px 80px',
-      }}>
+      <div
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '16px 16px 80px',
+        }}
+      >
         {messages.map((msg, i) => (
           <Message key={i} role={msg.role} content={msg.content} />
         ))}
@@ -123,12 +134,13 @@ export default function Chat({ onNavigate, user, onLogout }) {
           <div style={{
             display: 'flex', justifyContent: 'flex-start', marginBottom: 8,
           }}>
-            <div style={{
+            <div role="status" style={{
               padding: '10px 14px',
               borderRadius: '4px 14px 14px 14px',
-              background: '#1A1D27',
-              borderLeft: '2px solid #1D9E75',
-              color: '#6B7280',
+              background: 'var(--fx-card-fill)',
+              borderLeft: '2px solid var(--fx-moss)',
+              color: 'var(--fx-text-muted)',
+              fontFamily: 'var(--fx-font-ui)',
               fontSize: 14,
             }}>
               thinking...
@@ -146,8 +158,8 @@ export default function Chat({ onNavigate, user, onLogout }) {
         maxWidth: 480,
         margin: '0 auto',
         padding: '10px 12px',
-        background: '#0F1117',
-        borderTop: '1px solid #2A2D3A',
+        background: 'var(--fx-canvas)',
+        borderTop: '1px solid var(--fx-hairline)',
         display: 'flex',
         alignItems: 'flex-end',
         gap: 8,
@@ -156,21 +168,22 @@ export default function Chat({ onNavigate, user, onLogout }) {
         {/* Log button */}
         <button
           onClick={() => onNavigate('log')}
+          aria-label="Log a catch"
+          title="Log a catch"
           style={{
-            width: 40, height: 40,
+            width: 44, height: 44,
             borderRadius: '50%',
-            background: '#1D9E75',
+            background: 'var(--fx-moss-light)',
             border: 'none',
             cursor: 'pointer',
             fontSize: 22,
-            color: 'white',
+            color: 'var(--fx-on-accent)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
           }}
-          title="Log a catch"
-        >＋</button>
+        ><span aria-hidden="true">＋</span></button>
 
         {/* Text input */}
         <textarea
@@ -182,13 +195,13 @@ export default function Chat({ onNavigate, user, onLogout }) {
           rows={1}
           style={{
             flex: 1,
-            background: '#1A1D27',
-            border: '1px solid #2A2D3A',
+            background: 'var(--fx-card-fill)',
+            border: '1px solid var(--fx-hairline)',
             borderRadius: 20,
             padding: '10px 14px',
-            color: '#E8EAF0',
+            color: 'var(--fx-text-primary)',
+            fontFamily: 'var(--fx-font-ui)',
             fontSize: 14,
-            fontFamily: 'inherit',
             resize: 'none',
             outline: 'none',
             maxHeight: 120,
@@ -204,21 +217,22 @@ export default function Chat({ onNavigate, user, onLogout }) {
         <button
           onClick={handleSend}
           disabled={!input.trim() || loading}
+          aria-label="Send message"
           style={{
-            width: 40, height: 40,
+            width: 44, height: 44,
             borderRadius: '50%',
-            background: input.trim() && !loading ? '#1D9E75' : '#2A2D3A',
+            background: input.trim() && !loading ? 'var(--fx-moss-light)' : 'var(--fx-hairline)',
             border: 'none',
             cursor: input.trim() && !loading ? 'pointer' : 'default',
             fontSize: 18,
-            color: 'white',
+            color: input.trim() && !loading ? 'var(--fx-on-accent)' : 'var(--fx-text-muted)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
             transition: 'background 0.15s',
           }}
-        >↑</button>
+        ><span aria-hidden="true">↑</span></button>
       </div>
     </div>
   );

@@ -124,9 +124,8 @@ def ingest_fiss_stocking(
     logger.info("FISS stocking: extracting stocking records — lat=%.4f lng=%.4f", lat, lng)
     rows = _fiss.fetch_stocking_from_fiss(lat, lng, radius_km)
     if rows:
-        now = datetime.utcnow().isoformat()
-        for r in rows:
-            r.setdefault("ingested_at", now)
+        # stocking_records has no ingested_at column (unlike regulation_chunks) —
+        # upsert_all would raise sqlite3.OperationalError if we set one.
         db["stocking_records"].upsert_all(rows, pk="record_id")
     logger.info("FISS stocking: %d stocking records stored", len(rows))
     return len(rows)

@@ -1153,7 +1153,7 @@ _COMMON_NAMES = {
     "Culaea inconstans": "Brook Stickleback",
     "Etheostoma caeruleum": "Rainbow Darter",
     "Ambloplites rupestris": "Rock Bass",
-    "Micropterus nigricans": "Smallmouth / Largemouth Bass (pooled)",
+    "Micropterus nigricans": "Largemouth Bass",
 }
 _COMMON_TO_SCI = {v.lower(): k for k, v in _COMMON_NAMES.items()}
 for _k in list(_COMMON_NAMES.keys()):

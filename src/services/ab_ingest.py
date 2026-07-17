@@ -26,9 +26,8 @@ def ingest_ab_stocking() -> int:
     logger.info("AB stocking: fetching records …")
     rows = _mod.fetch_stocking_records()
     if rows:
-        now = datetime.utcnow().isoformat()
-        for r in rows:
-            r["ingested_at"] = now
+        # stocking_records has no ingested_at column (unlike regulation_chunks) —
+        # upsert_all would raise sqlite3.OperationalError if we set one.
         db["stocking_records"].upsert_all(rows, pk="record_id")
     logger.info("AB stocking: %d records stored", len(rows))
     return len(rows)

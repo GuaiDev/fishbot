@@ -82,7 +82,7 @@ COMMON_NAMES = {
     "Culaea inconstans": "Brook Stickleback",
     "Etheostoma caeruleum": "Rainbow Darter",
     "Ambloplites rupestris": "Rock Bass",
-    "Micropterus nigricans": "Smallmouth Bass",
+    "Micropterus nigricans": "Largemouth Bass",
     "Lepomis macrochirus": "Bluegill",
 }
 

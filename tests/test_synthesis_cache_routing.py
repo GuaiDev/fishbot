@@ -1,32 +1,19 @@
 """Tests for synthesis cache routing — location extraction and cache store/retrieve."""
 
-import json
 import pytest
-import sqlite_utils
 
 from src.services.synthesis_cache import get_cached_synthesis, store_synthesis
-
+from src.storage.database import get_db
 
 # ── db fixture ────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture()
 def db_conn(tmp_path):
-    db = sqlite_utils.Database(tmp_path / "test.db")
-    db.execute("""
-        CREATE TABLE IF NOT EXISTS segment_synthesis (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cache_key TEXT UNIQUE NOT NULL,
-            lat REAL,
-            lng REAL,
-            location_name TEXT,
-            synthesis TEXT NOT NULL,
-            data_sources TEXT,
-            computed_at TEXT,
-            hit_count INTEGER DEFAULT 0
-        )
-    """)
-    return db
+    # Real schema (via ensure_schema/migrations), not a hand-rolled CREATE TABLE —
+    # a hand-rolled copy previously drifted from the real schema and would have
+    # silently failed to catch the jurisdiction column being added.
+    return get_db(tmp_path / "test.db")
 
 
 # ── location extraction tests (live Haiku calls) ──────────────────────────────
@@ -51,9 +38,7 @@ def test_location_extraction_with_name():
 def test_location_extraction_with_coords():
     from src.agent.router import extract_location_from_message
 
-    result = extract_location_from_message(
-        "What's the habitat like at 42.917, -79.774?"
-    )
+    result = extract_location_from_message("What's the habitat like at 42.917, -79.774?")
     assert isinstance(result, dict)
     assert "lat" in result
 
@@ -85,8 +70,7 @@ def test_store_and_retrieve_synthesis(db_conn):
 
 
 def test_cache_miss_returns_none(db_conn):
-    result = get_cached_synthesis(db_conn, lat=43.5, lng=-80.5,
-                                  location_name="Nowhere Creek")
+    result = get_cached_synthesis(db_conn, lat=43.5, lng=-80.5, location_name="Nowhere Creek")
     assert result is None
 
 
@@ -125,3 +109,104 @@ def test_nearby_coord_hits_cache(db_conn):
     result = get_cached_synthesis(db_conn, lat=43.001, lng=-80.001)
     assert result is not None
     assert result["cache_hit"] is True
+
+
+# ── cross-jurisdiction collision safety ────────────────────────────────────────
+# Canadian hydronyms repeat constantly across provinces (Mill Creek, Beaver
+# Creek, Trout Lake, ...). extract_location_from_message returns a bare name
+# with no coordinates when the user doesn't give any — these tests guard
+# against an Ontario synthesis being served back for a same-named BC query.
+
+
+def test_name_only_entries_auto_tagged_with_jurisdiction_from_coords(db_conn):
+    """Even a name-only lookup carries a derivable jurisdiction once the
+    caller also has coordinates for the same query."""
+    store_synthesis(
+        db_conn,
+        synthesis="Ontario Mill Creek: warm, silty, chub and creek chub water.",
+        lat=43.20,
+        lng=-79.90,  # CA-ON
+        location_name="Mill Creek",
+    )
+    row = db_conn.execute(
+        "SELECT jurisdiction FROM segment_synthesis WHERE location_name = ?",
+        ["Mill Creek"],
+    ).fetchone()
+    assert row[0] == "CA-ON"
+
+
+def test_exact_name_key_does_not_cross_jurisdictions_when_both_known(db_conn):
+    """Same cache_key ('name:mill creek') could theoretically arise for two
+    different real creeks — if we know both jurisdictions and they differ,
+    the cached entry must not be served."""
+    store_synthesis(
+        db_conn,
+        synthesis="Ontario Mill Creek synthesis.",
+        location_name="Mill Creek",
+        jurisdiction="CA-ON",
+    )
+    result = get_cached_synthesis(db_conn, location_name="Mill Creek", jurisdiction="CA-BC")
+    assert result is None
+
+
+def test_exact_name_key_still_hits_when_jurisdiction_matches(db_conn):
+    store_synthesis(
+        db_conn,
+        synthesis="BC Mill Creek synthesis.",
+        location_name="Mill Creek",
+        jurisdiction="CA-BC",
+    )
+    result = get_cached_synthesis(db_conn, location_name="Mill Creek", jurisdiction="CA-BC")
+    assert result is not None
+    assert "BC Mill Creek" in result["synthesis"]
+
+
+def test_exact_name_key_still_hits_when_neither_side_has_jurisdiction(db_conn):
+    """Preserves existing behaviour for the fully-unknown case (the one
+    residual limitation documented in synthesis_cache.py's module docstring)."""
+    store_synthesis(
+        db_conn,
+        synthesis="Some creek synthesis, no coordinates ever resolved.",
+        location_name="Beaver Creek",
+    )
+    result = get_cached_synthesis(db_conn, location_name="Beaver Creek")
+    assert result is not None
+
+
+def test_fuzzy_name_match_blocked_across_known_jurisdictions(db_conn):
+    """Fuzzy word-subset matching is the riskiest path — a BC query for
+    'Bow River' must not match a cached Alberta 'Bow River Calgary' entry."""
+    store_synthesis(
+        db_conn,
+        synthesis="Alberta Bow River Calgary: trout, catch and release.",
+        lat=51.05,
+        lng=-114.07,  # CA-AB
+        location_name="Bow River Calgary",
+    )
+    result = get_cached_synthesis(db_conn, location_name="Bow River", jurisdiction="CA-BC")
+    assert result is None
+
+
+def test_fuzzy_name_match_still_works_within_same_jurisdiction(db_conn):
+    store_synthesis(
+        db_conn,
+        synthesis="Alberta Bow River Calgary: trout, catch and release.",
+        lat=51.05,
+        lng=-114.07,  # CA-AB
+        location_name="Bow River Calgary",
+    )
+    result = get_cached_synthesis(db_conn, location_name="Bow River", jurisdiction="CA-AB")
+    assert result is not None
+
+
+def test_coordinate_proximity_match_blocked_across_known_jurisdictions(db_conn):
+    """Defense in depth: even though 150m can't realistically cross a
+    provincial border, an explicit conflicting jurisdiction must still win."""
+    store_synthesis(
+        db_conn,
+        synthesis="Some synthesis.",
+        lat=43.000,
+        lng=-80.000,  # CA-ON
+    )
+    result = get_cached_synthesis(db_conn, lat=43.001, lng=-80.001, jurisdiction="CA-BC")
+    assert result is None

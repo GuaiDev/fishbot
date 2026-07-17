@@ -131,22 +131,28 @@ register(JurisdictionConfig(
             "WHSE_ENVIRONMENTAL_MONITORING.EMS_MONITORING_LOCN_TYPES_SVW/ows"
         ),
         "salmon_escapement": (
-            "https://api-proxy.edh-cde.dfo-mpo.gc.ca/catalogue/records/"
-            "c48669a3-045b-400d-b730-48aafe8c5ee6/attachments/"
-            "All Areas Simplified Version_20251030.xlsx"
+            "https://open.canada.ca/data/en/dataset/"
+            "c48669a3-045b-400d-b730-48aafe8c5ee6"
         ),
         "regulations": (
             "https://www2.gov.bc.ca/assets/gov/sports-recreation-arts-and-culture/"
-            "outdoor-recreation/freshwater-fishing/fishing-regulations/"
-            "freshwater-fishing-regulations-synopsis-2025-2027.pdf"
+            "outdoor-recreation/fishing-and-hunting/freshwater-fishing/fishing_synopsis.pdf"
         ),
     },
     notes=(
         "Global sources (iNat, GBIF, WSC, OSM, eBird) work automatically for any BC lat/lng. "
         "STOCKING: derived from FISS via ACTIVITY_CODE filter — no quantity data available. "
-        "SALMON_ESCAPEMENT: NuSEDS XLSX, annual DFO release; requires openpyxl. "
-        "WATER QUALITY: EMS results (measurements) require DataBC Distribution API; "
-        "see water_quality.py TODO for resource IDs and query approach."
+        "SALMON_ESCAPEMENT: NuSEDS 'All Areas NuSEDS' XLSX (421k records verified 2026-06), "
+        "requires openpyxl; URL resolved dynamically via CKAN package_show since the dated "
+        "attachment filename changes every release — see nuseds.py. No stream coordinates "
+        "in the source data as of the 2026-06 release. "
+        "REGULATIONS: 2025-2027 synopsis now has 9 regions (7 split into 7A/Omineca + "
+        "7B/Peace, new 8/Okanagan) — zone stores 71/72 for the split pair; verified all 9 "
+        "extract correctly (39k-58k chars each) despite a PDF text-layer artifact that "
+        "doubles every character in Region 7A's running header — see regulations.py. "
+        "WATER QUALITY: stations WFS works; results still stubbed. Source system "
+        "migrated EMS->EnMoDS 2026-03 (old EMS results resource ID was stale/dead) — "
+        "see water_quality.py TODO for current EnMoDS resource URLs and sizes."
     ),
 ))
 
@@ -163,23 +169,32 @@ register(JurisdictionConfig(
         "fish_observations": False,  # AB FWMIS not publicly accessible
         "water_quality":     False,  # stub — no public API
         "stocking":          True,   # planned stocking XLSX from Open Alberta (openpyxl required)
-        "regulations":       False,  # stub — PDF adapter not yet implemented
+        "regulations":       True,   # Watershed Unit PDF, tested against 2026 edition
         "species_ranges":    False,  # not yet built
         "benthic":           True,   # CABIN (federal; all provinces)
         "geology":           False,  # not yet built
     },
     api_endpoints={
         "stocking": (
-            "https://open.alberta.ca/dataset/ae7521d6-7629-4b69-ac45-857fc798c10c/"
-            "resource/48b6985f-a110-488e-8508-5546dd6e10fd/download/"
-            "fp-fish-stocking-planned-dates-2026.xlsx"
+            "https://open.alberta.ca/dataset/ae7521d6-7629-4b69-ac45-857fc798c10c"
         ),
-        "regulations": "https://mywildalberta.ca/fishing/regulations/",
+        "regulations": (
+            "https://open.alberta.ca/dataset/dbf392f4-266f-4947-adc0-fa4bdf4e2c9c"
+        ),
     },
     notes=(
         "Global sources (iNat, GBIF, WSC, OSM, eBird) work automatically for any AB lat/lng. "
         "HYDRO: NHN GeoPackage tiles are available via FTP but no WFS exists; "
         "OSM covers AB streams adequately at order 3+. "
+        "REGULATIONS: only 3 Fish Management Zones split into 10 Watershed Units "
+        "(ES1-4/PP1-2/NB1-4) — verified all 10 extract correctly against the 2026 edition "
+        "(7.5k-31k chars each); URL resolved dynamically via CKAN package_show (picks the "
+        "highest-year PDF resource) since a new dated file is added every year — see "
+        "regulations.py. "
+        "STOCKING: verified against 2026 edition, 527 records — contrary to an earlier "
+        "assumption the file DOES include lat/lng; species use AB's BKTR/RNTR/BNTR/TGTR/WSCT "
+        "codes (mapped to full names); no clean stocking date, only free-text schedule notes "
+        "(preserved in stocking_purpose) — see stocking.py. "
         "WATER QUALITY: AEMERA portal is map-based with no public API; "
         "DataStream (ca_national/) covers some AB watersheds. "
         "STOCKING: coordinates not included in Alberta data — waterbody name only."
@@ -219,7 +234,13 @@ register(JurisdictionConfig(
         "HYDRO: Réseau hydrographique du Québec (RHN) — no queryable WFS found as of 2026; "
         "OSM covers QC rivers adequately. "
         "WATER QUALITY: MELCCFP RSQER is PDF-only; DataStream covers some QC watersheds. "
-        "SPECIES_RANGES: MELCCFP GeoJSON — 118 freshwater fish species, COSEWIC status included."
+        "SPECIES_RANGES: MELCCFP GeoJSON — verified 118 freshwater fish species extract "
+        "correctly (an earlier version returned 0 records — wrong property names). No "
+        "COSEWIC/SARA status field exists in this file (contrary to an earlier note here); "
+        "coordinates require reprojection from EPSG:32198 (pyproj, added as a dependency) — "
+        "not the fiona/GDAL-requiring .gdb. Ingest uses upsert_species_ranges_merged so QC "
+        "species shared with CA-ON (Largemouth Bass, Walleye, ...) get their "
+        "jurisdictions_present unioned rather than overwritten — see species_ranges.py."
     ),
 ))
 

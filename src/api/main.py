@@ -4,6 +4,7 @@ Exposes the chat agent over HTTP for mobile and web clients.
 Start with: uv run fishbot serve
 """
 
+import json
 import logging
 import os
 import sys
@@ -22,7 +23,7 @@ logging.basicConfig(
 )
 logging.getLogger().setLevel(logging.INFO)
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -154,6 +155,12 @@ _static_dir = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(_static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
+# Catch photos, saved to the Railway persistent volume by src/services/photo_storage.py
+from src.services.photo_storage import PHOTOS_DIR  # noqa: E402
+
+PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/photos", StaticFiles(directory=str(PHOTOS_DIR)), name="photos")
+
 
 def _hour_to_time_of_day(hour: int) -> str:
     if hour < 6: return "night"
@@ -274,6 +281,78 @@ def chat(body: dict, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _log_trip_core(
+    text: str,
+    user: dict,
+    photo_lat: float | None = None,
+    photo_lng: float | None = None,
+    photo_taken_at: str | None = None,
+    photo_url: str | None = None,
+    photo_path: str | None = None,
+) -> dict:
+    """Shared implementation behind /log-trip and /log-trip/photo.
+
+    Photo GPS overrides text-parsed location for the primary stop.
+    photo_path (internal disk path, never returned to clients) flows through
+    to the catches table for photo-serving bookkeeping; photo_url is the
+    public URL clients use to display the image.
+    """
+    from src.services.trip_logger import log_session
+    from src.services.trip_parser import parse_session_from_text
+    from src.storage.database import ensure_schema, get_db
+
+    text = text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="'text' field is required")
+
+    db = get_db()
+    ensure_schema(db)
+    parsed = parse_session_from_text(text, db)
+
+    # Inject photo metadata into the first stop
+    if parsed.get("stops") and (photo_lat is not None or photo_taken_at or photo_url):
+        first_stop = parsed["stops"][0]
+
+        if photo_lat is not None and photo_lng is not None:
+            first_stop["photo_lat"] = photo_lat
+            first_stop["photo_lng"] = photo_lng
+            if not first_stop.get("lat"):
+                first_stop["lat"] = photo_lat
+                first_stop["lng"] = photo_lng
+                first_stop["location_method"] = "photo_exif"
+                first_stop["location_confidence"] = 0.95
+
+        if photo_taken_at:
+            first_stop["photo_taken_at"] = photo_taken_at
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(photo_taken_at.replace("Z", "+00:00"))
+                first_stop["hour_of_day"] = dt.hour
+                first_stop["time_of_day"] = _hour_to_time_of_day(dt.hour)
+                if not parsed.get("date"):
+                    parsed["date"] = dt.date().isoformat()
+            except Exception:
+                pass
+
+        if photo_url:
+            first_stop["photo_url"] = photo_url
+        if photo_path:
+            first_stop["photo_path"] = photo_path
+
+    result = log_session(parsed, db, user_id=user["id"])
+    return {
+        "status": "logged",
+        "session_id": result["session_id"],
+        "stops_logged": result["stops_logged"],
+        "location_method": parsed["stops"][0].get("location_method") if parsed.get("stops") else None,
+        "photo_url": photo_url,
+        # Every logged catch starts unconfirmed — species is a text-parser/
+        # photo-vision suggestion, not committed fact. Client must show these
+        # for the user to confirm/correct via POST /catches/{id}/confirm-species.
+        "pending_catches": result.get("pending_catches", []),
+    }
+
+
 @app.post("/log-trip")
 def log_trip(body: dict, user: dict = Depends(get_current_user_or_apikey)):
     """Log a fishing trip from natural language, with optional photo metadata.
@@ -285,61 +364,54 @@ def log_trip(body: dict, user: dict = Depends(get_current_user_or_apikey)):
         "photo_taken_at": "ISO timestamp" (optional, from EXIF),
         "photo_url": "string" (optional)
     }
-    Photo GPS overrides text-parsed location for the primary stop.
+    JSON-only — does not accept an actual photo file. Kept for backward
+    compatibility with callers (e.g. /log log.html) that only send EXIF-derived
+    metadata. Use POST /log-trip/photo to upload the photo file itself.
     """
     try:
-        from src.services.trip_logger import log_session
-        from src.services.trip_parser import parse_session_from_text
-        from src.storage.database import ensure_schema, get_db
+        return _log_trip_core(
+            text=body.get("text", ""),
+            user=user,
+            photo_lat=body.get("photo_lat"),
+            photo_lng=body.get("photo_lng"),
+            photo_taken_at=body.get("photo_taken_at"),
+            photo_url=body.get("photo_url"),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-        text = body.get("text", "").strip()
-        if not text:
-            raise HTTPException(status_code=400, detail="'text' field is required")
 
-        photo_lat = body.get("photo_lat")
-        photo_lng = body.get("photo_lng")
-        photo_taken_at = body.get("photo_taken_at")
-        photo_url = body.get("photo_url")
+@app.post("/log-trip/photo")
+def log_trip_with_photo(
+    text: str = Form(...),
+    photo: UploadFile = File(...),
+    photo_lat: float | None = Form(None),
+    photo_lng: float | None = Form(None),
+    photo_taken_at: str | None = Form(None),
+    user: dict = Depends(get_current_user_or_apikey),
+):
+    """Log a fishing trip with an actual photo file (multipart/form-data).
 
-        db = get_db()
-        ensure_schema(db)
-        parsed = parse_session_from_text(text, db)
+    Form fields: text (required), photo (required file), photo_lat/photo_lng/
+    photo_taken_at (optional, client-extracted EXIF/device-location fallback —
+    same fields /log-trip already accepted, just carried over multipart).
+    Stores the photo on the server and returns its public URL.
+    """
+    from src.services.photo_storage import save_photo
 
-        # Inject photo metadata into the first stop
-        if parsed.get("stops") and (photo_lat is not None or photo_taken_at):
-            first_stop = parsed["stops"][0]
-
-            if photo_lat is not None and photo_lng is not None:
-                first_stop["photo_lat"] = photo_lat
-                first_stop["photo_lng"] = photo_lng
-                if not first_stop.get("lat"):
-                    first_stop["lat"] = photo_lat
-                    first_stop["lng"] = photo_lng
-                    first_stop["location_method"] = "photo_exif"
-                    first_stop["location_confidence"] = 0.95
-
-            if photo_taken_at:
-                first_stop["photo_taken_at"] = photo_taken_at
-                try:
-                    from datetime import datetime
-                    dt = datetime.fromisoformat(photo_taken_at.replace("Z", "+00:00"))
-                    first_stop["hour_of_day"] = dt.hour
-                    first_stop["time_of_day"] = _hour_to_time_of_day(dt.hour)
-                    if not parsed.get("date"):
-                        parsed["date"] = dt.date().isoformat()
-                except Exception:
-                    pass
-
-            if photo_url:
-                first_stop["photo_url"] = photo_url
-
-        result = log_session(parsed, db, user_id=user["id"])
-        return {
-            "status": "logged",
-            "session_id": result["session_id"],
-            "stops_logged": result["stops_logged"],
-            "location_method": parsed["stops"][0].get("location_method") if parsed.get("stops") else None,
-        }
+    try:
+        saved = save_photo(photo)
+        return _log_trip_core(
+            text=text,
+            user=user,
+            photo_lat=photo_lat,
+            photo_lng=photo_lng,
+            photo_taken_at=photo_taken_at,
+            photo_url=saved["url"],
+            photo_path=saved["path"],
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -349,6 +421,7 @@ def log_trip(body: dict, user: dict = Depends(get_current_user_or_apikey)):
 @app.get("/sessions")
 def get_sessions(user: dict = Depends(get_current_user)):
     """Return logged sessions for the current user."""
+    from src.storage.catches import get_catches_for_sessions
     from src.storage.database import get_db
 
     db = get_db()
@@ -369,8 +442,12 @@ def get_sessions(user: dict = Depends(get_current_user)):
             LIMIT 50
         """, [user["id"]]).fetchall())
 
+        session_ids = [r[0] for r in rows]
+        catches_by_session = get_catches_for_sessions(db, session_ids)
+
         sessions = []
         for r in rows:
+            catches = catches_by_session.get(r[0], [])
             sessions.append({
                 "id": r[0],
                 "date": r[1] or r[2],
@@ -382,10 +459,87 @@ def get_sessions(user: dict = Depends(get_current_user)):
                     "pressure_hpa": r[8],
                     "anomaly_flag": r[9],
                 } if r[7] else None,
+                # Catches predating this feature have no photo — photo_url is
+                # simply None, callers must handle the no-photo case.
+                "catches": [
+                    {
+                        "species": c["species"],
+                        "count": c["count"],
+                        "biggest_size": c["biggest_size"],
+                        "bait": c["bait"],
+                        "photo_url": c["photo_url"],
+                    }
+                    for c in catches
+                ],
             })
         return {"sessions": sessions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/fishdex")
+def get_fishdex(user: dict = Depends(get_current_user)):
+    """Return real caught-species + regional pool data for the My FishDex screen.
+
+    Jurisdiction is hardcoded to CA-ON for now (this app is Ontario-first per
+    CLAUDE.md and there's no per-user jurisdiction field on the profile yet) —
+    a real multi-jurisdiction pool would key this off the user's home
+    jurisdiction instead.
+    """
+    from src.services.fishdex import get_fishdex_data
+    from src.storage.database import get_db
+
+    db = get_db()
+    try:
+        return get_fishdex_data(db, user["id"], jurisdiction="CA-ON")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/catches/pending")
+def get_pending_catches_endpoint(user: dict = Depends(get_current_user)):
+    """Catches awaiting species confirmation — text-parsed and/or photo-vision
+    suggested, not yet reviewed by the user. Drives the confirm/correct UI."""
+    from src.storage.catches import get_pending_catches_for_user
+    from src.storage.database import get_db
+
+    db = get_db()
+    rows = get_pending_catches_for_user(db, user["id"])
+    pending = []
+    for r in rows:
+        suggested = json.loads(r["suggested_species"]) if r.get("suggested_species") else []
+        pending.append({
+            "catch_id": r["id"],
+            "species": r["species"],
+            "suggested_species": suggested,
+            "photo_url": r.get("photo_url"),
+            "created_at": r.get("created_at"),
+        })
+    return {"pending": pending}
+
+
+@app.post("/catches/{catch_id}/confirm-species")
+def confirm_catch_species_endpoint(
+    catch_id: int, body: dict, user: dict = Depends(get_current_user)
+):
+    """Commit the user's confirmed/corrected species for a catch.
+
+    This is the only way a catch's species_confirmed flag becomes true — see
+    the FishDex hallucination fix: nothing from the NL parser or photo vision
+    is ever treated as fact without this step.
+    """
+    from src.storage.catches import confirm_catch_species
+    from src.storage.database import get_db
+
+    species = (body.get("species") or "").strip()
+    if not species:
+        raise HTTPException(status_code=400, detail="'species' field is required")
+
+    db = get_db()
+    ok = confirm_catch_species(db, catch_id, user["id"], species)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Catch not found")
+    return {"status": "confirmed", "catch_id": catch_id, "species": species}
 
 
 @app.get("/log")
@@ -494,6 +648,19 @@ def get_db_stats(_: None = Depends(verify_api_key)):
         "observations_by_source": [dict(zip(obs_cols, r)) for r in rows],
         "gbif_by_source": [dict(zip(gbif_cols, r)) for r in gbif_rows],
     }
+
+
+@app.get("/admin/dashboard")
+def admin_dashboard(_: None = Depends(verify_api_key)):
+    """Admin usage dashboard: users, message volume, top queried locations,
+    tool call frequency, ingest coverage, and an approximate Sonnet-vs-Haiku
+    API cost estimate. Protected by X-Api-Key.
+    """
+    from src.services.admin_dashboard import build_dashboard
+    from src.storage.database import get_db
+
+    db = get_db()
+    return build_dashboard(db)
 
 
 @app.post("/admin/invite")

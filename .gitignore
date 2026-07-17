@@ -12,6 +12,7 @@ data/cache/
 data/raw/
 data/models/
 data/processed/map_index.html
+data/photos/
 
 # Node
 web/node_modules/
@@ -28,3 +29,9 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Local tooling/settings (impeccable design skill installation, personal
+# tool-permission allowlist) — not project code
+.claude/
+.github/hooks/
+.github/skills/

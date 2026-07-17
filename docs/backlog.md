@@ -1,6 +1,6 @@
 # FishDex Backlog
 
-Last updated: June 29 2026 (session 5)
+Last updated: July 17 2026 (session 6 — autonomous Claude Code session)
 Previously: FishBot
 
 ## Project rename
@@ -95,6 +95,15 @@ Respects fishing gatekeep culture.
 
 # BACKEND TRACK
 
+## Pending (session 6 handoff) 📋
+- **DataStream API key** — requested (free registration at datastream.org/en/api),
+  waiting for approval. `datastream_water_quality.py`'s query construction was fixed
+  this session (see Bug fixes — session 6 below) but the live end-to-end path is
+  still unverified without a real key.
+- **Merge `design/naturalist-photography-led` → `master`** — this session's 12 commits
+  are local-only; this sandbox has no git push credentials configured. Needs a manual
+  push + PR/merge.
+
 ## Core Intelligence (completed) ✅
 
 ### Trip logging ✅
@@ -116,6 +125,14 @@ Location-based cache, invalidates on insight update.
 5 spots pre-warmed.
 Time-forward and live-conditions queries bypass cache entirely (June 27 2026).
 Forecast responses not written to cache.
+Jurisdiction isolation fixed (July 17 2026): the coordinate-based cache path was
+already safe (rounds to a ~100m grid, plus a haversine proximity fallback — neither
+can cross a provincial border). The name-only fallback path — used whenever a
+message gives no coordinates — had zero jurisdiction awareness. Canadian hydronyms
+repeat constantly across provinces (Mill Creek, Beaver Creek, Bow River, Trout
+Lake...); a synthesis computed for an Ontario "Mill Creek" could have been served
+back for a BC "Mill Creek" query. Added a jurisdiction column (derived from
+coordinates when known) and a compatibility check before trusting a cache hit.
 
 ### Message router ✅
 Reflex/synthesis/memory routing. ~95% cost reduction.
@@ -162,11 +179,19 @@ segments (both ON and BC) on every Ontario ingest. Fixed to scope by jurisdictio
   (GeoServer: "Cannot do natural order without a primary key").
 - `propertyName` with a non-existent field name returns HTTP 400, not 404.
 
-### BC EMS water quality results — stubbed 📋
-Layer `EMS_MONITORING_LOCN_TYPES_SVW` is correct (456 stations near Fraser River).
-Results live in a separate multi-GB CSV at data.gov.bc.ca, resource ID
-`76be8cdb-95b7-4a96-aae4-f3f59455fbcb`. Not queryable by bbox.
-Plan: download full CSV annually, filter to nearby MONITORING_LOCATION_IDs, index locally.
+### BC EMS water quality results — stubbed 📋 (TODO corrected ✅ July 17 2026)
+Layer `EMS_MONITORING_LOCN_TYPES_SVW` is correct and still live (verified — a HEAD
+request 404s but GET works, same WFS quirk seen elsewhere in this repo).
+The old resource ID here (`76be8cdb-95b7-4a96-aae4-f3f59455fbcb`) had gone stale —
+investigated why: BC retired EMS in favour of EnMoDS (Environmental Monitoring Data
+System) on 2026-03-05; EMS stopped receiving new data on 2026-02-26. Current EnMoDS
+results are 4 time-tier CSVs served via the COMS object API (no auth needed for GET,
+HTTP Range supported), dataset slug "bc-environmental-monitoring-data-system-results".
+The "last 2 years" tier alone is confirmed 336,131,287 bytes (~320MB) via
+Content-Range. Plan unchanged in spirit: download the current-tier file (now monthly,
+not annually — EnMoDS updates more often than EMS did), filter to nearby
+MONITORING_LOCATION_IDs, index locally. Still not implemented — TODO only, per
+instruction not to build it out yet.
 
 ### Phase 2 — national + AB + QC + Maritimes expansion (June 28 2026)
 
@@ -175,23 +200,31 @@ Plan: download full CSV annually, filter to nearby MONITORING_LOCATION_IDs, inde
 - `dfo_sar_range.py` — DFO SAR critical habitat via ESRI REST (`dfo_sara_critical_habitat/MapServer/0`) → `species_ranges` table; no fiona required
 - `tidal.py` — CHS IWLS API (no auth required); `wlp-hilo` series; requires `from`/`to` date params → `tidal_readings` table
 - `datastream_water_quality.py` — DataStream OData API → `water_quality_readings` table;
-  requires `DATASTREAM_API_KEY` env var (free registration at datastream.org); returns 0 with warning if absent
+  requires `DATASTREAM_API_KEY` env var (free registration at datastream.org/en/api);
+  returns 0 with warning if absent. Query construction fixed July 17 2026 — the join
+  field, the coordinate field name, and the spatial filter syntax were all wrong and
+  would have returned 0 results even with a valid key (see Bug fixes — session 6).
+  Verified against DataStream's public API docs and unit-tested against mocked
+  responses; live end-to-end run still blocked on the pending API key (see Pending above).
 
 **BC additions** (`src/ingest/jurisdictions/ca_bc/`):
-- `nuseds.py` — NuSEDS salmon escapement XLSX from DFO EDH → `salmon_escapement` table; requires openpyxl
-- `regulations.py` — BC 2025-2027 fishing regulations PDF; split by Region 1-8 → `regulation_chunks` table
+- `nuseds.py` ✅ tested live July 17 2026, 421,001 records — see Bug fixes — session 6
+- `regulations.py` ✅ tested live July 17 2026, all 9 regions — see Bug fixes — session 6
 - `fish_observations.py` — stocking extraction added: same WFS call, filters by ACTIVITY_CODE → `stocking_records` table;
   NOTE: FISS stocking records have no quantity field
 
 **Alberta** (`src/ingest/jurisdictions/ca_ab/`):
-- `stocking.py` — planned stocking XLSX from Open Alberta → `stocking_records` table; requires openpyxl;
-  NOTE: AB stocking data has no coordinates — waterbody name only, lat/lng are null
+- `stocking.py` ✅ tested live July 17 2026, 527 records — see Bug fixes — session 6.
+  NOTE: an earlier version of this note said AB stocking has no coordinates — that
+  was wrong; the real file does have lat/lng.
 - `hydro_network.py` — stub; NHN has no queryable WFS (FTP tiles only); OSM covers AB adequately
-- `regulations.py` — stub (mywildalberta.ca PDF adapter not yet built)
+- `regulations.py` ✅ implemented July 17 2026, 10 chunks — see Bug fixes — session 6
 - `water_quality.py` — stub (AEMERA portal is map-only; DataStream covers some AB watersheds)
 
 **Quebec** (`src/ingest/jurisdictions/ca_qc/`):
-- `species_ranges.py` — MELCCFP GeoJSON via données.gouv.qc.ca (118 freshwater fish spp, COSEWIC status) → `species_ranges`
+- `species_ranges.py` ✅ tested live July 17 2026, 118 species — see Bug fixes —
+  session 6. NOTE: an earlier version of this note claimed COSEWIC status was
+  included — it isn't; no conservation-status field exists in the real file.
 - `regulations.py` — stub
 - `water_quality.py` — stub (MELCCFP RSQER is PDF-only; DataStream covers some QC watersheds)
 
@@ -241,6 +274,74 @@ Bugs found and fixed during first Railway test run of multi-province adapters:
   fish keyword — resolves to `Aires_repartition_poisson_eau_douce.geojson`
 - **CABIN benthic**: `AttributeError` on `v.strip()` when a CSV field value is `None`
   (csv.DictReader returns None for missing trailing columns); fixed with `v is not None` guard
+
+### Bug fixes — session 6 (July 17 2026, autonomous Claude Code session)
+Adapters marked ✅ above were tested live for the first time this session — none of
+them had ever actually run against real data before.
+
+- **NuSEDS (BC salmon escapement)**: download URL had gone stale (dated filename
+  changes every DFO release) — now resolves dynamically via CKAN. Region-filter logic
+  matched free-text keywords against what's now a numeric PFMA area code and matched
+  nothing; dropped entirely (the file is BC-only, verified). Lat/lng columns no longer
+  exist in the source; record key switched to NuSEDS's own ACT_ID (518 population/year/
+  species composite collisions found — ACT_ID has none across all 421,001 rows).
+- **BC regulations**: URL had gone stale. BC's region scheme changed (Region 7 split
+  into 7A/7B, new Region 8 added) and the old splitter created one chunk per repeated
+  page-header match instead of merging per region — upsert then kept only the last
+  page, silently discarding most of each region's content. Also found a PDF rendering
+  artifact (every character doubled in Region 7A's running header) and worked around
+  it without needing to touch legitimate double letters elsewhere (Kootenay, Cariboo).
+- **Alberta regulations**: was a stub assuming a ~100-WMU scheme; the real guide has
+  only 3 Fish Management Zones split into 10 Watershed Units (ES1-4, PP1-2, NB1-4).
+  Implemented against the real structure; URL resolved dynamically via CKAN (same
+  pattern as NuSEDS) since a new dated PDF is published every year.
+- **Alberta stocking**: real file has a variable-length title block before the header
+  row and completely different column names than assumed; rebuilt. Also found and
+  fixed a **crash bug**: `ingest_ab_stocking()` (and BC's `ingest_fiss_stocking()`,
+  same bug) set `row["ingested_at"]` before upserting into `stocking_records`, which
+  has no such column — every call would have raised `sqlite3.OperationalError` the
+  moment this path was actually exercised.
+- **Quebec species ranges**: was silently returning 0 records — GeoJSON property names
+  didn't match the real file (`NOM_COMMUN_FR`/`NOM_SCIENTIFIQUE`/`STATUT_COSSEPAC`
+  don't exist; real fields are `NOM_FRANCA`/`NOM_ANGLA`/`NOM_SCIENT`, and there's no
+  conservation-status field in this file at all). Also: the source CRS is EPSG:32198
+  (NAD83 / Quebec Lambert), a projected metre CRS, not WGS84 — centroids need
+  reprojecting (added `pyproj`) or they look like coordinates but are nonsense
+  (390200, -812965). Fixed a MultiPolygon centroid bug too (27 of 118 real features
+  are MultiPolygon; the old code silently corrupted their centroids).
+- **Cross-jurisdiction species collision (bigger than QC alone)**: `species_ranges` is
+  shared across jurisdictions, keyed on common name — QC's `ingest_qc_species_ranges`
+  and the federal `ingest_dfo_sar_range` both did a blind `upsert_all(pk="species")`.
+  Running either for real would have overwritten the existing multi-jurisdiction
+  "Largemouth Bass" row (CA-ON + 6 US states, with status fields set) down to just
+  `["CA-QC"]` with nulled-out status, for every species QC/DFO share with the existing
+  pool. Added `upsert_species_ranges_merged` (unions `jurisdictions_present`, preserves
+  existing status/notes fields, appends rather than replaces `general_range`) and
+  applied it to both ingest paths.
+- **Critical bug — `jurisdiction_for_coords()` had no bounding boxes for CA-BC, CA-AB,
+  CA-SK, CA-MB, CA-NS, CA-NB, or CA-PE.** This function backs jurisdiction tagging for
+  every *global* adapter (iNaturalist, GBIF, OSM, weather, WSC, eBird) — not just the
+  jurisdiction-specific ones. Every global-source observation for those seven
+  provinces was silently tagged `jurisdiction='UNKNOWN'`, breaking jurisdiction-based
+  filtering everywhere it's used, project-wide. Fixed by adding verified bounding
+  boxes for all seven — checked against every `cron_area` in `config.py` plus known
+  cities per province, since a first pass had real bugs (Calgary resolving to CA-BC,
+  Miramichi resolving to CA-NS) caught before landing. File: `src/jurisdictions/geo.py`.
+- **DataStream water quality**: query construction reviewed against DataStream's
+  public OpenAPI schema and README — found it would have failed even with a valid
+  key. The Locations→Records join used the wrong field (`Id`, an internal numeric
+  field) instead of `ID` (the string station code Records.MonitoringLocationID
+  actually matches); coordinates were read from nonexistent `LatitudeE7`/`LongitudeE7`
+  fields (real fields are plain decimal `Latitude`/`Longitude`) — this silently
+  produced lat=lng=0.0 for every station, which then got filtered by the existing
+  "skip 0,0" check, so it would have looked exactly like "no stations found near you"
+  rather than an obvious error; and the bbox filter used an unsupported
+  `geo.intersects`/`geography'POLYGON(...)'` syntax instead of the documented plain
+  numeric range filter. All fixed and unit-tested against mocked responses; live
+  verification is pending the API key (see Pending above).
+- **Admin dashboard**: new `GET /admin/dashboard` — see Admin dashboard section below.
+- **Synthesis cache jurisdiction isolation**: see Synthesis cache section above.
+- **BC EMS TODO**: corrected with real current resource info — see BC EMS section above.
 
 ## Coaching improvements 📋
 Wait for data accumulation (need 10+ stops with time_of_day).
@@ -292,20 +393,28 @@ Status by region:
 Grand River, Credit River, Bronte Creek, Thames (4 cron areas).
 Full adapter coverage: OHN, PWQMN, MNRF stocking, MNRF regs, CABIN, GBIF, iNat, eBird, OSM.
 
-### British Columbia ✅ (June 28 2026)
+### British Columbia ✅ (June 28 2026; tested live July 17 2026)
 4 cron areas (Fraser, Thompson, Okanagan, Skeena).
-FWA hydro + FISS observations + FISS stocking + BC regs PDF + NuSEDS salmon escapement live.
-EMS water quality: stations indexed, results stubbed (multi-GB CSV — see EMS note above).
+FWA hydro + FISS observations + FISS stocking + BC regs PDF + NuSEDS salmon escapement
+live and verified end-to-end (both regs and NuSEDS had gone stale/broken — see Bug
+fixes — session 6).
+EMS water quality: stations indexed, results stubbed (TODO corrected July 17 2026,
+see EMS note above).
 
-### Alberta 🔨 (June 28 2026 — partial)
+### Alberta 🔨 (June 28 2026; regulations completed + stocking fixed July 17 2026)
 3 cron areas (Bow/Calgary, North Saskatchewan/Edmonton, Oldman/Lethbridge).
-Stocking (planned dates XLSX) live — no coordinates in source data.
-Hydro, water quality, regulations: stubbed.
+Stocking (planned dates XLSX) live — real file rebuilt to match actual structure,
+does have coordinates (an earlier version of this note was wrong about that).
+Regulations now implemented (10 watershed-unit chunks, not the ~100-WMU scheme
+originally assumed).
+Hydro, water quality: still stubbed.
 DataStream covers some AB watersheds via /ingest/data-national.
 
-### Quebec 🔨 (June 28 2026 — partial)
+### Quebec 🔨 (June 28 2026; species_ranges fixed July 17 2026)
 4 cron areas (St. Lawrence/Montreal, Saint-Maurice, Saguenay, Gatineau).
-Species ranges (MELCCFP GeoJSON, 118 spp) live.
+Species ranges (MELCCFP GeoJSON, 118 spp) live — was silently returning 0 records
+before July 17 2026 (see Bug fixes — session 6); no COSEWIC status field actually
+exists in the source, contrary to what this note used to say.
 Regulations, water quality: stubbed (DataStream covers some QC watersheds).
 
 ### Manitoba + Saskatchewan 📋
@@ -319,9 +428,12 @@ Global sources + CHS tidal API for coastal/tidal reach fishing.
 DataStream covers Atlantic Canada watersheds.
 No province-specific fish observation APIs found as of 2026.
 
-### Federal sources ✅ (June 28 2026)
-DFO critical habitat, DFO SAR critical habitat (ESRI REST, no fiona), CHS tidal predictions,
-DataStream water quality (requires DATASTREAM_API_KEY) — all adapters built and verified working.
+### Federal sources ✅ (June 28 2026; DataStream query fixed July 17 2026)
+DFO critical habitat, DFO SAR critical habitat (ESRI REST, no fiona), CHS tidal predictions
+— built and verified working. DataStream water quality: query construction fixed
+July 17 2026 (was broken in three ways that would have returned 0 results even with
+a valid key — see Bug fixes — session 6); requires DATASTREAM_API_KEY, requested and
+pending approval (see Pending above) — live path still unverified.
 
 ### US states 📋
 Great Lakes region first: Michigan, Minnesota, Wisconsin.
@@ -340,12 +452,20 @@ Reduces logging friction: speak → transcribe → parse → log.
 Whisper API or similar.
 Build after Lovable UI is stable.
 
-## Admin dashboard 📋
-/admin page showing:
-- Active users and message counts
-- Cost per user per day
-- Popular spots (synthesis cache hits)
-- Tool usage breakdown
+## Admin dashboard ✅ (July 17 2026)
+`GET /admin/dashboard`, X-Api-Key protected (src/services/admin_dashboard.py). Returns:
+- Total users, messages sent (last 7/30 days + all-time)
+- Top 10 queried locations (from segment_synthesis, the synthesis cache — the only
+  table keyed on "what location did the user ask about")
+- Tool call frequency + failure counts (from tool_usage)
+- Ingest record counts by source and jurisdiction (observations, gbif_observations)
+- Approximate Sonnet-vs-Haiku API cost estimate (all-time + last 30 days, from
+  api_usage token counts)
+
+Found during build: 100% of real synthesis-cache entries today are name-only (no
+lat/lng) — a coordinate-only "top locations" query, which is what a first pass
+produced, would always have returned empty. Fixed to also group name-only entries
+by location name.
 
 ## Token management 📋
 /admin/token endpoint added (X-Api-Key only, no Bearer needed).

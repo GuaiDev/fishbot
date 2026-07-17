@@ -20,7 +20,7 @@ _COMMON_NAMES = {
     "Culaea inconstans": "Brook Stickleback",
     "Etheostoma caeruleum": "Rainbow Darter",
     "Ambloplites rupestris": "Rock Bass",
-    "Micropterus nigricans": "Smallmouth / Largemouth Bass (pooled)",
+    "Micropterus nigricans": "Largemouth Bass",
 }
 
 _SUPPORTED_SPECIES = list(_COMMON_NAMES.values())

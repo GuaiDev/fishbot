@@ -11,9 +11,87 @@ from datetime import datetime
 from sqlite_utils.db import Database
 
 from src.services.trip_parser import parse_trip_from_text
+from src.storage.catches import insert_catch
 from src.storage.trips import get_parsed_trips, insert_parsed_trip
 
 logger = logging.getLogger(__name__)
+
+
+def _photo_species_candidates(db_conn: Database, photo_path: str) -> dict | None:
+    """Run photo-based species suggestion for a stop's photo. Never raises —
+    a vision failure just means the catch falls back to text-only suggestion,
+    it never blocks logging."""
+    try:
+        from PIL import Image
+
+        from src.services.species_vision import (
+            get_region_candidate_species,
+            suggest_species_from_photo,
+        )
+
+        candidates = get_region_candidate_species(db_conn)
+        if not candidates:
+            return None
+
+        import io
+        img = Image.open(photo_path).convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+        return suggest_species_from_photo(buf.getvalue(), candidates, media_type="image/jpeg")
+    except Exception as e:
+        logger.warning("Photo species suggestion failed for %s: %s", photo_path, e)
+        return None
+
+
+_CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
+
+
+def _build_suggested_species(text_species: str, vision_result: dict | None) -> list[dict]:
+    """Combine the text-parsed species with any photo-vision candidates into
+    one ranked suggestion list, for the confirm UI.
+
+    A vague "unidentified [group] sp." text entry is not a competing species
+    guess — it's an honest admission the user didn't name anything specific.
+    It's never given a confidence tier and never ranked above a real photo
+    ID; it's appended at the end with a note explaining the gap instead.
+    A specific text-named species (flagged low-confidence if the parser
+    marked it (uncertain)/(unresolved)) IS a real candidate and is ranked by
+    confidence alongside photo candidates, deduped against a matching photo
+    candidate rather than listed twice.
+    """
+    text_clean = text_species
+    is_unspecified = text_clean.lower().startswith("unidentified")
+    text_confidence = "high"
+    for tag in ("(unresolved)", "(uncertain)"):
+        if tag in text_clean.lower():
+            text_confidence = "low"
+            text_clean = text_clean.lower().replace(tag, "").strip()
+
+    ranked: list[dict] = []
+    if vision_result and vision_result.get("candidates"):
+        for c in vision_result["candidates"]:
+            name = (c.get("species") or "").strip()
+            if name:
+                ranked.append(
+                    {"species": name, "source": "photo", "confidence": c.get("confidence", "low")}
+                )
+
+    if not is_unspecified:
+        already_covered = any(r["species"].lower() == text_clean.lower() for r in ranked)
+        if not already_covered:
+            ranked.append({"species": text_clean, "source": "text", "confidence": text_confidence})
+
+    ranked.sort(key=lambda r: _CONFIDENCE_RANK.get(r["confidence"], 0), reverse=True)
+
+    if is_unspecified:
+        ranked.append({
+            "species": text_clean,
+            "source": "text",
+            "confidence": None,
+            "note": "not specified in your notes",
+        })
+
+    return ranked
 
 
 def log_session(parsed_session: dict, db_conn: Database, user_id: int = 1) -> dict:
@@ -31,8 +109,9 @@ def log_session(parsed_session: dict, db_conn: Database, user_id: int = 1) -> di
     ).last_pk
 
     stops_logged = 0
+    pending_catches: list[dict] = []
     for stop in parsed_session.get("stops", []):
-        db_conn["stops"].insert(
+        stop_id = db_conn["stops"].insert(
             {
                 "session_id": session_id,
                 "user_id": user_id,
@@ -60,8 +139,42 @@ def log_session(parsed_session: dict, db_conn: Database, user_id: int = 1) -> di
                 "photo_taken_at": stop.get("photo_taken_at"),
                 "photo_url": stop.get("photo_url"),
             }
-        )
+        ).last_pk
         stops_logged += 1
+
+        # One catches row per species caught at this stop — gives each species its
+        # own record to eventually carry its own count/size/bait/photo, while
+        # stops.species_caught above stays intact for existing readers.
+        #
+        # species_confirmed=False on every row here: the species came from the
+        # NL parser (and, if there's a photo, a Claude vision suggestion too) —
+        # both fallible AI suggestions, never committed as fact until the user
+        # confirms via POST /catches/{id}/confirm-species.
+        photo_path = stop.get("photo_path")
+        vision_result = _photo_species_candidates(db_conn, photo_path) if photo_path else None
+        for species in stop.get("species_caught") or []:
+            if not species:
+                continue
+            suggestions = _build_suggested_species(species, vision_result)
+            catch_id = insert_catch(
+                db_conn,
+                stop_id=stop_id,
+                session_id=session_id,
+                user_id=user_id,
+                species=species,
+                photo_path=stop.get("photo_path"),
+                photo_url=stop.get("photo_url"),
+                photo_lat=stop.get("photo_lat"),
+                photo_lng=stop.get("photo_lng"),
+                photo_taken_at=stop.get("photo_taken_at"),
+                species_confirmed=False,
+                suggested_species=suggestions,
+            )
+            pending_catches.append({
+                "catch_id": catch_id,
+                "suggested_species": suggestions,
+                "photo_url": stop.get("photo_url"),
+            })
 
         if not stop.get("was_productive") and stop.get("ohn_segment_id"):
             try:
@@ -132,6 +245,7 @@ def log_session(parsed_session: dict, db_conn: Database, user_id: int = 1) -> di
     return {
         "session_id": session_id,
         "stops_logged": stops_logged,
+        "pending_catches": pending_catches,
         "followup_questions": followup_questions,
         "proactive_coaching": proactive_coaching,
         "conditions_enriched": conditions_result is not None and

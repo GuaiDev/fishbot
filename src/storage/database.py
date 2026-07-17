@@ -15,6 +15,7 @@ def get_db(path: Path | None = None) -> Database:
     p.parent.mkdir(parents=True, exist_ok=True)
     db = Database(p)
     ensure_schema(db)
+    migrate_catches_species_confirmation(db)
     migrate_behavioral_insights(db)
     migrate_stops(db)
     migrate_angler_context_multi_user(db)
@@ -22,6 +23,7 @@ def get_db(path: Path | None = None) -> Database:
     migrate_stream_segments_multi_jurisdiction(db)
     migrate_observations_source(db)
     migrate_regulation_chunks_zone_name(db)
+    migrate_segment_synthesis_jurisdiction(db)
     return db
 
 
@@ -29,18 +31,47 @@ def migrate_stops(db: Database) -> None:
     """Add columns to stops table. Idempotent."""
     new_columns = [
         ("party_species_caught", "TEXT"),
-        ("time_of_day",  "TEXT"),
-        ("hour_of_day",  "INTEGER"),
-        ("photo_lat",    "REAL"),
-        ("photo_lng",    "REAL"),
+        ("time_of_day", "TEXT"),
+        ("hour_of_day", "INTEGER"),
+        ("photo_lat", "REAL"),
+        ("photo_lng", "REAL"),
         ("photo_taken_at", "TEXT"),
-        ("photo_url",    "TEXT"),
+        ("photo_url", "TEXT"),
     ]
     for col_name, col_type in new_columns:
         try:
             db.execute(f"ALTER TABLE stops ADD COLUMN {col_name} {col_type}")
         except Exception:
             pass  # column already exists
+
+
+def migrate_catches_species_confirmation(db: Database) -> None:
+    """Add species-confirmation columns to catches. Idempotent.
+
+    species_confirmed gates whether a catch's species has been reviewed by
+    the user — text-parsed and photo-suggested species are never committed
+    as fact without this going forward. suggested_species preserves what was
+    suggested (source + confidence) alongside what the user actually
+    confirmed, for future model fine-tuning.
+
+    Catches that already existed before this migration ran were logged under
+    the old always-commit behavior and the user already accepted them —
+    they're grandfathered to confirmed=1 once, here, rather than retroactively
+    vanishing from FishDex the moment this migration lands.
+    """
+    if "species_confirmed" in {c.name for c in db["catches"].columns}:
+        return  # already migrated
+    new_columns = [
+        ("species_confirmed", "INTEGER DEFAULT 0"),
+        ("suggested_species", "TEXT"),
+        ("confirmed_at", "TEXT"),
+    ]
+    for col_name, col_type in new_columns:
+        try:
+            db.execute(f"ALTER TABLE catches ADD COLUMN {col_name} {col_type}")
+        except Exception:
+            pass  # column already exists
+    db.execute("UPDATE catches SET species_confirmed = 1 WHERE species_confirmed = 0")
 
 
 def migrate_behavioral_insights(db: Database) -> None:
@@ -543,7 +574,6 @@ def ensure_schema(db: Database) -> None:
         db["salmon_escapement"].create_index(["species"], if_not_exists=True)
         db["salmon_escapement"].create_index(["waterbody_name"], if_not_exists=True)
 
-
     if "sessions" not in db.table_names():
         db.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
@@ -587,6 +617,29 @@ def ensure_schema(db: Database) -> None:
             )
         """)
 
+    if "catches" not in db.table_names():
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS catches (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                stop_id             INTEGER NOT NULL REFERENCES stops(id) ON DELETE CASCADE,
+                session_id          INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                user_id             INTEGER NOT NULL,
+                species             TEXT NOT NULL,
+                count               INTEGER,
+                biggest_size        TEXT,
+                bait                TEXT,
+                photo_path          TEXT,
+                photo_url           TEXT,
+                photo_lat           REAL,
+                photo_lng           REAL,
+                photo_taken_at      TEXT,
+                created_at          TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_catches_stop ON catches(stop_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_catches_session ON catches(session_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_catches_user ON catches(user_id)")
+
     if "parsed_trips" not in db.table_names():
         db["parsed_trips"].create(
             {
@@ -600,7 +653,7 @@ def ensure_schema(db: Database) -> None:
                 "lng": float,
                 "ogf_id": int,
                 "distance_to_segment_m": float,
-                "species_caught": str,    # JSON array
+                "species_caught": str,  # JSON array
                 "species_observed": str,  # JSON array
                 "species_targeted": str,
                 "water_level": str,
@@ -611,7 +664,7 @@ def ensure_schema(db: Database) -> None:
                 "habitat_notes": str,
                 "spot_type": str,
                 "fish_count": int,
-                "was_productive": int,    # 0/1/null
+                "was_productive": int,  # 0/1/null
                 "gear": str,
                 "notes": str,
                 "raw_text": str,
@@ -631,7 +684,6 @@ def ensure_schema(db: Database) -> None:
                     db.execute(f"ALTER TABLE parsed_trips ADD COLUMN {col} {col_type}")
                 except Exception:
                     pass
-
 
     if "knowledge_sources" not in db.table_names():
         db["knowledge_sources"].create(
@@ -722,7 +774,6 @@ def ensure_schema(db: Database) -> None:
             ON angler_context(user_id)
     """)
 
-
     db.execute("""
         CREATE TABLE IF NOT EXISTS segment_synthesis (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -730,6 +781,7 @@ def ensure_schema(db: Database) -> None:
             lat             REAL,
             lng             REAL,
             location_name   TEXT,
+            jurisdiction    TEXT,
             synthesis       TEXT NOT NULL,
             data_sources    TEXT,
             computed_at     TEXT DEFAULT (datetime('now')),
@@ -858,7 +910,6 @@ def ensure_schema(db: Database) -> None:
         CREATE INDEX IF NOT EXISTS idx_daily_usage_user_date ON daily_usage(user_id, date)
     """)
 
-
     db.execute("""
         CREATE TABLE IF NOT EXISTS map_segments (
             ogf_id              INTEGER PRIMARY KEY,
@@ -929,7 +980,11 @@ def migrate_angler_context_multi_user(db: Database) -> None:
         db.execute(
             "INSERT INTO angler_context (user_id, content, last_updated, session_count) "
             "VALUES (1, ?, ?, ?)",
-            [existing_content, existing_last_updated or datetime.now().isoformat(), existing_session_count],
+            [
+                existing_content,
+                existing_last_updated or datetime.now().isoformat(),
+                existing_session_count,
+            ],
         )
     db.execute("DROP TABLE IF EXISTS angler_context_old")
     db.conn.commit()
@@ -989,9 +1044,7 @@ def migrate_stream_segments_multi_jurisdiction(db: Database) -> None:
             pass
     if "segment_source" not in cols:
         try:
-            db.execute(
-                "ALTER TABLE stream_segments ADD COLUMN segment_source TEXT DEFAULT 'OHN'"
-            )
+            db.execute("ALTER TABLE stream_segments ADD COLUMN segment_source TEXT DEFAULT 'OHN'")
             db.execute(
                 "UPDATE stream_segments SET segment_source = 'OHN' WHERE segment_source IS NULL"
             )
@@ -1010,12 +1063,8 @@ def migrate_observations_source(db: Database) -> None:
     cols = {c.name for c in db["observations"].columns}
     if "source" not in cols:
         try:
-            db.execute(
-                "ALTER TABLE observations ADD COLUMN source TEXT DEFAULT 'iNaturalist'"
-            )
-            db.execute(
-                "UPDATE observations SET source = 'iNaturalist' WHERE source IS NULL"
-            )
+            db.execute("ALTER TABLE observations ADD COLUMN source TEXT DEFAULT 'iNaturalist'")
+            db.execute("UPDATE observations SET source = 'iNaturalist' WHERE source IS NULL")
             db.conn.commit()
         except Exception:
             pass
@@ -1033,6 +1082,21 @@ def migrate_regulation_chunks_zone_name(db: Database) -> None:
     if "zone_name" not in cols:
         try:
             db.execute("ALTER TABLE regulation_chunks ADD COLUMN zone_name TEXT")
+            db.conn.commit()
+        except Exception:
+            pass
+
+
+def migrate_segment_synthesis_jurisdiction(db: Database) -> None:
+    """Add jurisdiction column to segment_synthesis for cross-jurisdiction cache
+    collision safety — see src/services/synthesis_cache.py. Idempotent.
+    """
+    if "segment_synthesis" not in db.table_names():
+        return
+    cols = {c.name for c in db["segment_synthesis"].columns}
+    if "jurisdiction" not in cols:
+        try:
+            db.execute("ALTER TABLE segment_synthesis ADD COLUMN jurisdiction TEXT")
             db.conn.commit()
         except Exception:
             pass

@@ -18,13 +18,20 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_qc_species_ranges() -> int:
-    """Download and store QC MELCCFP freshwater fish ranges. Returns count."""
+    """Download and store QC MELCCFP freshwater fish ranges. Returns count.
+
+    Uses the merge-safe upsert (not a blind upsert_all) since species_ranges
+    is shared across jurisdictions and keyed on common name — many QC species
+    (Largemouth Bass, Walleye, ...) already have an existing CA-ON/US row.
+    """
+    from src.storage.species_ranges import upsert_species_ranges_merged
+
     _mod = importlib.import_module("src.ingest.jurisdictions.ca_qc.species_ranges")
     db = get_db()
     logger.info("QC species ranges: fetching …")
     rows = _mod.fetch_species_ranges()
     if rows:
-        db["species_ranges"].upsert_all(rows, pk="species")
+        upsert_species_ranges_merged(db, rows)
     logger.info("QC species ranges: %d records stored", len(rows))
     return len(rows)
 
@@ -50,7 +57,9 @@ def ingest_qc_water_quality(
     _mod = importlib.import_module("src.ingest.jurisdictions.ca_qc.water_quality")
     logger.info(
         "QC water quality: fetching — lat=%.4f lng=%.4f radius=%.0fkm",
-        lat, lng, radius_km,
+        lat,
+        lng,
+        radius_km,
     )
     readings = _mod.fetch_water_quality_readings(lat, lng, radius_km)
     if readings:

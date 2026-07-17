@@ -1,6 +1,7 @@
 """BC Environmental Monitoring System (EMS) water quality ingestion.
 
-Source: DataBC Open Data — WFS 2.0.0 (stations) + DataBC Distribution API (results)
+Source: DataBC Open Data — WFS 2.0.0 (stations) + BC Data Catalogue object
+storage (results)
 
 STATIONS
   Layer: WHSE_ENVIRONMENTAL_MONITORING.EMS_MONITORING_LOCN_TYPES_SVW
@@ -12,21 +13,57 @@ STATIONS
   closest available layer (43,626 stations province-wide, 295 near Fraser River).
   Note: the LONGITUDE property is stored as a positive value in this layer; use
   geometry coordinates instead.
+  Verified still live 2026-07 (a HEAD request 404s — this WFS doesn't support HEAD,
+  same as several other DataBC/gov.bc.ca WFS layers in this codebase; use GET).
 
 RESULTS (water quality measurements)
-  TODO: The EMS monitoring results are published via the BC Data Catalogue at:
-    https://catalogue.data.gov.bc.ca/dataset/bc-env-monitoring-system-ems-monitoring-results
-  The dataset is very large (multi-GB) and is not queryable by bbox via a simple API.
-  Practical options:
-    1. DataBC Distribution Service — download a full station CSV (large), then
-       filter to nearby stations. Resource ID: 76be8cdb-95b7-4a96-aae4-f3f59455fbcb
-    2. DataBC ArcGIS FeatureServer — not available for EMS results as of 2026.
-    3. BC Data Catalogue CKAN datastore_search — only works for datasets registered
-       as datastore resources; EMS results are file-based, not datastore.
-  Recommended approach: download the full EMS results CSV once per year (30-day cache),
-  index by EMS_ID, then join against stations found by this adapter. The CSV for a
-  full province-wide download is ~500 MB. For a targeted ingest, filter the CSV
-  to rows whose EMS_ID matches one of the nearby stations.
+  IMPORTANT — source system migrated since this TODO was first written: EMS is
+  being replaced by EnMoDS (Environmental Monitoring Data System) as of
+  2026-03-05, and EMS results stopped receiving new data on 2026-02-26 (per
+  the dataset's own notice). The old resource ID this TODO used to cite
+  (76be8cdb-95b7-4a96-aae4-f3f59455fbcb, under the dataset slug
+  "bc-env-monitoring-system-ems-monitoring-results") no longer resolves —
+  both the ID and the slug were wrong/stale. Verified 2026-07 via the BC Data
+  Catalogue API (catalogue.data.gov.bc.ca/api/3/action/package_show):
+
+  Current (EnMoDS) results — dataset slug
+  "bc-environmental-monitoring-data-system-results", split into 4 time-tier
+  CSV files served from the COMS object API (no auth needed for GET, HTTP
+  Range supported):
+    - "Current EnMoDS Results" (last 2 years):
+      https://coms.api.gov.bc.ca/api/v1/object/84ed1220-bd51-40a8-9f29-d916144e2dfe
+      — confirmed via Content-Range header: 336,131,287 bytes (~320 MB),
+      appears to be a zip (filename inside the response looks like
+      "20250101_to_20260711.csv" — decompress before parsing as CSV).
+    - "previous 2-5 years": .../object/6edecb56-d06a-4b2e-9ab0-48584eba3df0
+    - "previous 5-10 years": .../object/55e77e5a-ea9d-41e3-ab98-473fafabb0d6
+    - "Historic (older than 10 years)": .../object/d88adc20-297e-4585-8de9-76a6342dd8e7
+  These 4 together are genuinely multi-GB; for a targeted (non-historical)
+  ingest the "last 2 years" file alone is enough for "is this water fishable
+  right now" purposes.
+
+  Old (frozen, historical-only) EMS results — dataset slug
+  "bc-environmental-monitoring-system-results" — 4 similarly-tiered CSVs at
+  pub.data.gov.bc.ca, useful only for pre-2026 history, not current readings.
+
+  EnMoDS also has its own spatial locations dataset (slug
+  "environmental-monitoring-data-system-enmods-spatial-sampling-locations",
+  CSV or GeoPackage via the same COMS object API) — worth checking whether
+  it's a superset of the EMS WFS stations layer above or whether new
+  (post-migration) monitoring only shows up there and not in EMS_MONITORING_
+  LOCN_TYPES_SVW; not verified either way.
+
+  Practical options, in order of preference:
+    1. Download the EnMoDS "last 2 years" zip once per month (results update
+       continuously, unlike EMS's frozen annual-ish cadence), decompress,
+       filter to nearby MONITORING_LOCATION_ID values, index locally.
+    2. DataBC ArcGIS FeatureServer — not available for EnMoDS/EMS results.
+    3. CKAN datastore_search — doesn't apply; these are file resources, not
+       registered datastore tables.
+  Recommended approach unchanged in spirit from the original TODO: download
+  once (now monthly, not annually, given EnMoDS's more frequent updates),
+  index by MONITORING_LOCATION_ID, join against stations found by this
+  adapter, filter to rows near the query point for a targeted ingest.
 
 Current behaviour: fetches stations within bbox (stores EMS_ID + lat/lng to log),
 returns 0 readings with a warning until the results fetch is implemented.
