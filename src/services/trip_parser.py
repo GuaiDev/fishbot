@@ -98,8 +98,46 @@ Return JSON with these fields:
 # ── species validation ────────────────────────────────────────────────────────
 
 
-def _validate_species(species_list: list, original_text: str) -> list:
-    """Remove any species not traceable to words in the user's text."""
+def _build_known_species(db: Any, jurisdiction: str = "CA-ON") -> dict[str, str]:
+    """Map lowercased common name -> canonical scientific name for every
+    species real to the region.
+
+    Unions species_ranges (the authoritative regional pool) with
+    species_mapping.py's broader COMMON_TO_SCIENTIFIC (covers microfishing
+    targets not yet backfilled into species_ranges). Aliased taxa (e.g. the
+    Largemouth Bass Northern/Florida split) collapse to one canonical name —
+    see species_family.py — so this can't be used to validate a species into
+    a confusing duplicate label.
+    """
+    from src.services.species_family import canonical_scientific_name
+    from src.services.species_mapping import COMMON_TO_SCIENTIFIC
+    from src.storage.species_ranges import query_deduped_species_ranges_for_jurisdiction
+
+    known: dict[str, str] = {}
+    try:
+        for sr in query_deduped_species_ranges_for_jurisdiction(db, jurisdiction):
+            if sr.scientific_name:
+                known[sr.species.lower()] = canonical_scientific_name(sr.scientific_name)
+    except Exception as e:
+        logger.warning("Failed to load species_ranges for parser grounding: %s", e)
+    for common, sci in COMMON_TO_SCIENTIFIC.items():
+        known.setdefault(common, canonical_scientific_name(sci))
+    return known
+
+
+def _validate_species(
+    species_list: list, original_text: str, known_species: dict[str, str] | None = None
+) -> list:
+    """Remove any species not traceable to words in the user's text.
+
+    If known_species is given (built by _build_known_species), a species that
+    IS traceable to the user's text but doesn't resolve to any real regional
+    species is not dropped — it's flagged "(unresolved)" so the catch is kept
+    but surfaced for human confirmation rather than committed as an invented
+    species name.
+    """
+    from src.services.species_mapping import common_to_scientific
+
     text_lower = original_text.lower()
     validated = []
     for species in species_list:
@@ -108,10 +146,14 @@ def _validate_species(species_list: list, original_text: str) -> list:
             continue
         clean = species.lower().replace("(uncertain)", "").strip()
         words = [w for w in clean.split() if len(w) > 3]
-        if any(w in text_lower for w in words):
-            validated.append(species)
-        else:
+        if not any(w in text_lower for w in words):
             print(f"[VALIDATION REMOVED] '{species}' not found in user text — skipped")
+            continue
+        if known_species is not None and clean not in known_species and common_to_scientific(clean) is None:
+            print(f"[VALIDATION UNRESOLVED] '{species}' not a recognized regional species — flagged")
+            validated.append(species if "(unresolved)" in species.lower() else f"{species} (unresolved)")
+            continue
+        validated.append(species)
     return validated
 
 
@@ -517,12 +559,13 @@ def parse_session_from_text(text: str, db_conn: Any) -> dict:
 
     parsed: dict = json.loads(raw)
 
+    known_species = _build_known_species(db_conn)
     for stop in parsed.get("stops", []):
         stop["species_caught"] = _validate_species(
-            stop.get("species_caught") or [], text
+            stop.get("species_caught") or [], text, known_species
         )
         stop["party_species_caught"] = _validate_species(
-            stop.get("party_species_caught") or [], text
+            stop.get("party_species_caught") or [], text, known_species
         )
         loc = resolve_location(stop.get("location_text") or text, db_conn)
         stop["lat"] = loc.get("lat")
@@ -560,7 +603,10 @@ def parse_trip_from_text(
         raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
 
     parsed: dict = json.loads(raw)
-    parsed["species_caught"] = _validate_species(parsed.get("species_caught") or [], text)
+    known_species = _build_known_species(db) if db is not None else None
+    parsed["species_caught"] = _validate_species(
+        parsed.get("species_caught") or [], text, known_species
+    )
 
     lat = parsed.get("lat") or user_lat
     lng = parsed.get("lng") or user_lng

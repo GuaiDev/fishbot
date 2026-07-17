@@ -30,6 +30,45 @@ def query_species_range(db: Database, species: str) -> SpeciesRange | None:
     return _row_to_range(rows[0])
 
 
+def query_species_ranges_for_jurisdiction(db: Database, jurisdiction: str) -> list[SpeciesRange]:
+    """Return every species present in the given jurisdiction (e.g. "CA-ON")."""
+    rows = list(
+        db["species_ranges"].rows_where(
+            "jurisdictions_present LIKE ?", [f"%{jurisdiction}%"], order_by="species"
+        )
+    )
+    return [_row_to_range(r) for r in rows]
+
+
+def query_deduped_species_ranges_for_jurisdiction(
+    db: Database, jurisdiction: str
+) -> list[SpeciesRange]:
+    """Same as query_species_ranges_for_jurisdiction, but collapses taxonomic
+    alias rows (e.g. "Northern Largemouth Bass" / M. nigricans alongside
+    "Largemouth Bass" / M. salmoides — see species_family.canonical_scientific_name)
+    to one row each. Ordered by species name, so the non-alias row is kept.
+
+    This is the single source of truth for "the real, non-duplicated list of
+    species in this region" — used by the FishDex collection screen, the NL
+    trip parser's species grounding, and photo-based species suggestion, so
+    none of them can drift into showing a confusing duplicate species.
+    """
+    from src.services.species_family import canonical_scientific_name
+
+    seen: set[str] = set()
+    deduped = []
+    for sr in query_species_ranges_for_jurisdiction(db, jurisdiction):
+        if not sr.scientific_name:
+            deduped.append(sr)
+            continue
+        sci = canonical_scientific_name(sr.scientific_name)
+        if sci in seen:
+            continue
+        seen.add(sci)
+        deduped.append(sr)
+    return deduped
+
+
 def query_sar_species(db: Database, jurisdiction: str | None = None) -> list[SpeciesAtRisk]:
     status_placeholders = ",".join("?" * len(_AT_RISK_STATUSES))
     params: list[Any] = list(_AT_RISK_STATUSES)

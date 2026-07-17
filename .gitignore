@@ -12,6 +12,7 @@ data/cache/
 data/raw/
 data/models/
 data/processed/map_index.html
+data/photos/
 
 # Node
 web/node_modules/

@@ -1,5 +1,14 @@
 const BASE_URL = 'https://web-production-e2094.up.railway.app';
 
+// catches[].photo_url from GET /sessions is a relative path (e.g. /photos/x.jpg).
+// In production that resolves fine since the backend serves the app itself,
+// but resolve it explicitly so it also works wherever frontend and backend
+// are on different origins (e.g. local dev).
+export function resolvePhotoUrl(path) {
+  if (!path) return null;
+  return path.startsWith('http') ? path : `${BASE_URL}${path}`;
+}
+
 function getToken() {
   return localStorage.getItem('fishbot_token');
 }
@@ -20,6 +29,23 @@ export async function signup(code, username, displayName) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || `Signup failed: ${res.status}`);
   return data;
+}
+
+// TEMPORARY DEV-ONLY CONVENIENCE — REMOVE BEFORE MERGING/DEPLOYING.
+// Calls the permissive /admin/bootstrap endpoint (only permissive when
+// FISHBOT_API_KEY is unset on the backend — i.e. local dev, never
+// production) to fetch a token without going through Login's invite-code
+// form. Only ever called from App.jsx behind `import.meta.env.DEV`, which
+// Vite hardcodes to false in production builds, so this cannot run in a
+// deployed build regardless of this function existing in the bundle.
+export async function devBootstrapLogin() {
+  const res = await fetch(`${BASE_URL}/admin/bootstrap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(`Dev bootstrap login failed: ${res.status}`);
+  return res.json();
 }
 
 export async function getMe() {
@@ -44,18 +70,49 @@ export async function sendMessage(messages) {
   return res.json();
 }
 
-export async function logTrip(text, photoLat, photoLng, photoTakenAt) {
-  const body = { text };
-  if (photoLat) { body.photo_lat = photoLat; body.photo_lng = photoLng; }
-  if (photoTakenAt) body.photo_taken_at = photoTakenAt;
+export async function logTrip(text, photoLat, photoLng, photoTakenAt, photoFile) {
+  let res;
+  if (photoFile) {
+    const form = new FormData();
+    form.append('text', text);
+    form.append('photo', photoFile);
+    if (photoLat) { form.append('photo_lat', photoLat); form.append('photo_lng', photoLng); }
+    if (photoTakenAt) form.append('photo_taken_at', photoTakenAt);
 
-  const res = await fetch(`${BASE_URL}/log-trip`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(body),
-  });
+    const token = getToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    res = await fetch(`${BASE_URL}/log-trip/photo`, { method: 'POST', headers, body: form });
+  } else {
+    const body = { text };
+    if (photoLat) { body.photo_lat = photoLat; body.photo_lng = photoLng; }
+    if (photoTakenAt) body.photo_taken_at = photoTakenAt;
+
+    res = await fetch(`${BASE_URL}/log-trip`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(body),
+    });
+  }
   if (res.status === 401) throw Object.assign(new Error('Not authenticated'), { status: 401 });
   if (!res.ok) throw new Error(`Log trip failed: ${res.status}`);
+  return res.json();
+}
+
+export async function confirmCatchSpecies(catchId, species) {
+  const res = await fetch(`${BASE_URL}/catches/${catchId}/confirm-species`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ species }),
+  });
+  if (res.status === 401) throw Object.assign(new Error('Not authenticated'), { status: 401 });
+  if (!res.ok) throw new Error(`Confirm species failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getFishDex() {
+  const res = await fetch(`${BASE_URL}/fishdex`, { headers: authHeaders() });
+  if (res.status === 401) throw Object.assign(new Error('Not authenticated'), { status: 401 });
+  if (!res.ok) throw new Error(`FishDex fetch failed: ${res.status}`);
   return res.json();
 }
 

@@ -102,3 +102,40 @@ def test_get_trips_at_location_blank_stop(db_conn):
     result = get_trips_at_location(db_conn, location_query="Bronte Creek")
     assert "no fish (blank)" in result
     assert "No logged trips" not in result
+
+
+def test_log_session_inserts_one_catch_row_per_species(db_conn):
+    from src.services.trip_logger import log_session
+    from src.storage.catches import get_catches_for_session
+
+    parsed = {
+        "date": "2026-06-01",
+        "stops": [{
+            "location_text": "Bronte Creek",
+            "species_caught": ["creek chub", "rock bass"],
+            "photo_url": "/photos/abc123.jpg",
+            "photo_lat": 43.4,
+            "photo_lng": -79.7,
+            "photo_taken_at": "2026-06-01T14:00:00",
+        }],
+    }
+
+    result = log_session(parsed, db_conn, user_id=1)
+
+    catches = get_catches_for_session(db_conn, result["session_id"])
+    assert {c["species"] for c in catches} == {"creek chub", "rock bass"}
+    assert all(c["photo_url"] == "/photos/abc123.jpg" for c in catches)
+    assert all(c["photo_lat"] == 43.4 for c in catches)
+
+
+def test_log_session_no_species_inserts_no_catches(db_conn):
+    from src.services.trip_logger import log_session
+    from src.storage.catches import get_catches_for_session
+
+    parsed = {
+        "date": "2026-06-01",
+        "stops": [{"location_text": "Bronte Creek", "species_caught": []}],
+    }
+
+    result = log_session(parsed, db_conn, user_id=1)
+    assert get_catches_for_session(db_conn, result["session_id"]) == []

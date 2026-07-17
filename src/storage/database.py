@@ -15,6 +15,7 @@ def get_db(path: Path | None = None) -> Database:
     p.parent.mkdir(parents=True, exist_ok=True)
     db = Database(p)
     ensure_schema(db)
+    migrate_catches_species_confirmation(db)
     migrate_behavioral_insights(db)
     migrate_stops(db)
     migrate_angler_context_multi_user(db)
@@ -41,6 +42,35 @@ def migrate_stops(db: Database) -> None:
             db.execute(f"ALTER TABLE stops ADD COLUMN {col_name} {col_type}")
         except Exception:
             pass  # column already exists
+
+
+def migrate_catches_species_confirmation(db: Database) -> None:
+    """Add species-confirmation columns to catches. Idempotent.
+
+    species_confirmed gates whether a catch's species has been reviewed by
+    the user — text-parsed and photo-suggested species are never committed
+    as fact without this going forward. suggested_species preserves what was
+    suggested (source + confidence) alongside what the user actually
+    confirmed, for future model fine-tuning.
+
+    Catches that already existed before this migration ran were logged under
+    the old always-commit behavior and the user already accepted them —
+    they're grandfathered to confirmed=1 once, here, rather than retroactively
+    vanishing from FishDex the moment this migration lands.
+    """
+    if "species_confirmed" in {c.name for c in db["catches"].columns}:
+        return  # already migrated
+    new_columns = [
+        ("species_confirmed", "INTEGER DEFAULT 0"),
+        ("suggested_species", "TEXT"),
+        ("confirmed_at", "TEXT"),
+    ]
+    for col_name, col_type in new_columns:
+        try:
+            db.execute(f"ALTER TABLE catches ADD COLUMN {col_name} {col_type}")
+        except Exception:
+            pass  # column already exists
+    db.execute("UPDATE catches SET species_confirmed = 1 WHERE species_confirmed = 0")
 
 
 def migrate_behavioral_insights(db: Database) -> None:
@@ -586,6 +616,29 @@ def ensure_schema(db: Database) -> None:
                 created_at          TEXT DEFAULT (datetime('now'))
             )
         """)
+
+    if "catches" not in db.table_names():
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS catches (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                stop_id             INTEGER NOT NULL REFERENCES stops(id) ON DELETE CASCADE,
+                session_id          INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                user_id             INTEGER NOT NULL,
+                species             TEXT NOT NULL,
+                count               INTEGER,
+                biggest_size        TEXT,
+                bait                TEXT,
+                photo_path          TEXT,
+                photo_url           TEXT,
+                photo_lat           REAL,
+                photo_lng           REAL,
+                photo_taken_at      TEXT,
+                created_at          TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_catches_stop ON catches(stop_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_catches_session ON catches(session_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_catches_user ON catches(user_id)")
 
     if "parsed_trips" not in db.table_names():
         db["parsed_trips"].create(

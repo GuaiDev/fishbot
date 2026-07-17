@@ -20,6 +20,21 @@ REQUIRES_API = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_db(tmp_path, monkeypatch):
+    """Redirect every endpoint's get_db() call to a throwaway file.
+
+    Endpoints call get_db() with no path argument, which resolves to the
+    real data/fishing.db (or DATA_DIR/fishing.db) unless DB_PATH is patched.
+    Without this, any write-endpoint test — including the @REQUIRES_API ones,
+    which only skip locally because no ANTHROPIC_API_KEY is set — silently
+    inserts rows into the real production database. Per CLAUDE.md, tests
+    must never touch real user data.
+    """
+    import src.storage.database as database
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "test_fishing.db")
+
+
 def test_health():
     response = client.get("/health")
     assert response.status_code == 200
@@ -102,6 +117,73 @@ def test_ingest_data_no_key_development_mode():
         json={"lat": 43.45, "lng": -79.72, "radius_km": 1},
     )
     assert response.status_code != 401
+
+
+def _apikey_headers(monkeypatch):
+    monkeypatch.setenv("FISHBOT_API_KEY", "test-key")
+    return {"X-Api-Key": "test-key"}
+
+
+def test_log_trip_photo_rejects_unsupported_content_type(monkeypatch):
+    headers = _apikey_headers(monkeypatch)
+    response = client.post(
+        "/log-trip/photo",
+        data={"text": "Fished Bronte Creek, caught a creek chub"},
+        files={"photo": ("catch.pdf", b"not an image", "application/pdf")},
+        headers=headers,
+    )
+    assert response.status_code == 400
+
+
+def test_log_trip_photo_requires_text_field(monkeypatch):
+    import io
+    from PIL import Image
+
+    headers = _apikey_headers(monkeypatch)
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10)).save(buf, format="JPEG")
+    response = client.post(
+        "/log-trip/photo",
+        files={"photo": ("catch.jpg", buf.getvalue(), "image/jpeg")},
+        headers=headers,
+    )
+    assert response.status_code == 422
+
+
+def test_log_trip_photo_saves_file_and_logs_session(monkeypatch, tmp_path):
+    import io
+    from unittest.mock import patch
+
+    from PIL import Image
+
+    from src.services import photo_storage
+
+    monkeypatch.setattr(photo_storage, "PHOTOS_DIR", tmp_path / "photos")
+    headers = _apikey_headers(monkeypatch)
+
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10), color=(60, 110, 70)).save(buf, format="JPEG")
+
+    canned_parse = {
+        "date": "2026-06-01",
+        "stops": [{
+            "location_text": "Bronte Creek",
+            "species_caught": ["creek chub"],
+        }],
+    }
+    with patch("src.services.trip_parser.parse_session_from_text", return_value=canned_parse):
+        response = client.post(
+            "/log-trip/photo",
+            data={"text": "Fished Bronte Creek, caught a creek chub"},
+            files={"photo": ("catch.jpg", buf.getvalue(), "image/jpeg")},
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "logged"
+    assert data["photo_url"].startswith("/photos/")
+    assert (tmp_path / "photos").exists()
 
 
 @REQUIRES_API
