@@ -168,23 +168,28 @@ register(JurisdictionConfig(
         "fish_observations": False,  # AB FWMIS not publicly accessible
         "water_quality":     False,  # stub — no public API
         "stocking":          True,   # planned stocking XLSX from Open Alberta (openpyxl required)
-        "regulations":       False,  # stub — PDF adapter not yet implemented
+        "regulations":       True,   # Watershed Unit PDF, tested against 2026 edition
         "species_ranges":    False,  # not yet built
         "benthic":           True,   # CABIN (federal; all provinces)
         "geology":           False,  # not yet built
     },
     api_endpoints={
         "stocking": (
-            "https://open.alberta.ca/dataset/ae7521d6-7629-4b69-ac45-857fc798c10c/"
-            "resource/48b6985f-a110-488e-8508-5546dd6e10fd/download/"
-            "fp-fish-stocking-planned-dates-2026.xlsx"
+            "https://open.alberta.ca/dataset/ae7521d6-7629-4b69-ac45-857fc798c10c"
         ),
-        "regulations": "https://mywildalberta.ca/fishing/regulations/",
+        "regulations": (
+            "https://open.alberta.ca/dataset/dbf392f4-266f-4947-adc0-fa4bdf4e2c9c"
+        ),
     },
     notes=(
         "Global sources (iNat, GBIF, WSC, OSM, eBird) work automatically for any AB lat/lng. "
         "HYDRO: NHN GeoPackage tiles are available via FTP but no WFS exists; "
         "OSM covers AB streams adequately at order 3+. "
+        "REGULATIONS: only 3 Fish Management Zones split into 10 Watershed Units "
+        "(ES1-4/PP1-2/NB1-4) — verified all 10 extract correctly against the 2026 edition "
+        "(7.5k-31k chars each); URL resolved dynamically via CKAN package_show (picks the "
+        "highest-year PDF resource) since a new dated file is added every year — see "
+        "regulations.py. "
         "WATER QUALITY: AEMERA portal is map-based with no public API; "
         "DataStream (ca_national/) covers some AB watersheds. "
         "STOCKING: coordinates not included in Alberta data — waterbody name only."
