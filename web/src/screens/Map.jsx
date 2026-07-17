@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leafl
 import { getMapSegments, getMyStops } from '../api';
 import { colorHeatHigh, colorHeatMed, colorHeatMid, colorHeatLow, colorHeatMin, colorMoss, colorTextAsh } from '../tokens';
 import InstrumentDial from '../components/InstrumentDial';
+import '../fishdex-tokens.css';
 
 function scoreColor(score) {
   if (score >= 0.7) return colorHeatHigh;
@@ -104,25 +105,28 @@ export default function Map() {
   const defaultZoom = 10;
 
   return (
-    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--color-base-bark)' }}>
+    <div style={{
+      height: '100dvh', display: 'flex', flexDirection: 'column',
+      background: 'radial-gradient(circle at 50% 0%, var(--fx-bg-grad-1), var(--fx-bg-grad-2) 45%, var(--fx-bg-grad-3) 100%)',
+    }}>
 
       {/* Header */}
       <div style={{
         padding: '12px 16px',
-        background: 'var(--color-base-bark)',
-        borderBottom: '1px solid var(--color-border-twig)',
+        background: 'var(--fx-canvas)',
+        borderBottom: '1px solid var(--fx-hairline)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         zIndex: 1000,
         flexShrink: 0,
       }}>
-        <h1 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-bone)', margin: 0 }}>Map</h1>
+        <h1 style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 17, color: 'var(--fx-text-primary-2)', margin: 0 }}>Map</h1>
 
         <div style={{
           display: 'flex',
-          background: 'var(--color-surface-loam)',
-          border: '1px solid var(--color-border-twig)',
+          background: 'var(--fx-card-fill)',
+          border: '1px solid var(--fx-hairline)',
           borderRadius: 8,
           padding: 2,
           gap: 2,
@@ -135,8 +139,9 @@ export default function Map() {
                 padding: '5px 12px',
                 borderRadius: 6,
                 border: 'none',
-                background: mapMode === m ? 'var(--color-moss-fill)' : 'transparent',
-                color: mapMode === m ? 'var(--color-text-bone)' : 'var(--color-text-ash)',
+                background: mapMode === m ? 'var(--fx-moss-light)' : 'transparent',
+                color: mapMode === m ? 'var(--fx-on-accent)' : 'var(--fx-text-muted)',
+                fontFamily: 'var(--fx-font-ui)',
                 fontSize: 12,
                 fontWeight: 500,
                 cursor: 'pointer',
@@ -154,10 +159,11 @@ export default function Map() {
             value={exploreMode}
             onChange={e => setExploreMode(e.target.value)}
             style={{
-              background: 'var(--color-surface-loam)',
-              border: '1px solid var(--color-border-twig)',
+              background: 'var(--fx-card-fill)',
+              border: '1px solid var(--fx-hairline)',
               borderRadius: 6,
-              color: 'var(--color-text-bone)',
+              color: 'var(--fx-text-primary)',
+              fontFamily: 'var(--fx-font-ui)',
               fontSize: 11,
               padding: '4px 8px',
               cursor: 'pointer',
@@ -196,19 +202,19 @@ export default function Map() {
           <div style={{
             position: 'absolute', top: '50%', left: '50%',
             transform: 'translate(-50%, -50%)',
-            background: 'var(--color-surface-loam)',
-            border: '1px solid var(--color-border-twig)',
-            borderRadius: 12,
+            background: 'var(--fx-card-fill)',
+            border: '1px solid var(--fx-hairline)',
+            borderRadius: 14,
             padding: '20px 24px',
             textAlign: 'center',
             zIndex: 1000,
             maxWidth: 240,
           }}>
             <div aria-hidden="true" style={{ fontSize: 28, marginBottom: 8 }}>🎣</div>
-            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-bone)', marginBottom: 6 }}>
+            <div style={{ fontFamily: 'var(--fx-font-serif)', fontSize: 16, fontWeight: 600, color: 'var(--fx-text-primary-2)', marginBottom: 6 }}>
               Your map is empty
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-ash)', lineHeight: 1.5 }}>
+            <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-text-muted)', lineHeight: 1.5 }}>
               Log trips with GPS to see your spots appear here.
               Switch to Explore to find new water.
             </div>
@@ -220,12 +226,13 @@ export default function Map() {
             position: 'absolute',
             bottom: 80, left: '50%',
             transform: 'translateX(-50%)',
-            background: 'color-mix(in srgb, var(--color-surface-loam) 90%, transparent)',
-            border: '1px solid var(--color-border-twig)',
+            background: 'color-mix(in srgb, var(--fx-card-fill) 90%, transparent)',
+            border: '1px solid var(--fx-hairline)',
             borderRadius: 20,
             padding: '6px 14px',
+            fontFamily: 'var(--fx-font-ui)',
             fontSize: 11,
-            color: 'var(--color-text-ash)',
+            color: 'var(--fx-text-muted)',
             zIndex: 1000,
             pointerEvents: 'none',
             whiteSpace: 'nowrap',
@@ -244,8 +251,8 @@ export default function Map() {
           position: 'fixed',
           bottom: 64, left: 0, right: 0,
           maxWidth: 480, margin: '0 auto',
-          background: 'var(--color-surface-loam)',
-          borderTop: '1px solid var(--color-border-twig)',
+          background: 'var(--fx-card-fill)',
+          borderTop: '1px solid var(--fx-hairline)',
           borderRadius: '16px 16px 0 0',
           padding: '16px 16px 24px',
           zIndex: 2000,
@@ -257,7 +264,7 @@ export default function Map() {
               position: 'absolute', top: 4, right: 8,
               width: 44, height: 44,
               background: 'none', border: 'none',
-              color: 'var(--color-text-ash)', fontSize: 20, cursor: 'pointer',
+              color: 'var(--fx-text-muted)', fontSize: 20, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           ><span aria-hidden="true">×</span></button>
@@ -265,10 +272,10 @@ export default function Map() {
           {/* Personal stop detail */}
           {selected.stop_id && (
             <>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-bone)', marginBottom: 4 }}>
+              <div style={{ fontFamily: 'var(--fx-font-serif)', fontSize: 16, fontWeight: 600, color: 'var(--fx-text-primary-2)', marginBottom: 4 }}>
                 {selected.location}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-ash)', marginBottom: 10 }}>
+              <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-text-muted)', marginBottom: 10 }}>
                 {selected.date}
               </div>
               {(selected.conditions?.air_temp_c != null || selected.conditions?.pressure_hpa != null) && (
@@ -285,16 +292,17 @@ export default function Map() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {selected.species.map((sp, i) => (
                     <span key={i} style={{
-                      background: 'var(--color-sage-tint-bg)', color: 'var(--color-moss)',
+                      background: 'var(--fx-card-fill-quiet)', color: 'var(--fx-moss-light)',
+                      fontFamily: 'var(--fx-font-ui)',
                       borderRadius: 6, padding: '3px 8px', fontSize: 11,
                     }}>{sp}</span>
                   ))}
                 </div>
               ) : (
-                <div style={{ fontSize: 12, color: 'var(--color-text-ash)' }}>No fish logged</div>
+                <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-text-muted)' }}>No fish logged</div>
               )}
               {selected.technique && (
-                <div style={{ fontSize: 11, color: 'var(--color-text-ash)', marginTop: 8 }}>
+                <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 11, color: 'var(--fx-text-muted)', marginTop: 8 }}>
                   {selected.technique}
                   {selected.gear ? ` · ${selected.gear}` : ''}
                 </div>
@@ -305,21 +313,21 @@ export default function Map() {
           {/* Explore segment detail */}
           {selected.ogf_id && (
             <>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-bone)', marginBottom: 4 }}>
+              <div style={{ fontFamily: 'var(--fx-font-serif)', fontSize: 16, fontWeight: 600, color: 'var(--fx-text-primary-2)', marginBottom: 4 }}>
                 {selected.watercourse_name || selected.nearest_named_stream || 'Unnamed stream'}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-ash)', marginBottom: 10 }}>
+              <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-text-muted)', marginBottom: 10 }}>
                 Stream order {selected.stream_order}
                 {selected.is_confluence ? ' · Confluence' : ''}
                 {selected.connected_to_waterbody ? ' · Connected to lake/river' : ''}
               </div>
 
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: 'var(--color-text-ash)', marginBottom: 4 }}>
+                <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 11, color: 'var(--fx-text-muted)', marginBottom: 4 }}>
                   Exploration score
                 </div>
                 <div style={{
-                  height: 6, background: 'var(--color-border-twig)', borderRadius: 3, overflow: 'hidden',
+                  height: 6, background: 'var(--fx-hairline)', borderRadius: 3, overflow: 'hidden',
                 }}>
                   <div style={{
                     height: '100%',
@@ -329,19 +337,20 @@ export default function Map() {
                     transition: 'width 0.3s',
                   }} />
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--color-text-ash)', marginTop: 2 }}>
+                <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 10, color: 'var(--fx-text-muted)', marginTop: 2 }}>
                   {((selected.score || 0) * 100).toFixed(0)}/100
                 </div>
               </div>
 
               {selected.top1_species && (
                 <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-ash)', marginBottom: 4 }}>
+                  <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 11, color: 'var(--fx-text-muted)', marginBottom: 4 }}>
                     Likely species
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <span style={{
-                      background: 'var(--color-sage-tint-bg)', color: 'var(--color-moss)',
+                      background: 'var(--fx-card-fill-quiet)', color: 'var(--fx-moss-light)',
+                      fontFamily: 'var(--fx-font-ui)',
                       borderRadius: 6, padding: '3px 8px', fontSize: 11,
                     }}>
                       {selected.top1_species}{selected.top1_prob
@@ -350,8 +359,9 @@ export default function Map() {
                     </span>
                     {selected.top2_species && (
                       <span style={{
-                        background: 'var(--color-surface-loam)', color: 'var(--color-text-ash)',
-                        border: '1px solid var(--color-border-twig)',
+                        background: 'var(--fx-card-fill)', color: 'var(--fx-text-muted)',
+                        border: '1px solid var(--fx-hairline)',
+                        fontFamily: 'var(--fx-font-ui)',
                         borderRadius: 6, padding: '3px 8px', fontSize: 11,
                       }}>
                         {selected.top2_species}
@@ -369,7 +379,8 @@ export default function Map() {
                     rel="noreferrer"
                     style={{
                       flex: 1, padding: '8px',
-                      background: 'var(--color-border-twig)', color: 'var(--color-text-bone)',
+                      background: 'var(--fx-hairline)', color: 'var(--fx-text-primary)',
+                      fontFamily: 'var(--fx-font-ui)',
                       borderRadius: 8, fontSize: 12, fontWeight: 500,
                       textAlign: 'center', textDecoration: 'none',
                     }}
@@ -384,7 +395,8 @@ export default function Map() {
                     rel="noreferrer"
                     style={{
                       flex: 1, padding: '8px',
-                      background: 'var(--color-border-twig)', color: 'var(--color-text-bone)',
+                      background: 'var(--fx-hairline)', color: 'var(--fx-text-primary)',
+                      fontFamily: 'var(--fx-font-ui)',
                       borderRadius: 8, fontSize: 12, fontWeight: 500,
                       textAlign: 'center', textDecoration: 'none',
                     }}

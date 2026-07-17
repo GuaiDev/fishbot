@@ -153,7 +153,7 @@ export default function Login({ onLogin }) {
             background: loading ? 'var(--color-moss-fill-dim)' : 'var(--color-moss-fill)',
             color: 'var(--color-text-bone)',
             border: 'none',
-            borderRadius: '8px',
+            borderRadius: 'var(--radius-pill)',
             fontSize: '16px',
             fontWeight: '600',
             cursor: loading ? 'not-allowed' : 'pointer',

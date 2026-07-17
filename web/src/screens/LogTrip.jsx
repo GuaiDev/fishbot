@@ -1,5 +1,126 @@
 import { useState, useRef } from 'react';
-import { logTrip } from '../api';
+import { confirmCatchSpecies, logTrip } from '../api';
+import GrainOverlay from '../components/GrainOverlay';
+import '../fishdex-tokens.css';
+
+// A logged catch's species is a suggestion — from the text parser, and from
+// a photo-vision ID if a photo was attached — never committed as fact until
+// confirmed here. See the FishDex hallucination fix (species_confirmed gate
+// in trip_logger.py / catches.py).
+function SpeciesConfirmCard({ pending, onConfirmed }) {
+  const [custom, setCustom] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const allCandidates = pending.suggested_species || [];
+  // Ranked, confidence-bearing candidates (photo IDs and any specific
+  // text-named species) vs. the one honest "notes didn't say" entry, which
+  // is never a competing guess and is never ranked by confidence — see
+  // _build_suggested_species in trip_logger.py.
+  const ranked = allCandidates.filter(c => c.confidence);
+  const unspecified = allCandidates.find(c => !c.confidence);
+
+  async function handleConfirm(species) {
+    const final = (species || custom).trim();
+    if (!final || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await confirmCatchSpecies(pending.catch_id, final);
+      onConfirmed(pending.catch_id);
+    } catch (err) {
+      setError(err.message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{
+      marginTop: 12, padding: '14px 16px',
+      background: 'var(--fx-card-fill)', border: '1px solid var(--fx-hairline)',
+      borderRadius: 14,
+    }}>
+      <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 15, color: 'var(--fx-text-primary-2)', marginBottom: 4 }}>
+        Confirm species
+      </div>
+      <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-text-muted)', marginBottom: 10 }}>
+        {ranked.length > 1
+          ? "The photo and your notes don't agree — which is it?"
+          : ranked.length === 1 && unspecified
+            ? 'Notes didn’t name a species — here’s what the photo suggests.'
+            : 'Tap to confirm, or type the correct species below.'}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: unspecified ? 6 : 10 }}>
+        {ranked.map((c, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => handleConfirm(c.species)}
+            disabled={saving}
+            style={{
+              padding: '8px 14px', borderRadius: 'var(--radius-pill)',
+              border: `1px solid ${i === 0 ? 'var(--fx-moss-light)' : 'var(--fx-hairline)'}`,
+              background: i === 0 ? 'var(--fx-moss-light)' : 'transparent',
+              color: i === 0 ? 'var(--fx-on-accent)' : 'var(--fx-text-primary)',
+              fontFamily: 'var(--fx-font-ui)', fontSize: 13,
+              cursor: saving ? 'default' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6, textTransform: 'capitalize',
+            }}
+          >
+            {c.species}
+            <span style={{ fontSize: 10, color: i === 0 ? 'var(--fx-on-accent)' : 'var(--fx-text-muted)' }}>
+              {c.source === 'photo' ? `📷 ${c.confidence}` : c.confidence}
+            </span>
+          </button>
+        ))}
+      </div>
+      {unspecified && (
+        <button
+          type="button"
+          onClick={() => handleConfirm(unspecified.species)}
+          disabled={saving}
+          style={{
+            display: 'block', border: 'none', background: 'none', padding: '2px 0 10px',
+            color: 'var(--fx-text-muted)', fontFamily: 'var(--fx-font-serif)', fontStyle: 'italic', fontSize: 12,
+            cursor: saving ? 'default' : 'pointer', textAlign: 'left',
+          }}
+        >
+          Notes {unspecified.note} — log as "{unspecified.species}" instead
+        </button>
+      )}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          type="text"
+          value={custom}
+          onChange={e => setCustom(e.target.value)}
+          placeholder="Or type the correct species"
+          style={{
+            flex: 1, padding: '10px 12px', borderRadius: 8,
+            border: '1px solid var(--fx-hairline)', background: 'var(--fx-card-fill-quiet)',
+            color: 'var(--fx-text-primary)', fontFamily: 'var(--fx-font-ui)', fontSize: 13, outline: 'none',
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => handleConfirm(custom)}
+          disabled={saving || !custom.trim()}
+          style={{
+            padding: '10px 16px', borderRadius: 8, border: 'none',
+            background: custom.trim() ? 'var(--fx-moss-light)' : 'var(--fx-hairline)',
+            color: custom.trim() ? 'var(--fx-on-accent)' : 'var(--fx-text-muted)',
+            fontFamily: 'var(--fx-font-ui)', fontSize: 13, fontWeight: 600,
+            cursor: custom.trim() ? 'pointer' : 'default',
+          }}
+        >
+          Use this
+        </button>
+      </div>
+      {error && (
+        <div style={{ marginTop: 8, fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--color-rust)' }}>{error}</div>
+      )}
+    </div>
+  );
+}
 
 async function extractExif(file) {
   return new Promise(resolve => {
@@ -89,13 +210,16 @@ export default function LogTrip({ onNavigate }) {
   const [text, setText] = useState('');
   const [exifData, setExifData] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
   const [status, setStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [pendingCatches, setPendingCatches] = useState([]);
   const fileRef = useRef(null);
 
   async function handlePhoto(e) {
     const file = e.target.files[0];
     if (!file) return;
+    setPhotoFile(file);
     setPreview(URL.createObjectURL(file));
     const exif = await extractExif(file);
     if (exif && exif.lat) {
@@ -122,15 +246,21 @@ export default function LogTrip({ onNavigate }) {
     if (!text.trim()) return;
     setStatus('loading');
     try {
-      await logTrip(text, exifData?.lat, exifData?.lng, exifData?.takenAt);
+      const result = await logTrip(text, exifData?.lat, exifData?.lng, exifData?.takenAt, photoFile);
       setStatus('success');
+      setPendingCatches(result.pending_catches || []);
       setText('');
       setPreview(null);
       setExifData(null);
+      setPhotoFile(null);
     } catch (err) {
       setStatus('error');
       setErrorMsg(err.message);
     }
+  }
+
+  function handleCatchConfirmed(catchId) {
+    setPendingCatches(prev => prev.filter(p => p.catch_id !== catchId));
   }
 
   const hasGps = exifData && exifData.lat && !exifData.trying;
@@ -138,16 +268,18 @@ export default function LogTrip({ onNavigate }) {
 
   return (
     <div style={{
+      position: 'relative',
       minHeight: '100dvh',
-      background: 'var(--color-base-bark)',
+      background: 'radial-gradient(circle at 50% 0%, var(--fx-bg-grad-1), var(--fx-bg-grad-2) 45%, var(--fx-bg-grad-3) 100%)',
       padding: '16px 16px 100px',
       maxWidth: 480,
       margin: '0 auto',
     }}>
-      <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-text-bone)', marginBottom: 4 }}>
+      <GrainOverlay />
+      <h1 style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 22, color: 'var(--fx-text-primary-2)', marginBottom: 4 }}>
         Log a catch
       </h1>
-      <p style={{ fontSize: 12, color: 'var(--color-text-ash)', marginBottom: 20 }}>
+      <p style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-text-muted)', marginBottom: 20 }}>
         Photo adds GPS + time automatically
       </p>
 
@@ -162,14 +294,15 @@ export default function LogTrip({ onNavigate }) {
         style={{
           display: 'block',
           position: 'relative',
-          border: preview ? 'none' : '1.5px dashed var(--color-border-twig)',
-          borderRadius: 12,
+          border: preview ? 'none' : '1.5px dashed var(--fx-dashed-border)',
+          borderRadius: 14,
           padding: preview ? 0 : '24px 16px',
           textAlign: 'center',
           cursor: 'pointer',
           marginBottom: 16,
           overflow: 'hidden',
           aspectRatio: preview ? '4 / 5' : 'auto',
+          background: preview ? 'transparent' : 'var(--fx-card-fill-quiet)',
         }}
       >
         <input
@@ -188,20 +321,20 @@ export default function LogTrip({ onNavigate }) {
             <div style={{
               position: 'absolute', left: 0, right: 0, bottom: 0,
               padding: '16px',
-              background: 'linear-gradient(to top, color-mix(in srgb, var(--color-base-bark) 95%, transparent), transparent)',
+              background: 'linear-gradient(to top, rgba(9,10,6,.9), transparent)',
             }}>
               {hasGps && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-moss)', fontSize: 13, fontWeight: 600 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fx-moss-lightest)', fontFamily: 'var(--fx-font-ui)', fontSize: 13, fontWeight: 600 }}>
                   <span aria-hidden="true">📍</span> GPS captured · {exifData.takenAt ? new Date(exifData.takenAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}
                 </div>
               )}
               {tryingGps && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text-bone)', fontSize: 13 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fx-text-primary-2)', fontFamily: 'var(--fx-font-ui)', fontSize: 13 }}>
                   <span aria-hidden="true">📍</span> Getting location...
                 </div>
               )}
               {exifData === null && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-rust)', fontSize: 13, fontWeight: 600 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-rust)', fontFamily: 'var(--fx-font-ui)', fontSize: 13, fontWeight: 600 }}>
                   <span aria-hidden="true">📍</span> No GPS — describe location in text
                 </div>
               )}
@@ -209,8 +342,8 @@ export default function LogTrip({ onNavigate }) {
           </>
         ) : (
           <>
-            <div aria-hidden="true" style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
-            <div style={{ fontSize: 13, color: 'var(--color-text-ash)' }}>
+            <div aria-hidden="true" style={{ fontSize: 28, marginBottom: 6, color: 'var(--fx-text-locked-3)' }}>📷</div>
+            <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 13, color: 'var(--fx-text-muted)' }}>
               Tap to add photo
             </div>
           </>
@@ -227,13 +360,13 @@ export default function LogTrip({ onNavigate }) {
         placeholder="What happened? Species, location, technique, conditions — as much or as little as you remember."
         style={{
           width: '100%',
-          background: 'var(--color-surface-loam)',
-          border: '1px solid var(--color-border-twig)',
-          borderRadius: 10,
+          background: 'var(--fx-card-fill)',
+          border: '1px solid var(--fx-hairline)',
+          borderRadius: 12,
           padding: '12px 14px',
-          color: 'var(--color-text-bone)',
+          color: 'var(--fx-text-primary)',
+          fontFamily: 'var(--fx-font-ui)',
           fontSize: 14,
-          fontFamily: 'inherit',
           resize: 'none',
           outline: 'none',
           minHeight: 120,
@@ -247,11 +380,12 @@ export default function LogTrip({ onNavigate }) {
         disabled={!text.trim() || status === 'loading'}
         style={{
           width: '100%',
-          background: text.trim() && status !== 'loading' ? 'var(--color-moss-fill)' : 'var(--color-border-twig)',
-          color: 'var(--color-text-bone)',
+          background: text.trim() && status !== 'loading' ? 'var(--fx-moss-light)' : 'var(--fx-hairline)',
+          color: text.trim() && status !== 'loading' ? 'var(--fx-on-accent)' : 'var(--fx-text-muted)',
           border: 'none',
-          borderRadius: 10,
+          borderRadius: 'var(--radius-pill)',
           padding: '14px',
+          fontFamily: 'var(--fx-font-ui)',
           fontSize: 15,
           fontWeight: 600,
           cursor: text.trim() && status !== 'loading' ? 'pointer' : 'default',
@@ -262,19 +396,38 @@ export default function LogTrip({ onNavigate }) {
       </button>
 
       {status === 'success' && (
-        <div style={{
-          marginTop: 12, padding: '12px 14px',
-          background: 'var(--color-sage-tint-bg)', color: 'var(--color-moss)',
-          borderRadius: 10, fontSize: 14,
-        }}>
-          <span aria-hidden="true">✓</span> Trip logged. Keep fishing.
-        </div>
+        <>
+          {/* Quiet celebration, not a plain checkmark — same ❦ new-find
+              vocabulary as FishDex's CaughtPlate, dressed for a confirmation
+              moment rather than a collection plate. */}
+          <div style={{
+            marginTop: 12, padding: '16px 18px',
+            background: 'var(--fx-card-fill-quiet)', border: '1px solid var(--fx-hairline)',
+            borderRadius: 14,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <span style={{ color: 'var(--fx-moss-lightest)', fontSize: 14 }} aria-hidden="true">❦</span>
+              <span style={{
+                fontFamily: 'var(--fx-font-ui)', fontSize: 10, fontWeight: 600,
+                letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--fx-moss-lightest)',
+              }}>
+                Logged
+              </span>
+            </div>
+            <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 17, color: 'var(--fx-text-primary-2)' }}>
+              Trip logged. Keep fishing.
+            </div>
+          </div>
+          {pendingCatches.map(p => (
+            <SpeciesConfirmCard key={p.catch_id} pending={p} onConfirmed={handleCatchConfirmed} />
+          ))}
+        </>
       )}
       {status === 'error' && (
         <div style={{
           marginTop: 12, padding: '12px 14px',
           background: 'var(--color-rust-bg)', color: 'var(--color-rust)',
-          borderRadius: 10, fontSize: 14,
+          borderRadius: 10, fontFamily: 'var(--fx-font-ui)', fontSize: 14,
         }}>
           Error: {errorMsg}
         </div>

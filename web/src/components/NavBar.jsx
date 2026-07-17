@@ -4,6 +4,7 @@ export default function NavBar({ screen, onNavigate }) {
     { id: 'map', label: 'Map', icon: '🗺️' },
     { id: 'log', label: 'Log', icon: '＋' },
     { id: 'trips', label: 'Trips', icon: '📋' },
+    { id: 'fishdex', label: 'FishDex', icon: '🐟' },
   ];
 
   return (

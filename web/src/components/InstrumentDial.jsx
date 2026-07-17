@@ -19,10 +19,10 @@ export default function InstrumentDial({ value, unit, label, min, max }) {
   return (
     <div style={{ position: 'relative', width: 72, height: 72, flexShrink: 0 }}>
       <svg viewBox="0 0 80 80" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
-        <circle cx="40" cy="40" r={radius} fill="none" stroke="var(--color-border-twig)" strokeWidth="6" />
+        <circle cx="40" cy="40" r={radius} fill="none" stroke="var(--fx-hairline)" strokeWidth="6" />
         <circle
           cx="40" cy="40" r={radius} fill="none"
-          stroke="var(--color-moss)" strokeWidth="6" strokeLinecap="round"
+          stroke="var(--fx-moss-light)" strokeWidth="6" strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           style={{ transition: 'stroke-dashoffset 0.4s ease-out' }}
@@ -32,10 +32,10 @@ export default function InstrumentDial({ value, unit, label, min, max }) {
         position: 'absolute', inset: 0,
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       }}>
-        <div style={{ color: 'var(--color-text-bone)', fontSize: 13, fontWeight: 600 }}>
+        <div style={{ fontFamily: 'var(--fx-font-serif)', color: 'var(--fx-text-primary-2)', fontSize: 14, fontWeight: 600 }}>
           {value}{unit}
         </div>
-        <div style={{ color: 'var(--color-text-ash)', fontSize: 9, marginTop: 2, textAlign: 'center' }}>
+        <div style={{ fontFamily: 'var(--fx-font-ui)', color: 'var(--fx-text-muted)', fontSize: 9, marginTop: 2, textAlign: 'center' }}>
           {label}
         </div>
       </div>

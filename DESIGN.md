@@ -1,6 +1,6 @@
 ---
 name: FishBot
-description: Photography-led field journal — full-bleed catch photos carry the interface; thin instrument chrome sits on top.
+description: Naturalist's field journal — Spectral serif + moss/brass palette, now the primary system across Chat, Log, Map, Trips, and FishDex. Section 2-6's Bark/Moss palette is legacy, retained only for Login pending migration.
 colors:
   base-bark: "#17140F"
   surface-loam: "#211C15"
@@ -67,17 +67,17 @@ components:
   button-primary:
     backgroundColor: "{colors.moss-fill}"
     textColor: "{colors.text-bone}"
-    rounded: "{rounded.lg}"
+    rounded: "{rounded.pill}"
     padding: "14px"
   button-primary-disabled:
     backgroundColor: "{colors.border-twig}"
     textColor: "{colors.text-ash}"
-    rounded: "{rounded.lg}"
+    rounded: "{rounded.pill}"
     padding: "14px"
   button-primary-loading:
     backgroundColor: "{colors.moss-fill-dim}"
     textColor: "{colors.text-bone}"
-    rounded: "{rounded.lg}"
+    rounded: "{rounded.pill}"
     padding: "14px"
   chip-tag:
     backgroundColor: "{colors.sage-tint-bg}"
@@ -103,9 +103,81 @@ components:
     textColor: "{colors.gold}"
     rounded: "{rounded.pill}"
     padding: "4px 12px"
+fishdexColors:
+  bg-grad-1: "#24261d"
+  bg-grad-2: "#1b1d16"
+  bg-grad-3: "#141510"
+  canvas: "#131410"
+  card-fill: "#242720"
+  card-fill-quiet: "#1a1c15"
+  card-fill-dark: "#20221a"
+  hairline: "#35372c"
+  hairline-2: "#383b2f"
+  divider: "#24261d"
+  dashed-border: "#303228"
+  text-primary: "#f2ede1"
+  text-primary-2: "#f6f1e6"
+  text-primary-3: "#ece6d8"
+  text-muted: "#948f7e"
+  text-dim: "#6f6c5b"
+  text-dim-2: "#54564a"
+  text-locked: "#8f8c7b"
+  text-locked-2: "#7c7a6a"
+  text-locked-3: "#5a5c4d"
+  moss: "#869663"
+  moss-light: "#9fae7a"
+  moss-lightest: "#c2cc9f"
+  moss-dark: "#5f6d44"
+  brass: "#c2a06a"
+  brass-light: "#e8c98a"
+  brass-star: "#d9b877"
+  on-accent: "#191b12"
+fishdexTypography:
+  display:
+    fontFamily: "'Spectral', Georgia, serif"
+    weights: [400, 500, 600, 700]
+    italic: true
+  ui:
+    fontFamily: "system-ui, -apple-system, sans-serif"
+fishdexRounded:
+  phone-frame: "46px"
+  plate: "18px"
+  grid-card: "14px"
+  folder-banner: "16px"
+  explore-card: "14px"
+  small-thumbnail: "10px"
 ---
 
 # Design System: FishBot
+
+## Status (read this first)
+
+**The naturalist/moss-brass palette in Section 7 is now the primary, app-wide
+system.** As of this revision it's live on Chat, Log (LogTrip), Map, Trips,
+and FishDex — Spectral serif for names/headers/figures, system-ui for
+body/UI text, the `--fx-*` custom properties in `web/src/fishdex-tokens.css`,
+the warm dark radial-gradient background, FishDex's card radii throughout,
+and a shared `.fx-grain` paper-noise overlay (`GrainOverlay.jsx`).
+
+**Sections 2–6 below describe the prior Bark/Moss system** (`web/src/tokens.css`,
+`--color-*`). It is not deleted or wrong — it's now legacy, still the live,
+correct system for the one screen not yet migrated: **Login**. Read Section 7
+first for anything touching Chat/Log/Map/Trips/FishDex; read Sections 2–6 for
+anything touching Login. See "App-Wide Migration" under Section 7 for exactly
+what changed, what stayed, and what's still open.
+
+One exception spans both systems: **Rust remains the single alarm/error
+color everywhere**, including on the migrated screens. Section 7's token set
+(`fishdex-tokens.css`) never defined its own alarm color, and inventing a
+second one purely for the new screens would violate The One Alarm Rule
+below — so error states on Chat/Log/Map/Trips still use `--color-rust` /
+`--color-rust-bg` / `--color-rust-border` from the legacy tokens, which stay
+loaded app-wide for exactly this reason (Trips' anomaly-flag plate badge
+included). `InstrumentDial.jsx` is shared by Map and Trips — it already
+rendered with `--fx-*` tokens before Trips' own migration, so Trips' dial
+was already reskinned as a side effect; Trips' migration now also floats it
+directly over the trip photo per the Overlay Chrome Rule (translucent Bark
+scrim + blur), scaled down to fit a plate corner.
 
 ## 1. Overview
 
@@ -195,11 +267,22 @@ Grain texture (from the prior revision) still applies only to non-photo backgrou
 ## 5. Components
 
 ### Catch / Species Photo Card (primary browsing pattern — rewritten)
-- **Structure:** One large, near-full-bleed photo per scroll unit — not a grid of small square thumbnails. Aspect ratio leans portrait (~4:5) so a single catch photo dominates the viewport; minimal outer padding so the card reads as edge-to-edge, not framed.
+- **Two distinct full-bleed treatments, not one** (clarified after checking moss_reference and hiking_app_concept directly — the two references actually show different jobs, which the original spec conflated into a single description):
+  - **Inset browsing card** (this component): a rounded-corner card with visible outer padding/margin against the page background — near-full-bleed *within the card*, not edge-to-edge with the screen. This is what moss_reference's home-screen hero card and hiking_app_concept's "Aiguille du Midi" card both do. Aspect ratio is closer to landscape/square in moss_reference, taller (~4:5) in hiking_app_concept — either reads correctly; don't force a single ratio, let the source photo's natural crop lead within a portrait-to-square range.
+  - **Full-screen backdrop** (see Session Complete below): true edge-to-edge photography with no padding and no corner radius, filling the entire screen, with chrome floating on top. Reserved for in-session and completion screens, not the browsing card.
+- **Structure:** One large photo per scroll unit — not a grid of small square thumbnails. Minimal outer padding so the card reads as intentional and near-full-bleed, not a small thumbnail in a frame.
 - **Text placement:** Species name (Title weight), personal-best flag, and count sit directly on the photo inside a bottom gradient scrim (Bark fading to transparent, covering roughly the bottom 35–40% of the image) — never in a text zone beside or below the photo.
 - **Border:** A single 1px Twig edge at the card's outer radius (`{rounded.xl}`) — the only framing device; no inner card, no nested surface.
 - **Personal-best / new-species variant:** A small Gold badge (`personal-best-badge` token) in the photo's top corner — the primary place The Earned Gold Rule surfaces in product.
 - Species chips (`chip-tag`) still exist, but only for dense inline lists with no photo available (chat mentions, a compact fallback list) — never as the default browsing pattern.
+
+### Compact List Row (new component — was missing from the prior revision)
+Found repeatedly in moss_reference (the "Near you" section, the "Next discovery" bottom-sheet card, the "New species" row on the completion screen) but absent from the prior spec, which only offered two options — the full-bleed hero card or the no-photo chip-tag. This is the real middle ground: secondary/compact browsing that still carries a photo.
+- **Structure:** A horizontal row — small square or rounded-square photo thumbnail (roughly 40–56px) on the leading edge, title + subtitle text beside it, optional trailing chevron or badge.
+- **Use:** Secondary/nearby lists where a full-bleed hero card would be too heavy for the content's weight — a "Near you" style list, a compact discovery/waypoint callout, a recap row that needs a photo but isn't the primary browsing surface.
+- **Distinct from `chip-tag`:** chip-tag has no photo and is for dense inline mentions; this row always carries a thumbnail image.
+- **Distinct from the Photo Card:** this is not a downgrade of the hero card at small size — it's a different job (secondary list context vs. primary browsing), same as moss_reference uses both patterns side by side on one screen.
+- **Status:** Not yet implemented anywhere in the app — Trips currently has no photo data to populate the thumbnail (see Migration note). Documented now so the pattern exists when photo storage lands, rather than reinventing it ad hoc.
 
 ### Session Complete Screen (new signature pattern)
 Modeled directly on a "walk complete" summary: a clear, earned end-of-session moment, not just a form confirmation.
@@ -219,7 +302,7 @@ Modeled directly on a "walk complete" summary: a clear, earned end-of-session mo
 - **Feel:** Confident and scientific-instrument-like (compass/altimeter register), not playful or rounded-cartoon.
 
 ### Buttons
-- **Shape:** 10px radius for full-width CTAs.
+- **Shape:** Pill radius (`{rounded.pill}`, 20px) for primary/full-width CTAs — corrected from an earlier 10px-rectangle spec after checking moss_reference directly: every button in the primary reference is fully pill-shaped (the inline "Start walk" CTA on the hero photo card, and both full-width buttons on the completion screen). Segmented controls, chips, and badges keep their own previously-specified radii (`{rounded.sm}`, `{rounded.pill}` for badges) — this shape change is scoped to primary CTA buttons only, not every interactive element.
 - **Primary:** Moss Fill background, Bone text, 600 weight.
 - **Disabled / Loading:** Twig+Ash / Moss Fill Dim, as before.
 - **Focus:** Visible Moss ring on `:focus-visible` — required on every button.
@@ -271,15 +354,189 @@ Modeled directly on a "walk complete" summary: a clear, earned end-of-session mo
 - **Don't** let a dial, trail, or any instrument element read as playful or rounded-cartoon — the register is scientific-instrument, not gamified.
 - **Don't** use `border-left` as a decorative colored stripe anywhere except the bot message bubble's tail accent.
 
+## 7. The Naturalist Palette — Primary App-Wide System (Phase 2, applied)
+
+**Status: this section now governs `web/src/screens/FishDex.jsx`,
+`Chat.jsx`, `LogTrip.jsx`, and `Map.jsx`.** It originated as a screen-scoped
+system for FishDex only (the `design_handoff_fishdex_collection/` handoff)
+— that was Phase 1. Phase 2, applying it app-wide, is now complete for
+those four screens. **Trips.jsx and Login.jsx still run the legacy
+Bark/Moss system in Sections 2–6** — they were out of scope for this pass
+and were not touched; there is currently no Profile screen in the app (see
+"App-Wide Migration" below). See `fishdex-tokens.css` (scoped custom
+properties, parallel to `tokens.css`, loaded app-wide) and the
+`fishdexColors`/`fishdexTypography`/`fishdexRounded` frontmatter keys above.
+
+**Creative direction:** "the photograph as the interface," rendered as a
+naturalist's field journal — warm dusk-on-the-water dark theme, Spectral
+serif for names/figures, weathered-brass + pigmented-moss accents, a whisper
+of paper grain. The handoff's own framing: **Pokémon Go's proven collection
+psychology** (visible gaps, personal bests, the pull to fill in what's
+missing) **rendered as a field journal, not a game console** — the ❦
+"new find" mark and the PB star/pill are the one deliberately game-adjacent
+mechanic kept, dressed in journal materials rather than neon/plastic/mascot
+chrome.
+
+**Adaptive layout (not a user toggle):** the number of distinct taxonomic
+families represented in the user's actual catches decides the view —
+`< 3` families renders the **flat view** (one ungrouped stack of full-bleed
+photo plates), `>= 3` renders the **grouped view** (species folded into
+plain-language family folders, one expanded accordion-style, untouched
+families surfaced as a lighter "explore" row). Computed live from
+`GET /fishdex`, never chosen by the user.
+
+**Species reference data now carries a family.** `src/services/species_family.py`
+maps every species in `species_mapping.py`'s `COMMON_TO_SCIENTIFIC` and the
+CA-ON `species_ranges` pool to `(family, familyCommonName)` — this data did
+not exist before this handoff; see the PR/session notes for how it was added.
+Family display names (`Centrarchidae` → "Bass & Sunfish", `Percidae` →
+"Perch, Walleye & Darters", `Ictaluridae` → "Catfish & Bullheads",
+`Catostomidae` → "Redhorse & Suckers", `Esocidae` → "Pike & Musky",
+`Salmonidae` → "Trout & Salmon", `Amiidae` → "Bowfin") are exactly as
+specified in the handoff; the rest (`Cyprinidae` → "Minnows & Chubs",
+`Lepisosteidae` → "Gar", etc.) extend the same convention to cover the full
+Ontario pool. **Documented Carp exception:** Common Carp (`Cyprinus carpio`)
+gets its own folder labeled "Carp," subtitled with its binomial rather than
+folded into the wider Cyprinidae most anglers don't associate it with — the
+rest of Cyprinidae (shiners, chubs, dace) reads as unrelated bait-fish. This
+is data-encoded in `get_family()`, not a frontend special case.
+
+**Known, honestly-handled real-data gaps** (do not paper over these —
+surface the real state instead of the mock's sample numbers):
+- **No photo yet for a catch** → a quiet placeholder tile (a faint outline
+  fish glyph on `card-fill-quiet`), never a broken `<img>` icon. This is the
+  handoff's `<image-slot>` concept, mapped to the app's own catch photos.
+- **Personal-best length has no real data source today.** `catches.biggest_size`
+  is a free-text column with no populating input path yet (no NL size
+  extraction, no manual entry field) — species with no recorded size show a
+  plain catch count, never a fabricated "x″" figure or PB pill. This will
+  start working the moment a real size-entry path lands; nothing in the
+  frontend needs to change for that.
+- **"New find" has no acknowledgment-state table.** The handoff's "until
+  acknowledged" language implies dismissible state this app doesn't have yet.
+  A species caught exactly once is used as an honest proxy for "new" instead
+  of inventing dismissal tracking.
+- **Region title reads "Ontario"**, the real jurisdiction the data is scoped
+  to (`CA-ON`, hardcoded pending a per-user jurisdiction field) — not the
+  prototype's fictional "Credit River watershed" sample name.
+
+**Components (screen-scoped, see `FishDex.jsx` for implementation):**
+Discovery header (eyebrow + title + inert search button + continuous
+progress rail with a glowing pin-node — distinct from Section 5's segmented
+Discovery Progress Trail, which remains the app-wide discrete-count pattern
+elsewhere), Caught Plate (full-bleed, bottom scrim, PB/new-find pill),
+Undiscovered Row (dashed border, hatched thumbnail), Family Grid Cell
+(2-column, grouped view), Collapsed Family Banner (96px, left-scrim,
+accordion trigger), Explore Card (untouched-family horizontal scroll prompt).
+
 ### Migration note
+This revision was cross-checked directly against its reference images, now committed at `web/design-references/` (`moss_reference.jpg` primary, `hiking_app_concept.jpg` secondary for the dial/compass treatment only, `fishing_app_reference.jpg` a rejected reference kept only to document the illustrated-fish style being designed away from). That check corrected three things the original written spec got wrong or missed: primary CTA buttons are pill-shaped, not 10px-rectangle (see Buttons); the Photo Card conflated two distinct full-bleed treatments — an inset browsing card vs. a true full-screen backdrop (see Catch/Species Photo Card); and a Compact List Row pattern was missing entirely (see above).
+
 The naturalist palette is fully implemented: `web/src/tokens.css` (`:root` custom properties) and `web/src/tokens.js` (the Leaflet-consumed mirror) are the single source of truth, and all 7 components reference them — no raw hex remains in the app outside those two files.
 
-Of the four flagship photography-led patterns, two are live and backed by real data:
+Of the four flagship photography-led patterns, three are now live and backed by real data:
 - **LogTrip's photo preview** uses the near-full-bleed Catch Photo Card treatment — GPS status sits directly on the image via a bottom scrim, not as separate pills below it.
 - **Instrument Dial** is live for air temperature and barometric pressure in Trips and the Map bottom sheet (`web/src/components/InstrumentDial.jsx`). Deliberately not colored by reading quality (favorable/neutral/unfavorable) as originally specified — the app has no real thresholds for what counts as "favorable" fishing conditions, and inventing one would be exactly the kind of unsupported presence/quality claim CLAUDE.md's core principle warns against. The ring shows position-in-range only, in a single neutral Moss fill.
+- **Full-bleed Catch Photo Cards in Trips** — the earlier note here ("needs backend work first") was verified stale: `src/services/photo_storage.py`, `src/storage/catches.py`, and `GET /sessions`' `catches[].photo_url` now exist, so `Trips.jsx` was migrated onto the same `CaughtPlate` pattern (see "Trips Migration" below). Map still shows no full-bleed treatment — its stops/segments aren't single-photo objects the way a session or species is, so the pattern doesn't map cleanly there yet.
 
-Two are intentionally **not yet implemented** — both need backend work first, not just frontend polish:
-- **Full-bleed Catch Photo Cards in Trips/Map** — the backend never receives or stores the actual photo file today (`logTrip()` sends only `photo_lat`/`photo_lng`/`photo_taken_at`, extracted client-side from EXIF; the image itself is discarded after upload). There's no photo to show in trip history or the map without adding real photo storage.
+One is still intentionally **not yet implemented** — needs backend work first, not just frontend polish:
 - **Discovery Progress Trail** — there's no species-collection/"discoveries" concept in the API at all yet (no endpoint, no aggregate). This is a real product decision (what counts as a "discovery," per-family or global count) as much as a backend one.
 
-This is now the reference `/impeccable audit` and `/impeccable critique` should check against, with the above two gaps understood as backend-blocked, not oversights.
+This is now the reference `/impeccable audit` and `/impeccable critique` should check against, with the above gap understood as backend-blocked, not an oversight.
+
+### App-Wide Migration (Phase 2)
+
+Applied the live FishDex palette/type to Chat, LogTrip, and Map as a
+visual/token pass — no layout, navigation, or data-logic changes on any of
+the three. Cross-checked against `FishDex.jsx` as actually rendered today,
+not the original screenshots, per instruction.
+
+**Chat (`Chat.jsx`, `components/Message.jsx`):** Header title and bot avatar
+now Spectral serif; body text, timestamps, and the input bar stay
+system-ui. Bot/user message bubbles moved to `--fx-card-fill` /
+`--fx-moss-dark` with `--fx-moss-light` left-accent on the bot bubble. Log
+and send buttons use `--fx-moss-light` fill with `--fx-on-accent` text,
+matching FishDex's own CTA convention (`EmptyState`'s "Log a catch"
+button), not the legacy Moss Fill token.
+
+**Log (`LogTrip.jsx`):** Photo dropzone, GPS pill, textarea, and the
+species-confirm card (`SpeciesConfirmCard`) all moved to `--fx-*`. The
+success state was redesigned per instruction — no longer a plain green
+checkmark box. It now uses the same ❦ "new find" mark and moss-lightest
+uppercase label FishDex's `CaughtPlate` uses for a first-time species, with
+the confirmation headline in Spectral serif, so logging a trip reads as a
+small earned moment rather than a form-submit acknowledgment.
+
+**Map (`Map.jsx`, `components/InstrumentDial.jsx`):** Header, mode toggle,
+explore-mode dropdown, empty state, bottom sheet (stop/segment detail),
+species chips, and the "Open in Maps"/"Satellite view" links all moved to
+`--fx-*`. **Not touched, deliberately:** `MapContainer`/`TileLayer`/
+`CircleMarker` (react-leaflet, can't consume CSS custom properties anyway —
+see `tokens.js`), and `scoreColor`/`stopColor`'s heat-scale + Moss/Ash
+marker colors, which Section 2's "Data" note already flags as an
+unchanged, unsolved saturated holdover. `InstrumentDial.jsx` also moved to
+`--fx-*` — it's shared with Trips.jsx, so Trips' instrument dial now
+inherits the new moss ring color too, as a side effect of the shared
+component; nothing else on Trips changed.
+
+**Corrections found while cross-checking the live app against the request
+(flagged rather than guessed on, per instruction):**
+- **No Profile screen exists.** There is no `Profile.jsx`, no `/profile`
+  route, no avatar/stat-strip/angler-card component anywhere in
+  `web/src/`. The five real screens are Chat, Map, Log, Trips, FishDex
+  (`components/NavBar.jsx`). This work item is on hold pending
+  clarification of what "Profile" should actually point at.
+- **Map is not a placeholder.** `Map.jsx` is a fully working react-leaflet
+  map with live segment data, personal/explore layers, and instrument
+  dials in a bottom sheet — not a "coming soon" state. The token pass was
+  applied to its real chrome; nothing was held back waiting for it to be
+  built.
+- **Chat has no starter-chip cards or conditions chip.** Neither exists in
+  `Chat.jsx` or any component today — there was nothing there to reskin.
+  If these are planned but unbuilt, they need to be scoped as new work,
+  not a token pass.
+- **Grain texture is now implemented — it was not before, including on
+  `FishDex.jsx` itself.** This was flagged here as "correctly never built,"
+  optional per the handoff README. Re-checking the live render (not this
+  doc) surfaced that FishDex itself had no grain either, so nothing was
+  actually being matched. Added as a shared `.fx-grain` utility
+  (`fishdex-tokens.css`) + `GrainOverlay.jsx`, using the exact SVG
+  fractal-noise snippet from the original mockup at opacity .05, now live on
+  Chat, Log, Trips, and FishDex — see "Trips Migration" below for the
+  z-index/paint-order note on why it stays clear of photography.
+
+### Trips Migration
+
+Applied after the above pass, once cross-checking the live app surfaced two
+things this doc previously got wrong: (1) Trips was still described as
+legacy/not-yet-migrated, and (2) its full-bleed photo cards were described as
+backend-blocked — both stale. `src/storage/catches.py` /
+`src/services/photo_storage.py` already exist and `GET /sessions` already
+returns `catches[].photo_url`; `Trips.jsx` was just never updated to consume
+the pattern.
+
+**Trips (`Trips.jsx`):** Migrated fully onto `--fx-*` and Spectral, joining
+Chat/Log/Map/FishDex. The session-card list (small thumbnail + text below)
+is replaced by `TripPlate`, the same full-bleed-photo-plus-bottom-scrim
+structure as FishDex's `CaughtPlate`, applied to a trip/session instead of a
+species: location name + comma-joined species list on the left (serif
+title / italic serif caption, identical treatment to `CaughtPlate`'s common
+name / scientific name), date + species count on the right (mirroring
+`CaughtPlate`'s figure/caption column). Sessions with no catch photo fall
+back to the same quiet fish-glyph placeholder tile FishDex uses for a
+missing photo — never a broken `<img>`. The two `InstrumentDial` readouts
+(air temp, pressure) move from a below-the-fold row to an Overlay-Chrome
+scrim badge in the plate's top-left corner (translucent Bark + blur, scaled
+down to fit), and an anomaly flag, when present, becomes a small Rust pill
+in the top-right corner — the one alarm-color exception noted above, in the
+badge slot `CaughtPlate` reserves for its PB/new-find pill.
+
+**Grain and the photo plates — a paint-order detail worth keeping.**
+`.fx-grain` is `z-index: 0`, not a positive value, and is always the first
+child of its screen root. Photo plates use `position: relative` with no
+explicit `z-index` (so, per CSS stacking rules, they land in the same
+z-index:auto/0 bucket as the grain layer) — with grain first in DOM order,
+plates paint after it, i.e. on top. A positive z-index on `.fx-grain` would
+invert this and put the noise texture visibly over real photography, which
+the Sparing Grain Rule below explicitly rules out. Keep this in mind before
+"simplifying" the z-index — it's load-bearing.
