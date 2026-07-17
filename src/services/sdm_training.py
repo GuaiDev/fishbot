@@ -22,6 +22,8 @@ from sklearn.metrics import roc_auc_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from src.services.species_family import LARGEMOUTH_BASS_POOL
+
 logger = logging.getLogger(__name__)
 
 _MODELS_DIR = Path("data/processed/sdm_models")
@@ -31,8 +33,10 @@ _KM_PER_DEGREE = 111.0
 _MAX_GBIF_UNCERTAINTY_M = 5_000
 MODEL_VERSION = "2c-v1"
 
-# M. nigricans and M. salmoides are treated as one SDM target (pooled)
-_BASS_POOL = frozenset(["Micropterus nigricans", "Micropterus salmoides"])
+# M. nigricans (Northern Largemouth Bass) and M. salmoides (Florida Bass) are
+# the same fish under a 2022 taxonomic split — pooled as one SDM target.
+# Nothing to do with Smallmouth Bass (M. dolomieu). See species_family.py.
+_BASS_POOL = LARGEMOUTH_BASS_POOL
 
 # Species for which stocking is a genuine training-data confound.
 # Stocked fish are planted at accessible put-and-take sites, not selected for
@@ -88,7 +92,7 @@ SPECIES_TO_TRAIN = [
     "Culaea inconstans",  # Brook Stickleback
     "Etheostoma caeruleum",  # Rainbow Darter
     "Ambloplites rupestris",  # Rock Bass
-    "Micropterus nigricans",  # Smallmouth + Largemouth bass (pooled via _BASS_POOL)
+    "Micropterus nigricans",  # Largemouth Bass — Northern + Florida taxa pooled via _BASS_POOL
 ]
 
 

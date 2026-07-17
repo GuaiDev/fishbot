@@ -14,7 +14,7 @@ COMMON_TO_SCIENTIFIC = {
     "brook stickleback": "Culaea inconstans",
     "rainbow darter": "Etheostoma caeruleum",
     "rock bass": "Ambloplites rupestris",
-    "smallmouth bass": "Micropterus nigricans",
+    "smallmouth bass": "Micropterus dolomieu",
 
     # High-priority targets for future models
     "channel catfish": "Ictalurus punctatus",
