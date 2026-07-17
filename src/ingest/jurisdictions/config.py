@@ -136,8 +136,7 @@ register(JurisdictionConfig(
         ),
         "regulations": (
             "https://www2.gov.bc.ca/assets/gov/sports-recreation-arts-and-culture/"
-            "outdoor-recreation/freshwater-fishing/fishing-regulations/"
-            "freshwater-fishing-regulations-synopsis-2025-2027.pdf"
+            "outdoor-recreation/fishing-and-hunting/freshwater-fishing/fishing_synopsis.pdf"
         ),
     },
     notes=(
@@ -147,6 +146,10 @@ register(JurisdictionConfig(
         "requires openpyxl; URL resolved dynamically via CKAN package_show since the dated "
         "attachment filename changes every release — see nuseds.py. No stream coordinates "
         "in the source data as of the 2026-06 release. "
+        "REGULATIONS: 2025-2027 synopsis now has 9 regions (7 split into 7A/Omineca + "
+        "7B/Peace, new 8/Okanagan) — zone stores 71/72 for the split pair; verified all 9 "
+        "extract correctly (39k-58k chars each) despite a PDF text-layer artifact that "
+        "doubles every character in Region 7A's running header — see regulations.py. "
         "WATER QUALITY: EMS results (measurements) require DataBC Distribution API; "
         "see water_quality.py TODO for resource IDs and query approach."
     ),
