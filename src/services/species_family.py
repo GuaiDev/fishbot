@@ -34,6 +34,7 @@ FAMILY_DISPLAY_NAMES = {
     "Petromyzontidae": "Lampreys",
     "Sciaenidae": "Drum",
     "Gobiidae": "Gobies",
+    "Polyodontidae": "Paddlefish",
 }
 
 # scientific (binomial) name -> family (scientific)
@@ -142,6 +143,8 @@ SPECIES_TO_FAMILY: dict[str, str] = {
     "Aplodinotus grunniens": "Sciaenidae",
     # Gobiidae — Gobies (invasive)
     "Neogobius melanostomus": "Gobiidae",
+    # Polyodontidae — Paddlefish (extirpated from Ontario)
+    "Polyodon spathula": "Polyodontidae",
 }
 
 # Documented exception (handoff README): Common Carp gets its own folder

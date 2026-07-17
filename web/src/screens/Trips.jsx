@@ -97,7 +97,7 @@ function TripPlate({ session }) {
 
       <div style={{ position: 'absolute', left: 16, right: 16, bottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 20, color: '#f6f1e6' }}>
+          <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 20, color: 'var(--fx-text-primary-2)' }}>
             {location}
           </div>
           {species.length > 0 && (
@@ -111,7 +111,7 @@ function TripPlate({ session }) {
           )}
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: 10 }}>
-          <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 16, color: '#f6f1e6' }}>
+          <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 16, color: 'var(--fx-text-primary-2)' }}>
             {formatDate(date)}
           </div>
           <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 10.5, color: 'rgba(246,241,230,.6)' }}>

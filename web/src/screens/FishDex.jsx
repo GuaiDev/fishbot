@@ -171,7 +171,7 @@ function DiscoveryHeader({ discovered, total, distinctFamilyCount, isGrouped }) 
         }}>
           <div style={{
             height: '100%', borderRadius: 2, width: `${pct}%`,
-            background: 'linear-gradient(90deg,#5f6d44,#9fae7a)',
+            background: 'linear-gradient(90deg,var(--fx-moss-dark),var(--fx-moss-light))',
           }} />
         </div>
         <div
@@ -236,7 +236,7 @@ function CaughtPlate({ species }) {
           padding: '5px 10px', borderRadius: 14,
           background: showPB ? 'rgba(24,18,8,.62)' : 'rgba(20,24,12,.6)',
           backdropFilter: 'blur(4px)',
-          border: `1px solid ${showPB ? '#c2a06a' : '#869663'}`,
+          border: `1px solid ${showPB ? 'var(--fx-brass)' : 'var(--fx-moss)'}`,
         }}>
           {showPB ? (
             <>
@@ -258,7 +258,7 @@ function CaughtPlate({ species }) {
 
       <div style={{ position: 'absolute', left: 16, right: 16, bottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div>
-          <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 23, color: '#f6f1e6' }}>
+          <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 23, color: 'var(--fx-text-primary-2)' }}>
             {species.commonName}
           </div>
           {species.scientificName && (
@@ -271,7 +271,7 @@ function CaughtPlate({ species }) {
           )}
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 20, color: '#f6f1e6' }}>{figure}</div>
+          <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 20, color: 'var(--fx-text-primary-2)' }}>{figure}</div>
           <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 10.5, color: 'rgba(246,241,230,.6)' }}>{caption}</div>
         </div>
       </div>
@@ -288,7 +288,7 @@ function UndiscoveredRow({ species }) {
     }}>
       <div style={{
         width: 52, height: 52, borderRadius: 10, flexShrink: 0,
-        background: 'repeating-linear-gradient(45deg,#20221a,#20221a 7px,#1a1c15 7px,#1a1c15 14px)',
+        background: 'repeating-linear-gradient(45deg,var(--fx-card-fill-dark),var(--fx-card-fill-dark) 7px,var(--fx-card-fill-quiet) 7px,var(--fx-card-fill-quiet) 14px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4c4e40',
       }}>
         {FISH_GLYPH}
@@ -342,7 +342,7 @@ function FamilyGridCell({ species }) {
     return (
       <div style={{
         position: 'relative', height: 150, borderRadius: 14, overflow: 'hidden',
-        background: 'repeating-linear-gradient(45deg,#20221a,#20221a 7px,#1a1c15 7px,#1a1c15 14px)',
+        background: 'repeating-linear-gradient(45deg,var(--fx-card-fill-dark),var(--fx-card-fill-dark) 7px,var(--fx-card-fill-quiet) 7px,var(--fx-card-fill-quiet) 14px)',
       }}>
         <div style={{ position: 'absolute', top: 10, left: 10, color: '#4c4e40' }}>{FISH_GLYPH}</div>
         <div style={{ position: 'absolute', left: 10, bottom: 10 }}>
@@ -437,7 +437,7 @@ function CollapsedFamilyBanner({ family, onExpand }) {
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(9,10,6,.86) 42%, rgba(9,10,6,.15))' }} />
 
         <div style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', right: 48 }}>
-          <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 17, color: '#f6f1e6', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 17, color: 'var(--fx-text-primary-2)', display: 'flex', alignItems: 'center', gap: 6 }}>
             {family.familyCommonName}
             {family.hasNewFind && <span style={{ color: 'var(--fx-moss-lightest)', fontSize: 13 }}>❦</span>}
           </div>

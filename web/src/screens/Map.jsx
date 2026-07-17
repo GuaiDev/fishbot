@@ -331,10 +331,12 @@ export default function Map() {
                 }}>
                   <div style={{
                     height: '100%',
-                    width: `${(selected.score || 0) * 100}%`,
+                    width: '100%',
+                    transform: `scaleX(${selected.score || 0})`,
+                    transformOrigin: 'left',
                     background: scoreColor(selected.score),
                     borderRadius: 3,
-                    transition: 'width 0.3s',
+                    transition: 'transform 0.3s',
                   }} />
                 </div>
                 <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 10, color: 'var(--fx-text-muted)', marginTop: 2 }}>
