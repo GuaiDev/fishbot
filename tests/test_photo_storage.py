@@ -1,6 +1,7 @@
 """Tests for photo upload validation and storage."""
 
 import io
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException, UploadFile
@@ -34,13 +35,13 @@ def test_save_valid_jpeg_writes_file_and_returns_url():
     assert Path(result["path"]).exists()
 
 
-def test_save_png_uses_png_extension():
+def test_save_png_is_normalized_to_jpeg():
     from src.services.photo_storage import save_photo
 
     buf = io.BytesIO()
     Image.new("RGB", (50, 50)).save(buf, format="PNG")
     result = save_photo(_upload(buf.getvalue(), "image/png", filename="catch.png"))
-    assert result["url"].endswith(".png")
+    assert result["url"].endswith(".jpg")
 
 
 def test_rejects_unsupported_content_type():
@@ -83,3 +84,65 @@ def test_filenames_are_unguessable_uuids_not_client_supplied():
     result = save_photo(_upload(_jpeg_bytes(), "image/jpeg", filename="../../etc/passwd.jpg"))
     assert "etc" not in result["url"]
     assert "passwd" not in result["url"]
+
+
+def test_oversized_dimensions_are_downscaled_to_max_dimension():
+    from src.services.photo_storage import MAX_DIMENSION, save_photo
+
+    result = save_photo(_upload(_jpeg_bytes(size=(4032, 3024)), "image/jpeg"))
+    with Image.open(result["path"]) as saved:
+        assert max(saved.size) == MAX_DIMENSION
+        # aspect ratio preserved (4032:3024 == 4:3)
+        assert saved.size[0] / saved.size[1] == pytest.approx(4032 / 3024, rel=0.01)
+
+
+def test_small_photo_is_not_upscaled():
+    from src.services.photo_storage import save_photo
+
+    result = save_photo(_upload(_jpeg_bytes(size=(50, 50)), "image/jpeg"))
+    with Image.open(result["path"]) as saved:
+        assert saved.size == (50, 50)
+
+
+def test_resize_substantially_reduces_file_size_for_large_photos():
+    from src.services.photo_storage import save_photo
+
+    original = _jpeg_bytes(size=(4032, 3024))
+    result = save_photo(_upload(original, "image/jpeg"))
+    saved_size = Path(result["path"]).stat().st_size
+    assert saved_size < len(original)
+
+
+def test_original_bytes_are_not_kept_on_disk():
+    """The whole point of the fix: only the resized copy should exist, not the original."""
+    from src.services.photo_storage import save_photo
+
+    result = save_photo(_upload(_jpeg_bytes(size=(4032, 3024)), "image/jpeg"))
+    files = list(Path(result["path"]).parent.iterdir())
+    assert files == [Path(result["path"])]
+
+
+def test_exif_orientation_is_applied_before_resize():
+    from src.services.photo_storage import save_photo
+
+    # A wide (landscape) image tagged as needing 90-degree rotation should be
+    # saved tall (portrait) — i.e. exif_transpose actually ran.
+    buf = io.BytesIO()
+    img = Image.new("RGB", (200, 100), color=(10, 20, 30))
+    exif = img.getexif()
+    exif[0x0112] = 6  # Orientation tag: rotate 90 CW to display correctly
+    img.save(buf, format="JPEG", exif=exif)
+
+    result = save_photo(_upload(buf.getvalue(), "image/jpeg"))
+    with Image.open(result["path"]) as saved:
+        assert saved.size == (100, 200)
+
+
+def test_png_with_transparency_is_converted_to_rgb():
+    from src.services.photo_storage import save_photo
+
+    buf = io.BytesIO()
+    Image.new("RGBA", (50, 50), (10, 20, 30, 128)).save(buf, format="PNG")
+    result = save_photo(_upload(buf.getvalue(), "image/png", filename="catch.png"))
+    with Image.open(result["path"]) as saved:
+        assert saved.mode == "RGB"
