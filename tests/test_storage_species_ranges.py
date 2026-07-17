@@ -1,5 +1,7 @@
 """Tests for species range storage layer."""
 
+import json
+
 from src.models.species_range import SpeciesRange
 from src.storage.database import get_db
 from src.storage.species_ranges import (
@@ -7,6 +9,7 @@ from src.storage.species_ranges import (
     query_sar_species,
     query_species_range,
     upsert_species_ranges,
+    upsert_species_ranges_merged,
 )
 
 
@@ -161,3 +164,163 @@ def test_is_species_at_risk_unknown(tmp_path):
     db = _make_db(tmp_path)
     upsert_species_ranges(db, _sample_ranges())
     assert is_species_at_risk(db, "narwhal") is False
+
+
+# --- upsert_species_ranges_merged: cross-jurisdiction merge safety ---
+# Guards against the bug found while testing QC species ranges live: a blind
+# upsert_all(pk="species") let a later jurisdiction's ingest silently wipe an
+# earlier jurisdiction's jurisdictions_present list and status fields.
+
+
+def test_merged_upsert_unions_jurisdictions_present_for_shared_species(tmp_path):
+    db = _make_db(tmp_path)
+    upsert_species_ranges(db, _sample_ranges())  # seeds Smallmouth Bass w/ CA-ON, US-MI, US-OH
+
+    upsert_species_ranges_merged(
+        db,
+        [
+            {
+                "species": "Smallmouth Bass",
+                "scientific_name": "Micropterus dolomieu",
+                "native_to_ontario": 0,
+                "native_to_great_lakes": 0,
+                "introduced": 0,
+                "extirpated_from_ontario": 0,
+                "general_range": "Quebec — centroid (47.146, -74.768)",
+                "habitat_notes": None,
+                "jurisdictions_present": json.dumps(["CA-QC"]),
+                "sara_status": None,
+                "ontario_status": None,
+                "cosewic_status": None,
+                "fishing_notes": None,
+                "last_updated": "2026-06-01T00:00:00",
+            }
+        ],
+    )
+
+    result = query_species_range(db, "Smallmouth Bass")
+    assert set(result.jurisdictions_present) == {"CA-ON", "US-MI", "US-OH", "CA-QC"}
+
+
+def test_merged_upsert_preserves_existing_status_fields(tmp_path):
+    db = _make_db(tmp_path)
+    upsert_species_ranges(db, _sample_ranges())  # Smallmouth Bass has ontario_status set
+
+    upsert_species_ranges_merged(
+        db,
+        [
+            {
+                "species": "Smallmouth Bass",
+                "scientific_name": "Micropterus dolomieu",
+                "native_to_ontario": 0,
+                "native_to_great_lakes": 0,
+                "introduced": 0,
+                "extirpated_from_ontario": 0,
+                "general_range": "Quebec — centroid (47.146, -74.768)",
+                "habitat_notes": None,
+                "jurisdictions_present": json.dumps(["CA-QC"]),
+                "sara_status": None,  # must not wipe the existing "Not at Risk"
+                "ontario_status": None,
+                "cosewic_status": None,
+                "fishing_notes": None,
+                "last_updated": "2026-06-01T00:00:00",
+            }
+        ],
+    )
+
+    row = db["species_ranges"].get("Smallmouth Bass")
+    assert row["ontario_status"] == "Not at Risk"
+    assert row["sara_status"] == "Not at Risk"
+
+
+def test_merged_upsert_appends_general_range_instead_of_replacing(tmp_path):
+    db = _make_db(tmp_path)
+    upsert_species_ranges(db, _sample_ranges())
+
+    upsert_species_ranges_merged(
+        db,
+        [
+            {
+                "species": "Smallmouth Bass",
+                "scientific_name": "Micropterus dolomieu",
+                "native_to_ontario": 0,
+                "native_to_great_lakes": 0,
+                "introduced": 0,
+                "extirpated_from_ontario": 0,
+                "general_range": "Quebec — centroid (47.146, -74.768)",
+                "habitat_notes": None,
+                "jurisdictions_present": json.dumps(["CA-QC"]),
+                "sara_status": None,
+                "ontario_status": None,
+                "cosewic_status": None,
+                "fishing_notes": None,
+                "last_updated": "2026-06-01T00:00:00",
+            }
+        ],
+    )
+
+    row = db["species_ranges"].get("Smallmouth Bass")
+    assert "Widespread in southern and central Ontario." in row["general_range"]
+    assert "Quebec — centroid (47.146, -74.768)" in row["general_range"]
+
+
+def test_merged_upsert_inserts_fresh_row_for_new_species(tmp_path):
+    db = _make_db(tmp_path)
+    upsert_species_ranges(db, _sample_ranges())
+
+    upsert_species_ranges_merged(
+        db,
+        [
+            {
+                "species": "Striped Bass",
+                "scientific_name": "Morone saxatilis",
+                "native_to_ontario": 0,
+                "native_to_great_lakes": 0,
+                "introduced": 0,
+                "extirpated_from_ontario": 0,
+                "general_range": "Quebec — centroid (51.581, -57.237)",
+                "habitat_notes": "Family: Moronidae",
+                "jurisdictions_present": json.dumps(["CA-QC"]),
+                "sara_status": None,
+                "ontario_status": None,
+                "cosewic_status": None,
+                "fishing_notes": None,
+                "last_updated": "2026-06-01T00:00:00",
+            }
+        ],
+    )
+
+    result = query_species_range(db, "Striped Bass")
+    assert result is not None
+    assert result.jurisdictions_present == ["CA-QC"]
+
+
+def test_merged_upsert_does_not_regress_existing_species_count(tmp_path):
+    """A no-op re-ingest of the same jurisdiction must not create duplicate rows."""
+    db = _make_db(tmp_path)
+    upsert_species_ranges(db, _sample_ranges())
+    before = db["species_ranges"].count
+
+    upsert_species_ranges_merged(
+        db,
+        [
+            {
+                "species": "Smallmouth Bass",
+                "scientific_name": "Micropterus dolomieu",
+                "native_to_ontario": 0,
+                "native_to_great_lakes": 0,
+                "introduced": 0,
+                "extirpated_from_ontario": 0,
+                "general_range": "Widespread in southern and central Ontario.",
+                "habitat_notes": None,
+                "jurisdictions_present": json.dumps(["CA-ON", "US-MI", "US-OH"]),
+                "sara_status": "Not at Risk",
+                "ontario_status": "Not at Risk",
+                "cosewic_status": None,
+                "fishing_notes": None,
+                "last_updated": "2026-06-01T00:00:00",
+            }
+        ],
+    )
+
+    assert db["species_ranges"].count == before

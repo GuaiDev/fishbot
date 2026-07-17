@@ -233,7 +233,13 @@ register(JurisdictionConfig(
         "HYDRO: Réseau hydrographique du Québec (RHN) — no queryable WFS found as of 2026; "
         "OSM covers QC rivers adequately. "
         "WATER QUALITY: MELCCFP RSQER is PDF-only; DataStream covers some QC watersheds. "
-        "SPECIES_RANGES: MELCCFP GeoJSON — 118 freshwater fish species, COSEWIC status included."
+        "SPECIES_RANGES: MELCCFP GeoJSON — verified 118 freshwater fish species extract "
+        "correctly (an earlier version returned 0 records — wrong property names). No "
+        "COSEWIC/SARA status field exists in this file (contrary to an earlier note here); "
+        "coordinates require reprojection from EPSG:32198 (pyproj, added as a dependency) — "
+        "not the fiona/GDAL-requiring .gdb. Ingest uses upsert_species_ranges_merged so QC "
+        "species shared with CA-ON (Largemouth Bass, Walleye, ...) get their "
+        "jurisdictions_present unioned rather than overwritten — see species_ranges.py."
     ),
 ))
 
