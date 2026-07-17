@@ -40,19 +40,25 @@ def ingest_dfo_critical_habitat(
 
 
 def ingest_dfo_sar_range() -> int:
-    """Download DFO SAR range GDB and upsert to species_ranges. Returns count.
+    """Fetch DFO SAR critical habitat (national ESRI REST) and upsert to
+    species_ranges. Returns count. Does not take lat/lng — Canada-wide.
 
-    Requires fiona. Returns 0 if fiona is not installed.
-    Run once (annual release); does not take lat/lng — province-wide.
+    Uses the merge-safe upsert (not a blind upsert_all) — species_ranges is
+    shared across jurisdictions and keyed on common name, and this source is
+    national in scope, so it collides with existing per-province rows for
+    any species also covered by ON/QC/US data (see qc_ingest.py's
+    ingest_qc_species_ranges for the bug this guards against).
     """
+    from src.storage.species_ranges import upsert_species_ranges_merged
+
     _mod = importlib.import_module(
         "src.ingest.jurisdictions.ca_national.dfo_sar_range"
     )
     db = get_db()
-    logger.info("DFO SAR range: downloading and parsing GDB …")
+    logger.info("DFO SAR range: fetching critical habitat …")
     rows = _mod.fetch_sar_ranges()
     if rows:
-        db["species_ranges"].upsert_all(rows, pk="species")
+        upsert_species_ranges_merged(db, rows)
     logger.info("DFO SAR range: %d range records stored", len(rows))
     return len(rows)
 
