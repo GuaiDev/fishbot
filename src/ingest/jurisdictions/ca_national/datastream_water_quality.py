@@ -6,7 +6,32 @@ DataStream is a DFO-funded open water quality database covering:
 
 API: OData v4 at https://api.datastream.org/v1/odata/v4/
 Requires DATASTREAM_API_KEY environment variable (free registration at
-  https://datastream.org/en/api).
+  https://datastream.org/en/api — see .env.example). Untested end-to-end
+  against real data since we don't hold a key; the query construction below
+  is verified against DataStream's public OpenAPI schema and README
+  (https://github.com/datastreamapp/api-docs) rather than a live call, and
+  fixes several confirmed-wrong assumptions an earlier version made:
+
+  - Locations' join key to Records.MonitoringLocationID is the field "ID"
+    (string station code, e.g. "ABC123") — NOT "Id" (a different, internal
+    numeric row identifier the docs' own sample response shows holding an
+    unrelated value on the same record). Selecting/using "Id" as the join
+    key would return correct-looking station metadata but 0 records for
+    every station, since MonitoringLocationID would never match.
+  - Locations' coordinate fields are plain decimal-degree "Latitude"/
+    "Longitude" (type: number in the schema) — not "LatitudeE7"/"LongitudeE7"
+    (an E7 fixed-point convention this API doesn't use at all; dividing a
+    nonexistent field by 1e7 silently produced lat=lng=0.0 for every station,
+    which then got filtered out by the "skip 0,0" check, so this looked like
+    "no stations found" rather than an obvious error).
+  - There's no OData geospatial function support evidenced anywhere in the
+    docs (only eq/in/lt/gt/lte/gte/ne). The README's own bounding-box example
+    is a plain numeric range filter on Latitude/Longitude, which is what's
+    used here instead of the geo.intersects/geography'POLYGON(...)' syntax
+    an earlier version used (also unverified against any documented spatial
+    type on these fields).
+  - $orderby is explicitly commented out in the docs' parameter list (not
+    yet supported) — removed from the Records query.
 
 Table: water_quality_readings (shared schema with PWQMN, BC EMS, etc.)
 
@@ -31,15 +56,21 @@ _CACHE_DIR = Path("data/cache/datastream")
 _CACHE_TTL_SECONDS = 7 * 86400
 _USER_AGENT = "fishbot/1.0 (personal fishing exploration bot)"
 
-# DataStream parameter names → local column names
-_PARAM_MAP: dict[str, str] = {
-    "Dissolved Oxygen": "do_mgl",
-    "Dissolved Oxygen, %Sat": None,  # skip
-    "pH": "ph",
-    "Temperature, Water": "temp_c",
-    "Specific Conductance": "conductivity_us_cm",
-    "Turbidity": "turbidity_fnu",
-    "Conductivity": "conductivity_us_cm",
+# DataStream CharacteristicName -> local column name. Matched case-insensitively
+# (see _parse_records) since the exact canonical casing DataStream uses isn't
+# confirmed without a live key — the docs' own examples mix "Temperature, water"
+# and "Dissolved oxygen saturation" (sentence case), so a case-sensitive exact
+# match against a guessed casing risks silently dropping every reading for a
+# parameter, the same failure mode as the Id/ID and LatitudeE7 bugs above.
+_PARAM_MAP: dict[str, str | None] = {
+    "dissolved oxygen": "do_mgl",
+    "dissolved oxygen (do)": "do_mgl",
+    "dissolved oxygen saturation": None,  # % saturation, not mg/L — skip
+    "ph": "ph",
+    "temperature, water": "temp_c",
+    "specific conductance": "conductivity_us_cm",
+    "conductivity": "conductivity_us_cm",
+    "turbidity": "turbidity_fnu",
 }
 
 logger = logging.getLogger(__name__)
@@ -66,7 +97,9 @@ def fetch_water_quality_readings(
     if not stations:
         logger.info(
             "DataStream: no monitoring locations found within %.0fkm of (%.4f, %.4f)",
-            radius_km, lat, lng,
+            radius_km,
+            lat,
+            lng,
         )
         return []
 
@@ -89,15 +122,16 @@ def fetch_water_quality_readings(
 def _fetch_locations(lat: float, lng: float, radius_km: float, api_key: str) -> list[dict]:
     """Return DataStream locations within a bbox around lat/lng."""
     min_lon, min_lat, max_lon, max_lat = _bbox(lat, lng, radius_km)
-    # OData geo filter — DataStream supports a geographic bounding box via custom param
+    # Plain numeric range filter — the documented bounding-box pattern
+    # (README "Bounding box" example under $filter). No OData spatial
+    # function (geo.intersects etc.) is evidenced anywhere in the API docs.
     params = {
         "$filter": (
-            f"geo.intersects(geo.point(Longitude, Latitude), "
-            f"geography'POLYGON(({min_lon} {min_lat},{max_lon} {min_lat},"
-            f"{max_lon} {max_lat},{min_lon} {max_lat},{min_lon} {min_lat}))')"
+            f"Longitude gt '{min_lon}' and Longitude lt '{max_lon}' and "
+            f"Latitude gt '{min_lat}' and Latitude lt '{max_lat}'"
         ),
         "$top": str(_PAGE_SIZE),
-        "$select": "Id,MonitoringLocationName,LatitudeE7,LongitudeE7,MonitoringLocationTypeCode",
+        "$select": "ID,Name,Latitude,Longitude,MonitoringLocationType",
     }
     try:
         data = _cached_get(_LOCATIONS_URL, params, _CACHE_TTL_SECONDS, api_key)
@@ -107,16 +141,20 @@ def _fetch_locations(lat: float, lng: float, radius_km: float, api_key: str) -> 
 
     stations = []
     for loc in data.get("value", []):
-        slat = (loc.get("LatitudeE7") or 0) / 1e7
-        slng = (loc.get("LongitudeE7") or 0) / 1e7
-        if slat == 0 and slng == 0:
+        # "ID" (string station code) is the field Records.MonitoringLocationID
+        # actually matches — "Id" is a different, unrelated internal field.
+        station_id = str(loc.get("ID") or "").strip()
+        slat, slng = loc.get("Latitude"), loc.get("Longitude")
+        if not station_id or slat is None or slng is None:
             continue
-        stations.append({
-            "id": str(loc.get("Id") or ""),
-            "name": str(loc.get("MonitoringLocationName") or "Unknown"),
-            "lat": slat,
-            "lng": slng,
-        })
+        stations.append(
+            {
+                "id": station_id,
+                "name": str(loc.get("Name") or "Unknown"),
+                "lat": float(slat),
+                "lng": float(slng),
+            }
+        )
     return stations
 
 
@@ -125,11 +163,9 @@ def _fetch_records(location_id: str, api_key: str) -> list[dict]:
     params = {
         "$filter": f"MonitoringLocationID eq '{location_id}'",
         "$top": str(_PAGE_SIZE),
-        "$select": (
-            "Id,ActivityStartDate,CharacteristicName,"
-            "ResultSampleFractionText,ResultValue,ResultUnit"
-        ),
-        "$orderby": "ActivityStartDate desc",
+        "$select": "Id,ActivityStartDate,CharacteristicName,ResultValue,ResultUnit",
+        # $orderby is not yet supported per the API docs (commented out in
+        # the parameter list) — omitted rather than risk a rejected request.
     }
     data = _cached_get(_RECORDS_URL, params, _CACHE_TTL_SECONDS, api_key)
     return data.get("value", [])
@@ -143,7 +179,7 @@ def _parse_records(station: dict, raw_records: list[dict]) -> list[dict]:
         sampled_at = (rec.get("ActivityStartDate") or "")[:10]
         if not sampled_at:
             continue
-        param = rec.get("CharacteristicName") or ""
+        param = (rec.get("CharacteristicName") or "").strip().lower()
         col = _PARAM_MAP.get(param)
         if col is None:
             continue
@@ -154,20 +190,23 @@ def _parse_records(station: dict, raw_records: list[dict]) -> list[dict]:
             continue
 
         key = f"{station['id']}_{sampled_at}"
-        entry = by_date.setdefault(key, {
-            "record_id": key,
-            "station_id": station["id"],
-            "station_name": station["name"],
-            "lat": station["lat"],
-            "lng": station["lng"],
-            "jurisdiction": _jurisdiction_for(station["lat"], station["lng"]),
-            "sampled_at": sampled_at,
-            "do_mgl": None,
-            "ph": None,
-            "temp_c": None,
-            "conductivity_us_cm": None,
-            "turbidity_fnu": None,
-        })
+        entry = by_date.setdefault(
+            key,
+            {
+                "record_id": key,
+                "station_id": station["id"],
+                "station_name": station["name"],
+                "lat": station["lat"],
+                "lng": station["lng"],
+                "jurisdiction": _jurisdiction_for(station["lat"], station["lng"]),
+                "sampled_at": sampled_at,
+                "do_mgl": None,
+                "ph": None,
+                "temp_c": None,
+                "conductivity_us_cm": None,
+                "turbidity_fnu": None,
+            },
+        )
         entry[col] = value
 
     return list(by_date.values())
@@ -175,6 +214,7 @@ def _parse_records(station: dict, raw_records: list[dict]) -> list[dict]:
 
 def _jurisdiction_for(lat: float, lng: float) -> str:
     from src.jurisdictions.geo import jurisdiction_for_coords
+
     return jurisdiction_for_coords(lat, lng) or "CA"
 
 
@@ -204,7 +244,9 @@ def _cached_get(url: str, params: dict, ttl: int, api_key: str) -> dict:
     if response.status_code >= 400:
         logger.error(
             "DataStream HTTP %d — url=%s body=%s",
-            response.status_code, url, response.text[:300],
+            response.status_code,
+            url,
+            response.text[:300],
         )
     response.raise_for_status()
     data = response.json()
