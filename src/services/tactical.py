@@ -620,6 +620,7 @@ def get_tactical_recommendation_for_agent(
     water_temp_c: float | None = None,
     time_of_day: str | None = None,
     notes: str | None = None,
+    when: str = "now",  # "now" | "tomorrow" | "in_3_days" | "this_weekend"
     _month: int | None = None,  # injectable for tests
 ) -> str:
     # Resolve species from profile if not provided
@@ -655,16 +656,22 @@ def get_tactical_recommendation_for_agent(
     pressure_trend: str | None = None
     jurisdiction: str | None = None
 
+    _is_forecast = when in ("tomorrow", "in_3_days", "this_weekend")
+
     if lat is not None and lng is not None:
         try:
             from src.services.weather import get_conditions_for_agent, get_pressure_trend_for_agent
 
-            cond = json.loads(get_conditions_for_agent(lat, lng, "now"))
+            cond = json.loads(get_conditions_for_agent(lat, lng, when))
             jurisdiction = cond.get("jurisdiction")
             if temp_c is None:
                 temp_c = cond.get("temperature_c")
-            pressure_json = json.loads(get_pressure_trend_for_agent(lat, lng))
-            pressure_trend = pressure_json.get("trend")
+            if _is_forecast:
+                # Pressure trend is unavailable for forecast windows; leave as sentinel
+                pressure_trend = "unavailable for forecasts — treat as neutral"
+            else:
+                pressure_json = json.loads(get_pressure_trend_for_agent(lat, lng))
+                pressure_trend = pressure_json.get("trend")
         except Exception:
             pass  # graceful degradation — rules still run without conditions
 
