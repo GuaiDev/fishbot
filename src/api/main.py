@@ -650,6 +650,19 @@ def get_db_stats(_: None = Depends(verify_api_key)):
     }
 
 
+@app.get("/admin/dashboard")
+def admin_dashboard(_: None = Depends(verify_api_key)):
+    """Admin usage dashboard: users, message volume, top queried locations,
+    tool call frequency, ingest coverage, and an approximate Sonnet-vs-Haiku
+    API cost estimate. Protected by X-Api-Key.
+    """
+    from src.services.admin_dashboard import build_dashboard
+    from src.storage.database import get_db
+
+    db = get_db()
+    return build_dashboard(db)
+
+
 @app.post("/admin/invite")
 def create_invite(body: dict, user: dict = Depends(get_current_user)):
     """Generate an invite code. Admin only."""

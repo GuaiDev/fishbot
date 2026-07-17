@@ -1,0 +1,228 @@
+"""Tests for the admin dashboard aggregation service."""
+
+from datetime import datetime, timedelta
+
+from src.services.admin_dashboard import build_dashboard
+from src.storage.database import get_db
+
+
+def _make_db(tmp_path):
+    return get_db(tmp_path / "test.db")
+
+
+def _seed_users(db, n=2):
+    """Adds n *additional* users on top of the default user (id=1, 'jason')
+    get_db()'s ensure_schema always seeds — start at id=2 to avoid colliding."""
+    for i in range(2, n + 2):
+        db.execute(
+            "INSERT INTO users (id, username, display_name, role) VALUES (?, ?, ?, 'beta')",
+            [i, f"user{i}", f"User {i}"],
+        )
+    db.conn.commit()
+
+
+def _seed_chat_message(db, role, created_at, session_id="s1", user_id=1):
+    db.execute(
+        "INSERT INTO chat_sessions (session_id, user_id) VALUES (?, ?) "
+        "ON CONFLICT(session_id) DO NOTHING",
+        [session_id, user_id],
+    )
+    db.execute(
+        "INSERT INTO chat_messages (session_id, role, content, turn_index, created_at, user_id) "
+        "VALUES (?, ?, 'hi', 0, ?, ?)",
+        [session_id, role, created_at, user_id],
+    )
+    db.conn.commit()
+
+
+def _seed_tool_usage(db, tool_name, success=1):
+    db.execute(
+        "INSERT INTO tool_usage (tool_name, success) VALUES (?, ?)", [tool_name, success]
+    )
+    db.conn.commit()
+
+
+def _seed_api_usage(db, model, input_tokens, output_tokens, timestamp=None):
+    db.execute(
+        "INSERT INTO api_usage (model, input_tokens, output_tokens, total_tokens, timestamp) "
+        "VALUES (?, ?, ?, ?, COALESCE(?, datetime('now')))",
+        [model, input_tokens, output_tokens, input_tokens + output_tokens, timestamp],
+    )
+    db.conn.commit()
+
+
+def _seed_synthesis(db, cache_key, location_name, lat=None, lng=None, hit_count=0):
+    db.execute(
+        "INSERT INTO segment_synthesis (cache_key, lat, lng, location_name, synthesis, hit_count) "
+        "VALUES (?, ?, ?, ?, 'test synthesis', ?)",
+        [cache_key, lat, lng, location_name, hit_count],
+    )
+    db.conn.commit()
+
+
+# --- users ---
+
+
+def test_total_users_count(tmp_path):
+    db = _make_db(tmp_path)
+    _seed_users(db, n=3)
+    result = build_dashboard(db)
+    assert result["users"]["total_users"] == 4  # 3 seeded + the default admin user
+
+
+def test_messages_sent_windowed_correctly(tmp_path):
+    db = _make_db(tmp_path)
+    _seed_users(db, n=1)
+    now = datetime.now()
+    _seed_chat_message(db, "user", (now - timedelta(days=1)).isoformat())
+    _seed_chat_message(db, "user", (now - timedelta(days=10)).isoformat())
+    _seed_chat_message(db, "user", (now - timedelta(days=40)).isoformat())
+    _seed_chat_message(db, "assistant", now.isoformat())  # not counted — assistant reply
+
+    result = build_dashboard(db)
+    msgs = result["users"]["messages_sent"]
+    assert msgs["last_7_days"] == 1
+    assert msgs["last_30_days"] == 2
+    assert msgs["all_time"] == 3
+
+
+# --- tool usage ---
+
+
+def test_tool_usage_frequency_and_failures(tmp_path):
+    db = _make_db(tmp_path)
+    _seed_tool_usage(db, "get_conditions")
+    _seed_tool_usage(db, "get_conditions")
+    _seed_tool_usage(db, "get_conditions", success=0)
+    _seed_tool_usage(db, "log_trip")
+
+    result = build_dashboard(db)
+    by_name = {t["tool_name"]: t for t in result["tool_usage"]}
+    assert by_name["get_conditions"]["calls"] == 3
+    assert by_name["get_conditions"]["failures"] == 1
+    assert by_name["log_trip"]["calls"] == 1
+    # Sorted by call count descending
+    assert result["tool_usage"][0]["tool_name"] == "get_conditions"
+
+
+# --- ingest status ---
+
+
+def test_ingest_status_observations_by_source_and_jurisdiction(tmp_path):
+    db = _make_db(tmp_path)
+    db.execute(
+        "INSERT INTO observations (observation_id, species, lat, lng, observed_on, "
+        "jurisdiction, source) "
+        "VALUES (1, 'Test', 43.0, -79.0, '2026-01-01', 'CA-ON', 'iNaturalist')"
+    )
+    db.execute(
+        "INSERT INTO observations (observation_id, species, lat, lng, observed_on, "
+        "jurisdiction, source) "
+        "VALUES (2, 'Test', 49.0, -122.0, '2026-01-01', 'CA-BC', 'FISS')"
+    )
+    db.conn.commit()
+
+    result = build_dashboard(db)
+    obs = {
+        (r["source"], r["jurisdiction"]): r["count"]
+        for r in result["ingest_status"]["observations"]
+    }
+    assert obs[("iNaturalist", "CA-ON")] == 1
+    assert obs[("FISS", "CA-BC")] == 1
+
+
+def test_ingest_status_gbif_labeled_correctly(tmp_path):
+    db = _make_db(tmp_path)
+    db.execute(
+        "INSERT INTO gbif_observations (gbif_key, species, lat, lng, jurisdiction) "
+        "VALUES (1, 'Test', 43.0, -79.0, 'CA-ON')"
+    )
+    db.conn.commit()
+
+    result = build_dashboard(db)
+    gbif = result["ingest_status"]["gbif_observations"]
+    assert gbif == [{"source": "GBIF", "jurisdiction": "CA-ON", "count": 1}]
+
+
+# --- top locations ---
+
+
+def test_top_locations_groups_name_only_entries(tmp_path):
+    """Real usage in this project is 100% name-only synthesis cache entries
+    (no lat/lng) — a lat/lng-only grouping would always return empty."""
+    db = _make_db(tmp_path)
+    _seed_synthesis(db, "name:willoway park", "Willoway Park", hit_count=5)
+    _seed_synthesis(db, "name:bronte creek", "Bronte Creek", hit_count=0)
+
+    result = build_dashboard(db)
+    names = [loc["sample_location_name"] for loc in result["top_locations"]]
+    assert "Willoway Park" in names
+    assert "Bronte Creek" in names
+    # Willoway (hit_count=5 -> 6 queries) ranks above Bronte (0 -> 1 query)
+    assert result["top_locations"][0]["sample_location_name"] == "Willoway Park"
+    assert result["top_locations"][0]["query_count"] == 6
+
+
+def test_top_locations_clusters_nearby_coordinates(tmp_path):
+    db = _make_db(tmp_path)
+    _seed_synthesis(db, "geo:43.467,-79.687", "Oakville A", lat=43.4671, lng=-79.6871, hit_count=2)
+    _seed_synthesis(db, "geo:43.468,-79.688", "Oakville B", lat=43.4682, lng=-79.6882, hit_count=1)
+
+    result = build_dashboard(db)
+    # Both round to (43.5, -79.7) at 1-decimal clustering -> merged into one entry
+    assert len(result["top_locations"]) == 1
+    assert result["top_locations"][0]["query_count"] == 5  # (2+1) + (1+1)
+
+
+def test_top_locations_respects_limit(tmp_path):
+    db = _make_db(tmp_path)
+    for i in range(15):
+        _seed_synthesis(db, f"name:place{i}", f"Place {i}", hit_count=i)
+    result = build_dashboard(db)
+    assert len(result["top_locations"]) == 10
+
+
+# --- api cost estimate ---
+
+
+def test_api_cost_estimate_sonnet_vs_haiku(tmp_path):
+    db = _make_db(tmp_path)
+    _seed_api_usage(db, "claude-sonnet-4-6", 1_000_000, 1_000_000)
+    _seed_api_usage(db, "claude-haiku-4-5-20251001", 1_000_000, 1_000_000)
+
+    result = build_dashboard(db)
+    by_model = {m["model"]: m for m in result["api_cost_estimate"]["all_time"]["by_model"]}
+    # Sonnet: $3 input + $15 output = $18; Haiku: $1 + $5 = $6
+    assert by_model["claude-sonnet-4-6"]["estimated_usd"] == 18.0
+    assert by_model["claude-haiku-4-5-20251001"]["estimated_usd"] == 6.0
+    assert result["api_cost_estimate"]["all_time"]["total_usd"] == 24.0
+
+
+def test_api_cost_estimate_unknown_model_not_silently_priced(tmp_path):
+    db = _make_db(tmp_path)
+    _seed_api_usage(db, "some-future-model-nobody-has-priced-yet", 1_000_000, 1_000_000)
+
+    result = build_dashboard(db)
+    all_time = result["api_cost_estimate"]["all_time"]
+    assert all_time["unpriced_calls"] == 1
+    assert all_time["by_model"][0]["estimated_usd"] is None
+    assert all_time["total_usd"] == 0.0
+
+
+def test_api_cost_estimate_last_30_days_excludes_older_calls(tmp_path):
+    db = _make_db(tmp_path)
+    old = (datetime.now() - timedelta(days=60)).isoformat()
+    _seed_api_usage(db, "claude-sonnet-4-6", 1_000_000, 0, timestamp=old)
+    _seed_api_usage(db, "claude-sonnet-4-6", 1_000_000, 0)
+
+    result = build_dashboard(db)
+    assert result["api_cost_estimate"]["last_30_days"]["total_usd"] == 3.0  # only the recent call
+    assert result["api_cost_estimate"]["all_time"]["total_usd"] == 6.0  # both calls
+
+
+def test_dashboard_does_not_crash_on_empty_database(tmp_path):
+    db = _make_db(tmp_path)
+    result = build_dashboard(db)
+    assert result["users"]["total_users"] == 1  # the default admin user get_db() seeds
+    assert result["top_locations"] == []
+    assert result["tool_usage"] == []
