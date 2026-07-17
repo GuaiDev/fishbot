@@ -131,9 +131,8 @@ register(JurisdictionConfig(
             "WHSE_ENVIRONMENTAL_MONITORING.EMS_MONITORING_LOCN_TYPES_SVW/ows"
         ),
         "salmon_escapement": (
-            "https://api-proxy.edh-cde.dfo-mpo.gc.ca/catalogue/records/"
-            "c48669a3-045b-400d-b730-48aafe8c5ee6/attachments/"
-            "All Areas Simplified Version_20251030.xlsx"
+            "https://open.canada.ca/data/en/dataset/"
+            "c48669a3-045b-400d-b730-48aafe8c5ee6"
         ),
         "regulations": (
             "https://www2.gov.bc.ca/assets/gov/sports-recreation-arts-and-culture/"
@@ -144,7 +143,10 @@ register(JurisdictionConfig(
     notes=(
         "Global sources (iNat, GBIF, WSC, OSM, eBird) work automatically for any BC lat/lng. "
         "STOCKING: derived from FISS via ACTIVITY_CODE filter — no quantity data available. "
-        "SALMON_ESCAPEMENT: NuSEDS XLSX, annual DFO release; requires openpyxl. "
+        "SALMON_ESCAPEMENT: NuSEDS 'All Areas NuSEDS' XLSX (421k records verified 2026-06), "
+        "requires openpyxl; URL resolved dynamically via CKAN package_show since the dated "
+        "attachment filename changes every release — see nuseds.py. No stream coordinates "
+        "in the source data as of the 2026-06 release. "
         "WATER QUALITY: EMS results (measurements) require DataBC Distribution API; "
         "see water_quality.py TODO for resource IDs and query approach."
     ),

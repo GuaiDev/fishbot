@@ -1,24 +1,59 @@
-"""NuSEDS salmon escapement data for BC (and Yukon — filtered to BC).
+"""NuSEDS salmon escapement data for BC.
 
-Downloads the DFO NuSEDS (New Salmon Escapement Database System) simplified
-XLSX file — 9,100+ spawning populations with annual escapement counts going
-back to the 1920s.
+Downloads the DFO NuSEDS (New Salmon Escapement Database System) "All Areas
+NuSEDS" XLSX file — 420,000+ population-year-species records going back to
+the 1950s (most recent decades much denser).
 
 Source:
-  https://api-proxy.edh-cde.dfo-mpo.gc.ca/catalogue/records/
-  c48669a3-045b-400d-b730-48aafe8c5ee6/attachments/
-  All Areas Simplified Version_20251030.xlsx
+  Open Government Portal dataset c48669a3-045b-400d-b730-48aafe8c5ee6
+  https://open.canada.ca/data/en/dataset/c48669a3-045b-400d-b730-48aafe8c5ee6
+  The actual attachment URL is dated (e.g. "All Areas NuSEDS_20260601.xlsx")
+  and changes with each DFO release, so the URL is resolved dynamically via
+  the CKAN package_show API rather than hardcoded (same pattern as
+  ca_qc/species_ranges.py's _find_fish_geojson_url).
+
+  Note: there is also an "All Areas Simplified Version" resource, but as of
+  the 2026-06 release it is published as CSV (not XLSX despite the display
+  name) and its schema drops GAZETTED_NAME/WATERSHED_CDE/POP_ID in favour of
+  a leaner AREA/WATERBODY/POPULATION set — this adapter uses the full
+  "All Areas NuSEDS" XLSX instead since it carries the richer field set our
+  schema wants (POP_ID, GAZETTED_NAME, WATERSHED_CDE).
+
+No region filtering is needed: "All Areas NuSEDS" AREA values are BC Pacific
+Fishery Management Area codes (1-29, with sub-letters like "2E"/"29K") —
+verified against the full 2026-06 export with no Yukon/transboundary codes
+present (those live in a separate "Yukon and Transboundary NuSEDS" resource
+this adapter does not fetch). Every row in this file is BC data.
+
+Neither the full nor the simplified NuSEDS export includes stream
+coordinates as of the 2026-06 release (no X/Y or LAT/LON columns) — an
+older adapter version assumed lat/lng columns existed; they don't anymore.
+stream_lat/stream_lng are always None until a future release restores them
+or we join against another BC waterbody gazetteer.
 
 Requirements:
   openpyxl (for XLSX reading). Install with: uv add openpyxl
   Without openpyxl this module returns 0 records with a clear warning.
 
 Table: salmon_escapement
-  record_id (PK), population_id, waterbody_name, gazetted_name, watershed_code,
+  record_id (PK) = "NUSEDS_{ACT_ID}" — ACT_ID is NuSEDS's own unique row ID
+  (verified 0 duplicates across 421k rows; POP_ID+year+species has 518
+  duplicate combinations from multiple run designations, so ACT_ID is the
+  correct natural key, not a composite of the other fields).
+  population_id, waterbody_name, gazetted_name, watershed_code,
   species, analysis_year, max_estimate, stream_lat, stream_lng,
   jurisdiction='CA-BC', source='NuSEDS'
 
-Cache TTL: 365 days (annual release).
+  max_estimate prefers NATURAL_SPAWNERS_TOTAL (the literal "escapement" to
+  spawning grounds) and falls back to TOTAL_RETURN_TO_RIVER when the natural
+  spawner count isn't tracked for that record. Many rows (roughly 70% in the
+  2026-06 export) carry no numeric estimate at all — ADULT_PRESENCE/
+  JACK_PRESENCE is a presence/absence record instead. These rows are still
+  kept (max_estimate=None) since presence itself is signal.
+
+Cache TTL: 365 days for the downloaded XLSX (annual-ish release cadence);
+30 days for the package metadata lookup so a new dated release is picked up
+reasonably promptly without hammering the CKAN API on every ingest run.
 """
 
 import logging
@@ -27,50 +62,23 @@ from pathlib import Path
 
 import httpx
 
-_XLSX_URL = (
-    "https://api-proxy.edh-cde.dfo-mpo.gc.ca/catalogue/records/"
-    "c48669a3-045b-400d-b730-48aafe8c5ee6/attachments/"
-    "All Areas Simplified Version_20251030.xlsx"
-)
-_XLSX_PATH = Path("data/raw/nuseds_all_areas_simplified.xlsx")
-_CACHE_TTL_SECONDS = 365 * 86400
+_PACKAGE_URL = "https://open.canada.ca/data/api/action/package_show"
+_PACKAGE_ID = "c48669a3-045b-400d-b730-48aafe8c5ee6"
+_XLSX_PATH = Path("data/raw/nuseds_all_areas.xlsx")
+_PACKAGE_CACHE_PATH = Path("data/cache/nuseds/package_meta.json")
+_XLSX_CACHE_TTL_SECONDS = 365 * 86400
+_PACKAGE_CACHE_TTL_SECONDS = 30 * 86400
 _USER_AGENT = "fishbot/1.0 (personal fishing exploration bot)"
-
-# AREA field values that belong to BC (not Yukon, not other provinces)
-_BC_AREA_KEYWORDS = frozenset({
-    "fraser",
-    "columbia",
-    "skeena",
-    "nass",
-    "central coast",
-    "vancouver island",
-    "haida gwaii",
-    "queen charlotte",
-    "okanagan",
-    "thompson",
-    "boundary bay",
-    "strait of georgia",
-    "johnstone strait",
-    "queen charlotte strait",
-    "rivers inlet",
-    "smith inlet",
-    "bute inlet",
-    "howe sound",
-    "harrison",
-    "lillooet",
-    "chilcotin",
-    "nicola",
-    "similkameen",
-})
 
 logger = logging.getLogger(__name__)
 
 
 def fetch_salmon_escapement() -> list[dict]:
-    """Download and parse NuSEDS XLSX. Returns rows for salmon_escapement table.
+    """Download and parse the NuSEDS "All Areas NuSEDS" XLSX.
 
-    Returns empty list if openpyxl is not installed or the download fails.
-    Filters to BC only (excludes Yukon and other provinces).
+    Returns rows for the salmon_escapement table. Returns empty list if
+    openpyxl is not installed, the current download URL can't be resolved,
+    or the download fails.
     """
     try:
         import openpyxl  # type: ignore
@@ -81,7 +89,17 @@ def fetch_salmon_escapement() -> list[dict]:
         )
         return []
 
-    _download_xlsx_if_stale()
+    xlsx_url = _find_xlsx_url()
+    if not xlsx_url:
+        logger.warning(
+            "NuSEDS: could not resolve the current 'All Areas NuSEDS' XLSX URL "
+            "from the CKAN package. Check "
+            "https://open.canada.ca/data/en/dataset/c48669a3-045b-400d-b730-48aafe8c5ee6 "
+            "for the current resource name/URL."
+        )
+        return []
+
+    _download_xlsx_if_stale(xlsx_url)
     if not _XLSX_PATH.exists():
         logger.error("NuSEDS: XLSX not found at %s", _XLSX_PATH)
         return []
@@ -94,11 +112,11 @@ def fetch_salmon_escapement() -> list[dict]:
     header_raw = next(rows_iter, None)
     if header_raw is None:
         logger.error("NuSEDS: XLSX has no header row")
+        wb.close()
         return []
 
-    # Normalize header: strip whitespace, uppercase
     header = [str(h or "").strip().upper() for h in header_raw]
-    logger.info("NuSEDS: XLSX columns: %s", header[:20])
+    logger.info("NuSEDS: XLSX columns: %s", header)
 
     def col(name: str) -> int | None:
         try:
@@ -106,97 +124,149 @@ def fetch_salmon_escapement() -> list[dict]:
         except ValueError:
             return None
 
-    # Map expected column names (the XLSX may use these or variants)
     idx = {
-        "pop_id":       col("POPULATION_ID") or col("POP_ID"),
-        "area":         col("AREA") or col("REGION"),
-        "stream":       col("STREAM") or col("STREAM_NAME") or col("WATERBODY_NAME"),
-        "gazetted":     col("GAZETTED_NAME") or col("GAZETTED"),
-        "watershed":    col("WATERSHED_CDE") or col("WATERSHED_CODE"),
-        "species":      col("SPECIES") or col("SPECIES_QUALIFIED"),
-        "year":         col("ANALYSIS_YR") or col("YEAR") or col("ANALYSIS_YEAR"),
-        "estimate":     col("MAX_ESTIMATE") or col("ESTIMATE") or col("MAX"),
-        "lat":          col("Y") or col("LAT") or col("LATITUDE"),
-        "lng":          col("X") or col("LON") or col("LONGITUDE") or col("LNG"),
+        "act_id": col("ACT_ID"),
+        "pop_id": col("POP_ID"),
+        "waterbody": col("WATERBODY"),
+        "gazetted": col("GAZETTED_NAME"),
+        "watershed": col("WATERSHED_CDE") or col("FWA_WATERSHED_CDE"),
+        "species": col("SPECIES"),
+        "year": col("ANALYSIS_YR"),
+        "natural_spawners_total": col("NATURAL_SPAWNERS_TOTAL"),
+        "total_return": col("TOTAL_RETURN_TO_RIVER"),
     }
 
     rows: list[dict] = []
-    n_skipped_region = 0
+    n_skipped = 0
 
     for raw_row in rows_iter:
-        area = str(raw_row[idx["area"]] or "").strip().lower() if idx["area"] is not None else ""
-        if not any(kw in area for kw in _BC_AREA_KEYWORDS):
-            n_skipped_region += 1
-            continue
 
-        pop_id = str(raw_row[idx["pop_id"]] or "").strip() if idx["pop_id"] is not None else ""
-        stream = str(raw_row[idx["stream"]] or "").strip() if idx["stream"] is not None else ""
-        gazetted = str(raw_row[idx["gazetted"]] or "").strip() if idx["gazetted"] is not None else ""
-        watershed = str(raw_row[idx["watershed"]] or "").strip() if idx["watershed"] is not None else ""
-        species = str(raw_row[idx["species"]] or "").strip() if idx["species"] is not None else ""
+        def get(field: str):
+            i = idx[field]
+            return raw_row[i] if i is not None else None
+
+        act_id = get("act_id")
+        pop_id = str(get("pop_id") or "").strip()
+        species = str(get("species") or "").strip()
 
         try:
-            year = int(raw_row[idx["year"]]) if idx["year"] is not None else None
+            year = int(get("year")) if get("year") is not None else None
         except (TypeError, ValueError):
             year = None
-        try:
-            estimate = int(raw_row[idx["estimate"]]) if idx["estimate"] is not None else None
-        except (TypeError, ValueError):
-            estimate = None
-        try:
-            slat = float(raw_row[idx["lat"]]) if idx["lat"] is not None else None
-        except (TypeError, ValueError):
-            slat = None
-        try:
-            slng = float(raw_row[idx["lng"]]) if idx["lng"] is not None else None
-        except (TypeError, ValueError):
-            slng = None
 
-        if not pop_id or not species or year is None:
+        if act_id is None or not pop_id or not species or year is None:
+            n_skipped += 1
             continue
 
-        record_id = f"NUSEDS_{pop_id}_{year}_{species[:20]}"
-        rows.append({
-            "record_id": record_id,
-            "population_id": pop_id,
-            "waterbody_name": stream or None,
-            "gazetted_name": gazetted or None,
-            "watershed_code": watershed or None,
-            "species": species,
-            "analysis_year": year,
-            "max_estimate": estimate,
-            "stream_lat": slat,
-            "stream_lng": slng,
-            "jurisdiction": "CA-BC",
-            "source": "NuSEDS",
-            "ingested_at": None,  # set by caller
-        })
+        estimate = get("natural_spawners_total")
+        if estimate is None:
+            estimate = get("total_return")
+        try:
+            estimate = int(estimate) if estimate is not None else None
+        except (TypeError, ValueError):
+            estimate = None
+
+        waterbody = str(get("waterbody") or "").strip() or None
+        gazetted = str(get("gazetted") or "").strip() or None
+        watershed = str(get("watershed") or "").strip() or None
+
+        rows.append(
+            {
+                "record_id": f"NUSEDS_{act_id}",
+                "population_id": pop_id,
+                "waterbody_name": waterbody,
+                "gazetted_name": gazetted,
+                "watershed_code": watershed,
+                "species": species,
+                "analysis_year": year,
+                "max_estimate": estimate,
+                "stream_lat": None,
+                "stream_lng": None,
+                "jurisdiction": "CA-BC",
+                "source": "NuSEDS",
+                "ingested_at": None,  # set by caller
+            }
+        )
 
     wb.close()
     logger.info(
-        "NuSEDS: %d BC records extracted (%d non-BC rows skipped)",
-        len(rows), n_skipped_region,
+        "NuSEDS: %d BC records extracted (%d rows skipped — missing ACT_ID/POP_ID/species/year)",
+        len(rows),
+        n_skipped,
     )
     return rows
 
 
-def _download_xlsx_if_stale() -> None:
+def _find_xlsx_url() -> str | None:
+    """Resolve the current dated 'All Areas NuSEDS' XLSX URL via CKAN package_show.
+
+    Excludes the "Simplified Version" resource (published as CSV as of 2026-06
+    with a leaner schema) and the regional-subset resources (Fraser/Johnstone
+    Strait/North Coast/etc.) — we want the single full "All Areas NuSEDS.xlsx".
+    """
+    _PACKAGE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    pkg = None
+    if _PACKAGE_CACHE_PATH.exists():
+        age = time.time() - _PACKAGE_CACHE_PATH.stat().st_mtime
+        if age < _PACKAGE_CACHE_TTL_SECONDS:
+            import json
+
+            pkg = json.loads(_PACKAGE_CACHE_PATH.read_text())
+
+    if pkg is None:
+        try:
+            resp = httpx.get(
+                _PACKAGE_URL,
+                params={"id": _PACKAGE_ID},
+                headers={"User-Agent": _USER_AGENT},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            import json
+
+            pkg = resp.json().get("result", {})
+            _PACKAGE_CACHE_PATH.write_text(json.dumps(pkg))
+        except Exception as exc:
+            logger.error("NuSEDS: CKAN package fetch failed: %s", exc)
+            return None
+
+    for resource in pkg.get("resources", []):
+        name = (resource.get("name") or "").strip()
+        name_lower = name.lower()
+        fmt = (resource.get("format") or "").lower()
+        url = resource.get("url") or ""
+        if (
+            name_lower.startswith("all areas nuseds")
+            and "simplified" not in name_lower
+            and fmt == "xlsx"
+            and url.lower().endswith(".xlsx")
+        ):
+            logger.info("NuSEDS: resolved current XLSX resource: %s (%s)", name, url)
+            return url
+
+    return None
+
+
+def _download_xlsx_if_stale(url: str) -> None:
     _XLSX_PATH.parent.mkdir(parents=True, exist_ok=True)
     if _XLSX_PATH.exists():
         age = time.time() - _XLSX_PATH.stat().st_mtime
-        if age < _CACHE_TTL_SECONDS:
+        if age < _XLSX_CACHE_TTL_SECONDS:
             logger.info("NuSEDS: XLSX cache fresh, skipping download")
             return
-    logger.info("NuSEDS: downloading from DFO EDH …")
+    logger.info("NuSEDS: downloading from Open Government Portal …")
     try:
-        response = httpx.get(
-            _XLSX_URL,
+        with httpx.stream(
+            "GET",
+            url,
             follow_redirects=True,
             headers={"User-Agent": _USER_AGENT},
             timeout=300,
-        )
-        response.raise_for_status()
-        _XLSX_PATH.write_bytes(response.content)
-        logger.info("NuSEDS: downloaded %.1f MB", len(response.content) / 1_048_576)
+        ) as response:
+            response.raise_for_status()
+            with _XLSX_PATH.open("wb") as fh:
+                for chunk in response.iter_bytes(chunk_size=65536):
+                    fh.write(chunk)
+        logger.info("NuSEDS: downloaded %.1f MB", _XLSX_PATH.stat().st_size / 1_048_576)
     except Exception as exc:
         logger.error("NuSEDS: download failed: %s", exc)
