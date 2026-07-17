@@ -150,8 +150,9 @@ register(JurisdictionConfig(
         "7B/Peace, new 8/Okanagan) — zone stores 71/72 for the split pair; verified all 9 "
         "extract correctly (39k-58k chars each) despite a PDF text-layer artifact that "
         "doubles every character in Region 7A's running header — see regulations.py. "
-        "WATER QUALITY: EMS results (measurements) require DataBC Distribution API; "
-        "see water_quality.py TODO for resource IDs and query approach."
+        "WATER QUALITY: stations WFS works; results still stubbed. Source system "
+        "migrated EMS->EnMoDS 2026-03 (old EMS results resource ID was stale/dead) — "
+        "see water_quality.py TODO for current EnMoDS resource URLs and sizes."
     ),
 ))
 
