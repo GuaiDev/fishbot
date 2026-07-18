@@ -166,6 +166,16 @@ def _catch_stats(db: Database, species_limit: int = 10, pb_limit: int = 10) -> d
     the AI-suggested species). personal_bests only exists once the
     multi-catch logging UI's structured size field has been used at least
     once for a species — see trip_logger._maybe_update_personal_best.
+
+    Both totals sum `count` (defaulting to 1 for rows the pre-multi-catch
+    NL-only path never set) rather than counting rows: a single catch card
+    logged as "3 shorthead redhorse" is one row but three fish, and a naive
+    COUNT(*) silently reported it as one, making a real catch invisible next
+    to older single-fish rows. Grouped case-insensitively for the same
+    reason personal_bests already normalizes its key (.strip().lower()) —
+    "Shorthead Redhorse" (typed directly, no NL match) and "shorthead
+    redhorse" (from the NL parser) are the same species and must not split
+    into two rows here.
     """
     if "catches" not in db.table_names():
         return {
@@ -175,11 +185,11 @@ def _catch_stats(db: Database, species_limit: int = 10, pb_limit: int = 10) -> d
             "avg_catches_per_session": 0.0,
         }
 
-    total_catches = db.execute("SELECT COUNT(*) FROM catches").fetchone()[0]
+    total_catches = db.execute("SELECT SUM(COALESCE(count, 1)) FROM catches").fetchone()[0] or 0
 
     by_species = db.execute(
-        "SELECT species, COUNT(*) AS n FROM catches "
-        "GROUP BY species ORDER BY n DESC LIMIT ?",
+        "SELECT LOWER(TRIM(species)) AS species_key, SUM(COALESCE(count, 1)) AS n "
+        "FROM catches GROUP BY species_key ORDER BY n DESC LIMIT ?",
         [species_limit],
     ).fetchall()
 

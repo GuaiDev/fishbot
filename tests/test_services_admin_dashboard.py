@@ -276,6 +276,52 @@ def test_catch_stats_by_species_respects_top_10_limit(tmp_path):
     assert len(result["by_species"]) == 10
 
 
+def test_catch_stats_by_species_sums_count_not_rows(tmp_path):
+    """A single catch card logged as 'x3' (one row, count=3) must contribute
+    3 to its species' total, not 1 — this was the original bug: a real
+    3-fish catch card ranked *below* two separate 1-fish log entries."""
+    from src.storage.catches import insert_catch
+
+    db = _make_db(tmp_path)
+    session_id, stop_id = _seed_session_and_stop(db)
+    insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1,
+        species="shorthead redhorse", count=3,
+    )
+    insert_catch(db, stop_id=stop_id, session_id=session_id, user_id=1, species="creek chub")
+    insert_catch(db, stop_id=stop_id, session_id=session_id, user_id=1, species="creek chub")
+
+    result = build_dashboard(db)["catch_stats"]
+    assert result["total_catches"] == 5  # 3 + 1 + 1
+    by_species = {r["species"]: r["count"] for r in result["by_species"]}
+    assert by_species["shorthead redhorse"] == 3
+    assert by_species["creek chub"] == 2
+    # Outranks creek chub now that it correctly counts 3 fish, not 1 row.
+    assert result["by_species"][0]["species"] == "shorthead redhorse"
+
+
+def test_catch_stats_by_species_merges_case_variants(tmp_path):
+    """Species logged with different casing (e.g. a directly-typed structured
+    catch vs. one that came through NL parsing) must merge into one group,
+    not silently split a species' true total across two dashboard rows."""
+    from src.storage.catches import insert_catch
+
+    db = _make_db(tmp_path)
+    session_id, stop_id = _seed_session_and_stop(db)
+    insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1,
+        species="Shorthead Redhorse", count=3,
+    )
+    insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1,
+        species="shorthead redhorse", count=1,
+    )
+
+    result = build_dashboard(db)["catch_stats"]
+    assert len(result["by_species"]) == 1
+    assert result["by_species"][0]["count"] == 4
+
+
 def test_catch_stats_personal_bests_count_and_top_10(tmp_path):
     from src.storage.catches import insert_catch, update_personal_best_if_higher
 
