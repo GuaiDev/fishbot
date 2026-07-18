@@ -1,5 +1,5 @@
-"""Admin dashboard data — usage, tool activity, ingest coverage, and a rough
-Sonnet-vs-Haiku API cost estimate.
+"""Admin dashboard data — usage, tool activity, ingest coverage, catch-level
+stats, and a rough Sonnet-vs-Haiku API cost estimate.
 
 Served behind GET /admin/dashboard (X-Api-Key protected, see src/api/main.py).
 Pure read-only aggregation over existing tables — no new schema.
@@ -38,6 +38,7 @@ def build_dashboard(db: Database) -> dict[str, Any]:
         "tool_usage": _tool_usage(db),
         "ingest_status": _ingest_status(db),
         "api_cost_estimate": _api_cost_estimate(db),
+        "catch_stats": _catch_stats(db),
     }
 
 
@@ -153,6 +154,67 @@ def _ingest_status(db: Database) -> dict[str, Any]:
         ]
 
     return status
+
+
+def _catch_stats(db: Database, species_limit: int = 10, pb_limit: int = 10) -> dict[str, Any]:
+    """Catch-level visibility (all users): volume, species mix, personal
+    bests, and catches-per-session — this was previously only checkable by
+    SSHing into the Railway container and querying the SQLite file directly.
+
+    species counts every logged catch (species_confirmed or not — "logged"
+    is about volume of activity, not whether the user has since confirmed
+    the AI-suggested species). personal_bests only exists once the
+    multi-catch logging UI's structured size field has been used at least
+    once for a species — see trip_logger._maybe_update_personal_best.
+    """
+    if "catches" not in db.table_names():
+        return {
+            "total_catches": 0,
+            "by_species": [],
+            "personal_bests": {"users_with_a_pb": 0, "top_10_largest": []},
+            "avg_catches_per_session": 0.0,
+        }
+
+    total_catches = db.execute("SELECT COUNT(*) FROM catches").fetchone()[0]
+
+    by_species = db.execute(
+        "SELECT species, COUNT(*) AS n FROM catches "
+        "GROUP BY species ORDER BY n DESC LIMIT ?",
+        [species_limit],
+    ).fetchall()
+
+    users_with_a_pb = 0
+    top_largest: list[dict[str, Any]] = []
+    if "personal_bests" in db.table_names():
+        users_with_a_pb = db.execute(
+            "SELECT COUNT(DISTINCT user_id) FROM personal_bests"
+        ).fetchone()[0]
+        rows = db.execute(
+            "SELECT pb.species, pb.best_size_cm, u.username "
+            "FROM personal_bests pb LEFT JOIN users u ON u.id = pb.user_id "
+            "ORDER BY pb.best_size_cm DESC LIMIT ?",
+            [pb_limit],
+        ).fetchall()
+        top_largest = [
+            {"species": r[0], "biggest_size_cm": r[1], "username": r[2]} for r in rows
+        ]
+
+    total_sessions = (
+        db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        if "sessions" in db.table_names()
+        else 0
+    )
+    avg_catches_per_session = round(total_catches / total_sessions, 2) if total_sessions else 0.0
+
+    return {
+        "total_catches": total_catches,
+        "by_species": [{"species": r[0], "count": r[1]} for r in by_species],
+        "personal_bests": {
+            "users_with_a_pb": users_with_a_pb,
+            "top_10_largest": top_largest,
+        },
+        "avg_catches_per_session": avg_catches_per_session,
+    }
 
 
 def _rate_for_model(model: str) -> tuple[float, float] | None:

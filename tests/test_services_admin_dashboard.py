@@ -226,3 +226,109 @@ def test_dashboard_does_not_crash_on_empty_database(tmp_path):
     assert result["users"]["total_users"] == 1  # the default admin user get_db() seeds
     assert result["top_locations"] == []
     assert result["tool_usage"] == []
+
+
+# --- catch stats ---
+
+
+def _seed_session_and_stop(db):
+    session_id = db["sessions"].insert({"date": "2026-06-01"}).last_pk
+    stop_id = db["stops"].insert({
+        "session_id": session_id, "location_text": "Bronte Creek", "species_caught": "[]",
+    }).last_pk
+    return session_id, stop_id
+
+
+def test_catch_stats_empty_database_has_no_crash(tmp_path):
+    db = _make_db(tmp_path)
+    result = build_dashboard(db)["catch_stats"]
+    assert result["total_catches"] == 0
+    assert result["by_species"] == []
+    assert result["personal_bests"] == {"users_with_a_pb": 0, "top_10_largest": []}
+    assert result["avg_catches_per_session"] == 0.0
+
+
+def test_catch_stats_total_and_by_species(tmp_path):
+    from src.storage.catches import insert_catch
+
+    db = _make_db(tmp_path)
+    session_id, stop_id = _seed_session_and_stop(db)
+    insert_catch(db, stop_id=stop_id, session_id=session_id, user_id=1, species="creek chub")
+    insert_catch(db, stop_id=stop_id, session_id=session_id, user_id=1, species="creek chub")
+    insert_catch(db, stop_id=stop_id, session_id=session_id, user_id=1, species="rock bass")
+
+    result = build_dashboard(db)["catch_stats"]
+    assert result["total_catches"] == 3
+    by_species = {r["species"]: r["count"] for r in result["by_species"]}
+    assert by_species == {"creek chub": 2, "rock bass": 1}
+    assert result["by_species"][0]["species"] == "creek chub"  # sorted by count desc
+
+
+def test_catch_stats_by_species_respects_top_10_limit(tmp_path):
+    from src.storage.catches import insert_catch
+
+    db = _make_db(tmp_path)
+    session_id, stop_id = _seed_session_and_stop(db)
+    for i in range(15):
+        insert_catch(db, stop_id=stop_id, session_id=session_id, user_id=1, species=f"species{i}")
+
+    result = build_dashboard(db)["catch_stats"]
+    assert len(result["by_species"]) == 10
+
+
+def test_catch_stats_personal_bests_count_and_top_10(tmp_path):
+    from src.storage.catches import insert_catch, update_personal_best_if_higher
+
+    db = _make_db(tmp_path)
+    _seed_users(db, n=1)  # user id 2, on top of default user id 1
+    session_id, stop_id = _seed_session_and_stop(db)
+
+    c1 = insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1, species="shorthead redhorse"
+    )
+    update_personal_best_if_higher(
+        db, user_id=1, species="shorthead redhorse", size_cm=38.0, catch_id=c1
+    )
+
+    c2 = insert_catch(db, stop_id=stop_id, session_id=session_id, user_id=2, species="common carp")
+    update_personal_best_if_higher(db, user_id=2, species="common carp", size_cm=55.0, catch_id=c2)
+
+    result = build_dashboard(db)["catch_stats"]["personal_bests"]
+    assert result["users_with_a_pb"] == 2
+    top = {r["species"]: r for r in result["top_10_largest"]}
+    assert top["common carp"]["biggest_size_cm"] == 55.0
+    assert top["common carp"]["username"] == "user2"
+    assert top["shorthead redhorse"]["biggest_size_cm"] == 38.0
+    # Sorted largest first
+    assert result["top_10_largest"][0]["species"] == "common carp"
+
+
+def test_catch_stats_personal_bests_top_10_limit(tmp_path):
+    from src.storage.catches import insert_catch, update_personal_best_if_higher
+
+    db = _make_db(tmp_path)
+    session_id, stop_id = _seed_session_and_stop(db)
+    for i in range(15):
+        c = insert_catch(
+            db, stop_id=stop_id, session_id=session_id, user_id=1, species=f"species{i}"
+        )
+        update_personal_best_if_higher(
+            db, user_id=1, species=f"species{i}", size_cm=float(i), catch_id=c
+        )
+
+    result = build_dashboard(db)["catch_stats"]["personal_bests"]
+    assert len(result["top_10_largest"]) == 10
+
+
+def test_catch_stats_avg_catches_per_session(tmp_path):
+    from src.storage.catches import insert_catch
+
+    db = _make_db(tmp_path)
+    s1, stop1 = _seed_session_and_stop(db)
+    s2, stop2 = _seed_session_and_stop(db)
+    insert_catch(db, stop_id=stop1, session_id=s1, user_id=1, species="creek chub")
+    insert_catch(db, stop_id=stop1, session_id=s1, user_id=1, species="rock bass")
+    insert_catch(db, stop_id=stop2, session_id=s2, user_id=1, species="smallmouth bass")
+
+    result = build_dashboard(db)["catch_stats"]
+    assert result["avg_catches_per_session"] == 1.5  # 3 catches / 2 sessions

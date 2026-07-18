@@ -740,8 +740,9 @@ def get_db_stats(_: None = Depends(verify_api_key)):
 @app.get("/admin/dashboard")
 def admin_dashboard(_: None = Depends(verify_api_key)):
     """Admin usage dashboard: users, message volume, top queried locations,
-    tool call frequency, ingest coverage, and an approximate Sonnet-vs-Haiku
-    API cost estimate. Protected by X-Api-Key.
+    tool call frequency, ingest coverage, catch-level stats (volume, species
+    mix, personal bests, catches per session), and an approximate
+    Sonnet-vs-Haiku API cost estimate. Protected by X-Api-Key.
     """
     from src.services.admin_dashboard import build_dashboard
     from src.storage.database import get_db
