@@ -281,6 +281,60 @@ def chat(body: dict, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _normalize_structured_catches(
+    catches_json: str | None, extra_photos: list[dict | None] | None
+) -> list[dict]:
+    """Parse and sanitize the multi-catch UI's catches_json field into the
+    shape trip_logger.log_session expects.
+
+    Never raises — malformed/absent catches_json degrades to "no structured
+    catches", which is exactly log_session's existing NL-only behavior, not
+    a request failure. extra_photos[i] (already-saved {"path", "url"} dicts
+    from /log-trip/photo's `photos[]` field) is attached to catches_json[i]
+    by index position, per the multi-photo contract.
+    """
+    if not catches_json:
+        return []
+    try:
+        raw_list = json.loads(catches_json)
+    except (json.JSONDecodeError, TypeError):
+        _log.warning("catches_json was not valid JSON — ignoring it, falling back to text only")
+        return []
+    if not isinstance(raw_list, list):
+        _log.warning("catches_json was not a JSON array — ignoring it, falling back to text only")
+        return []
+
+    from src.services.trip_logger import parse_size_to_cm
+
+    normalized = []
+    for i, entry in enumerate(raw_list):
+        if not isinstance(entry, dict):
+            continue
+        species = entry.get("species")
+        species = species.strip() if isinstance(species, str) and species.strip() else None
+        try:
+            count = int(entry.get("count") or 1)
+        except (TypeError, ValueError):
+            count = 1
+        bait = entry.get("bait")
+        bait = bait.strip() if isinstance(bait, str) and bait.strip() else None
+        size_raw = entry.get("biggest_size_cm")
+        if size_raw is None:
+            size_raw = entry.get("biggest_size")
+        biggest_size_cm = parse_size_to_cm(size_raw)
+
+        photo = extra_photos[i] if extra_photos and i < len(extra_photos) else None
+        normalized.append({
+            "species": species,
+            "count": count,
+            "biggest_size_cm": biggest_size_cm,
+            "bait": bait,
+            "photo_path": photo["path"] if photo else None,
+            "photo_url": photo["url"] if photo else None,
+        })
+    return normalized
+
+
 def _log_trip_core(
     text: str,
     user: dict,
@@ -289,6 +343,8 @@ def _log_trip_core(
     photo_taken_at: str | None = None,
     photo_url: str | None = None,
     photo_path: str | None = None,
+    catches_json: str | None = None,
+    extra_photos: list[dict | None] | None = None,
 ) -> dict:
     """Shared implementation behind /log-trip and /log-trip/photo.
 
@@ -296,6 +352,12 @@ def _log_trip_core(
     photo_path (internal disk path, never returned to clients) flows through
     to the catches table for photo-serving bookkeeping; photo_url is the
     public URL clients use to display the image.
+
+    catches_json (optional) carries the multi-catch logging UI's structured
+    per-catch count/size/bait/photo — see _normalize_structured_catches and
+    trip_logger.log_session. Omitted/empty is a complete no-op: pure
+    NL-parsed behavior, unchanged, so existing callers (CLI logging, any
+    caller that only ever sent `text`) don't regress.
     """
     from src.services.trip_logger import log_session
     from src.services.trip_parser import parse_session_from_text
@@ -308,6 +370,7 @@ def _log_trip_core(
     db = get_db()
     ensure_schema(db)
     parsed = parse_session_from_text(text, db)
+    structured_catches = _normalize_structured_catches(catches_json, extra_photos)
 
     # Inject photo metadata into the first stop
     if parsed.get("stops") and (photo_lat is not None or photo_taken_at or photo_url):
@@ -339,7 +402,7 @@ def _log_trip_core(
         if photo_path:
             first_stop["photo_path"] = photo_path
 
-    result = log_session(parsed, db, user_id=user["id"])
+    result = log_session(parsed, db, user_id=user["id"], structured_catches=structured_catches)
     return {
         "status": "logged",
         "session_id": result["session_id"],
@@ -362,7 +425,10 @@ def log_trip(body: dict, user: dict = Depends(get_current_user_or_apikey)):
         "photo_lat": float (optional, from EXIF),
         "photo_lng": float (optional, from EXIF),
         "photo_taken_at": "ISO timestamp" (optional, from EXIF),
-        "photo_url": "string" (optional)
+        "photo_url": "string" (optional),
+        "catches_json": "string" (optional — JSON array of structured
+            {species, count, biggest_size_cm|biggest_size, bait} from the
+            multi-catch logging UI; see _normalize_structured_catches)
     }
     JSON-only — does not accept an actual photo file. Kept for backward
     compatibility with callers (e.g. /log log.html) that only send EXIF-derived
@@ -376,6 +442,7 @@ def log_trip(body: dict, user: dict = Depends(get_current_user_or_apikey)):
             photo_lng=body.get("photo_lng"),
             photo_taken_at=body.get("photo_taken_at"),
             photo_url=body.get("photo_url"),
+            catches_json=body.get("catches_json"),
         )
     except HTTPException:
         raise
@@ -390,19 +457,36 @@ def log_trip_with_photo(
     photo_lat: float | None = Form(None),
     photo_lng: float | None = Form(None),
     photo_taken_at: str | None = Form(None),
+    catches_json: str | None = Form(None),
+    photos: list[UploadFile] | None = File(default=None),
     user: dict = Depends(get_current_user_or_apikey),
 ):
     """Log a fishing trip with an actual photo file (multipart/form-data).
 
-    Form fields: text (required), photo (required file), photo_lat/photo_lng/
-    photo_taken_at (optional, client-extracted EXIF/device-location fallback —
-    same fields /log-trip already accepted, just carried over multipart).
-    Stores the photo on the server and returns its public URL.
+    Form fields: text (required), photo (required file — the session/first-
+    stop photo, unchanged), photo_lat/photo_lng/photo_taken_at (optional,
+    client-extracted EXIF/device-location fallback), catches_json (optional,
+    see /log-trip's docstring), photos[] (optional, additive — extra photo
+    files, one per catches_json entry by index position; the multi-catch
+    UI doesn't send these yet, only `photo`, but the backend now accepts
+    them). Stores photos on the server and returns the primary one's public
+    URL.
     """
     from src.services.photo_storage import save_photo
 
     try:
         saved = save_photo(photo)
+
+        extra_photos: list[dict | None] = []
+        for f in photos or []:
+            # An absent multipart slot can still arrive as a filename-less
+            # UploadFile depending on client — treat that as "no photo for
+            # this index" rather than persisting a blank image.
+            if not f or not getattr(f, "filename", ""):
+                extra_photos.append(None)
+                continue
+            extra_photos.append(save_photo(f))
+
         return _log_trip_core(
             text=text,
             user=user,
@@ -411,6 +495,8 @@ def log_trip_with_photo(
             photo_taken_at=photo_taken_at,
             photo_url=saved["url"],
             photo_path=saved["path"],
+            catches_json=catches_json,
+            extra_photos=extra_photos,
         )
     except HTTPException:
         raise
@@ -466,6 +552,7 @@ def get_sessions(user: dict = Depends(get_current_user)):
                         "species": c["species"],
                         "count": c["count"],
                         "biggest_size": c["biggest_size"],
+                        "biggest_size_cm": c["biggest_size_cm"],
                         "bait": c["bait"],
                         "photo_url": c["photo_url"],
                     }

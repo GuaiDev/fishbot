@@ -1,8 +1,10 @@
 """Tests for the /fishdex aggregation service."""
 
+import pytest
+
 from src.models.species_range import SpeciesRange
 from src.services.fishdex import get_fishdex_data
-from src.storage.catches import insert_catch
+from src.storage.catches import insert_catch, update_personal_best_if_higher
 from src.storage.database import get_db
 from src.storage.species_ranges import upsert_species_ranges
 
@@ -63,6 +65,23 @@ def test_no_size_data_never_fabricates_personal_best(tmp_path):
     catch = data["caughtSpecies"][0]
     assert catch["isPersonalBest"] is False
     assert catch["maxLengthInches"] is None
+
+
+def test_personal_best_from_stored_table_reported_in_inches(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    session_id, stop_id = _session_and_stop(db)
+    catch_id = insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1, species="smallmouth bass",
+        biggest_size_cm=35.56,
+    )
+    update_personal_best_if_higher(
+        db, user_id=1, species="smallmouth bass", size_cm=35.56, catch_id=catch_id
+    )
+
+    data = get_fishdex_data(db, user_id=1, jurisdiction="CA-ON")
+    catch = data["caughtSpecies"][0]
+    assert catch["isPersonalBest"] is True
+    assert catch["maxLengthInches"] == pytest.approx(14.0, abs=0.01)
 
 
 def test_region_pool_filters_by_jurisdiction_and_carries_family(tmp_path):

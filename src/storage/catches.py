@@ -6,6 +6,7 @@ row so it can carry its own photo, count, size, and bait going forward.
 """
 
 import json
+from datetime import datetime
 from typing import Any
 
 from sqlite_utils.db import Database
@@ -20,6 +21,7 @@ def insert_catch(
     species: str,
     count: int | None = None,
     biggest_size: str | None = None,
+    biggest_size_cm: float | None = None,
     bait: str | None = None,
     photo_path: str | None = None,
     photo_url: str | None = None,
@@ -37,6 +39,12 @@ def insert_catch(
     species_confirmed=False with suggested_species populated, since that's
     the one path where the species is a fallible AI suggestion rather than
     a human-entered fact — see the FishDex hallucination fix in fishdex.py.
+
+    biggest_size_cm is the structured numeric size from the multi-catch
+    logging UI (see trip_logger.parse_size_to_cm). biggest_size is the older
+    free-text column — no current input path populates it; kept only so
+    pre-existing rows that happen to have it keep displaying via fishdex.py's
+    legacy fallback parse.
     """
     return db["catches"].insert(
         {
@@ -46,6 +54,7 @@ def insert_catch(
             "species": species,
             "count": count,
             "biggest_size": biggest_size,
+            "biggest_size_cm": biggest_size_cm,
             "bait": bait,
             "photo_path": photo_path,
             "photo_url": photo_url,
@@ -56,6 +65,49 @@ def insert_catch(
             "suggested_species": json.dumps(suggested_species) if suggested_species else None,
         }
     ).last_pk  # type: ignore[return-value]
+
+
+def get_personal_best(db: Database, user_id: int, species: str) -> float | None:
+    """Return the stored personal-best size (cm) for this user+species, or
+    None if none is on record. Keyed the same way fishdex.py groups catches:
+    raw species text, stripped and lowercased."""
+    key = (species or "").strip().lower()
+    if not key:
+        return None
+    row = next(
+        iter(db.execute(
+            "SELECT best_size_cm FROM personal_bests WHERE user_id = ? AND species = ?",
+            [user_id, key],
+        ).fetchall()),
+        None,
+    )
+    return row[0] if row else None
+
+
+def update_personal_best_if_higher(
+    db: Database, *, user_id: int, species: str, size_cm: float, catch_id: int
+) -> bool:
+    """Update the stored personal-best size for this user+species if size_cm
+    beats it (or none is on record yet). Returns whether it updated."""
+    key = (species or "").strip().lower()
+    if not key:
+        return False
+    current = get_personal_best(db, user_id, key)
+    if current is not None and size_cm <= current:
+        return False
+    db.execute(
+        """
+        INSERT INTO personal_bests (user_id, species, best_size_cm, catch_id, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, species) DO UPDATE SET
+            best_size_cm = excluded.best_size_cm,
+            catch_id = excluded.catch_id,
+            updated_at = excluded.updated_at
+        """,
+        [user_id, key, size_cm, catch_id, datetime.now().isoformat()],
+    )
+    db.conn.commit()
+    return True
 
 
 def get_all_catches_for_user(

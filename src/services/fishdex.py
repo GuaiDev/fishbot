@@ -13,7 +13,7 @@ from sqlite_utils.db import Database
 
 from src.services.species_family import canonical_scientific_name, get_family
 from src.services.species_mapping import COMMON_TO_SCIENTIFIC
-from src.storage.catches import get_all_catches_for_user
+from src.storage.catches import get_all_catches_for_user, get_personal_best
 from src.storage.species_ranges import query_deduped_species_ranges_for_jurisdiction
 
 
@@ -58,23 +58,33 @@ def get_fishdex_data(db: Database, user_id: int, jurisdiction: str = "CA-ON") ->
         photo_rows = [r for r in rows if r.get("photo_url")]
         representative_photo_url = photo_rows[-1]["photo_url"] if photo_rows else None
 
-        # biggest_size is a free-text column that no current input path
-        # populates (no NL size extraction, no manual entry field yet) —
-        # report honestly rather than fabricating a figure. Best-effort
-        # parse in case it does get populated by a future entry path.
-        max_length_inches = None
-        is_personal_best = False
-        for r in rows:
-            raw = r.get("biggest_size")
-            if not raw:
-                continue
-            try:
-                val = float(str(raw).strip().split()[0])
-            except (ValueError, IndexError):
-                continue
-            if max_length_inches is None or val > max_length_inches:
-                max_length_inches = val
-                is_personal_best = True
+        # Personal best now lives in the personal_bests table, updated at
+        # catch-insert time by trip_logger._maybe_update_personal_best
+        # whenever the multi-catch logging UI's structured size field is
+        # set — keyed the same way this dict groups catches (raw species
+        # text, stripped/lowercased), so the lookup lines up by construction.
+        # Catches logged before that table existed (or the older free-text
+        # biggest_size field, which no earlier input path actually
+        # populated) fall back to a best-effort parse — reported honestly
+        # rather than fabricated either way.
+        pb_cm = get_personal_best(db, user_id, common_name_key)
+        if pb_cm is not None:
+            max_length_inches = pb_cm / 2.54
+            is_personal_best = True
+        else:
+            max_length_inches = None
+            is_personal_best = False
+            for r in rows:
+                raw = r.get("biggest_size")
+                if not raw:
+                    continue
+                try:
+                    val = float(str(raw).strip().split()[0])
+                except (ValueError, IndexError):
+                    continue
+                if max_length_inches is None or val > max_length_inches:
+                    max_length_inches = val
+                    is_personal_best = True
 
         caught_species.append({
             "id": scientific_name or common_name_key,

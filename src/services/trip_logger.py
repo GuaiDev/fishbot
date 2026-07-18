@@ -5,13 +5,14 @@ Orchestrates: NL parsing → segment snapping → DB insert → insight generati
 
 import json
 import logging
+import re
 from collections import Counter
 from datetime import datetime
 
 from sqlite_utils.db import Database
 
 from src.services.trip_parser import parse_trip_from_text
-from src.storage.catches import insert_catch
+from src.storage.catches import insert_catch, update_personal_best_if_higher
 from src.storage.trips import get_parsed_trips, insert_parsed_trip
 
 logger = logging.getLogger(__name__)
@@ -94,10 +95,88 @@ def _build_suggested_species(text_species: str, vision_result: dict | None) -> l
     return ranked
 
 
-def log_session(parsed_session: dict, db_conn: Database, user_id: int = 1) -> dict:
+_CONFIDENCE_TAG_RE = re.compile(r"\s*\((?:uncertain|unresolved)\)\s*$", re.IGNORECASE)
+
+
+def _strip_confidence_tags(species: str) -> str:
+    """Drop a trailing "(uncertain)"/"(unresolved)" tag so a structured
+    catch's typed species (plain text, no tag) can be matched against the
+    NL parser's flagged output for the same fish."""
+    return _CONFIDENCE_TAG_RE.sub("", species).strip()
+
+
+_SIZE_RE = re.compile(
+    r"([-+]?[0-9]*\.?[0-9]+)\s*(cm|centimeters?|in|inch(?:es)?|\")?", re.IGNORECASE
+)
+
+
+def parse_size_to_cm(raw: str | float | int | None) -> float | None:
+    """Normalize a user-entered fish size to centimeters.
+
+    Accepts a bare number (the catches_json contract's `biggest_size_cm`
+    field is documented as already-converted centimeters) or a string with
+    an embedded unit suffix — 'cm'/'in'/'inch(es)'/'"' — which is what the
+    LogTrip UI's `biggest_size` field actually sends today (e.g. "14in",
+    "35.5cm"). No unit suffix defaults to centimeters, matching the
+    documented contract. Unparseable/empty input returns None rather than
+    guessing.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    text = str(raw).strip()
+    if not text:
+        return None
+    m = _SIZE_RE.match(text)
+    if not m:
+        return None
+    value = float(m.group(1))
+    unit = (m.group(2) or "").strip().lower()
+    if unit in ("in", "inch", "inches", '"'):
+        return value * 2.54
+    return value
+
+
+def _maybe_update_personal_best(
+    db_conn: Database, user_id: int, species: str | None, size_cm: float | None, catch_id: int
+) -> None:
+    """Update the stored personal-best size for this species if this catch
+    beats it. Never raises — bookkeeping failure must not block logging,
+    same policy as _photo_species_candidates."""
+    if not species or size_cm is None:
+        return
+    try:
+        update_personal_best_if_higher(
+            db_conn, user_id=user_id, species=species, size_cm=size_cm, catch_id=catch_id
+        )
+    except Exception as e:
+        logger.warning("Personal-best update failed for %s: %s", species, e)
+
+
+def log_session(
+    parsed_session: dict,
+    db_conn: Database,
+    user_id: int = 1,
+    structured_catches: list[dict] | None = None,
+) -> dict:
     """Insert a parsed session and all its stops into the database.
 
-    Returns {"session_id": int, "stops_logged": int}
+    structured_catches (the multi-catch logging UI's catches_json, already
+    normalized by src/api/main.py's _normalize_structured_catches) carries
+    count/biggest_size_cm/bait/photo per catch that the NL parser never
+    extracts from free text. Each entry is matched by name against the first
+    stop's NL-parsed species_caught (one NL match consumed per structured
+    entry, so two structured catches of the same species — e.g. two separate
+    smallmouth bass logged with different sizes — don't collide): a match
+    merges structured count/size/bait/photo onto that NL-derived row (species
+    confidence/confirmation still comes from the NL+vision suggestion flow);
+    an unmatched structured entry becomes its own row instead. Any NL species
+    a structured entry didn't cover still logs the old way. Absent/empty
+    structured_catches is a complete no-op — pure NL-parsed behavior,
+    unchanged, exercised by every caller that doesn't pass it.
+
+    Returns {"session_id": int, "stops_logged": int, ...}
     """
     session_id = db_conn["sessions"].insert(
         {
@@ -110,7 +189,7 @@ def log_session(parsed_session: dict, db_conn: Database, user_id: int = 1) -> di
 
     stops_logged = 0
     pending_catches: list[dict] = []
-    for stop in parsed_session.get("stops", []):
+    for stop_index, stop in enumerate(parsed_session.get("stops", [])):
         stop_id = db_conn["stops"].insert(
             {
                 "session_id": session_id,
@@ -146,13 +225,106 @@ def log_session(parsed_session: dict, db_conn: Database, user_id: int = 1) -> di
         # own record to eventually carry its own count/size/bait/photo, while
         # stops.species_caught above stays intact for existing readers.
         #
-        # species_confirmed=False on every row here: the species came from the
-        # NL parser (and, if there's a photo, a Claude vision suggestion too) —
-        # both fallible AI suggestions, never committed as fact until the user
-        # confirms via POST /catches/{id}/confirm-species.
+        # species_confirmed=False on every NL-derived row here: the species came
+        # from the NL parser (and, if there's a photo, a Claude vision suggestion
+        # too) — both fallible AI suggestions, never committed as fact until the
+        # user confirms via POST /catches/{id}/confirm-species.
         photo_path = stop.get("photo_path")
         vision_result = _photo_species_candidates(db_conn, photo_path) if photo_path else None
-        for species in stop.get("species_caught") or []:
+
+        # structured_catches only ever applies to the first stop — the
+        # multi-catch UI captures one flat session, not per-stop structure,
+        # same convention _log_trip_core already uses for photo metadata.
+        stop_structured = structured_catches if stop_index == 0 and structured_catches else []
+        remaining_nl_species = list(stop.get("species_caught") or [])
+
+        # Pass 1 — every structured catches_json entry becomes exactly one
+        # row. Where it names a species the NL parser also found, that NL
+        # entry is consumed (popped) so a second structured entry with the
+        # same species name doesn't double-match it; where it doesn't match
+        # anything (or names no species at all), it's inserted independently.
+        for sc in stop_structured:
+            sc_species_key = (sc.get("species") or "").strip().lower()
+            matched_nl_species = None
+            if sc_species_key:
+                for i, nl_species in enumerate(remaining_nl_species):
+                    if _strip_confidence_tags(nl_species).lower() == sc_species_key:
+                        matched_nl_species = remaining_nl_species.pop(i)
+                        break
+
+            sc_photo_path = sc.get("photo_path")
+            if sc_photo_path:
+                # This catch has its own photo from the multi-catch UI —
+                # vision runs against that photo specifically rather than
+                # the stop's (possibly unrelated) shared photo.
+                catch_photo_path = sc_photo_path
+                catch_photo_url = sc.get("photo_url")
+                catch_vision = _photo_species_candidates(db_conn, sc_photo_path)
+            elif matched_nl_species:
+                catch_photo_path = stop.get("photo_path")
+                catch_photo_url = stop.get("photo_url")
+                catch_vision = vision_result
+            else:
+                catch_photo_path = None
+                catch_photo_url = None
+                catch_vision = None
+
+            if matched_nl_species:
+                suggestions = _build_suggested_species(matched_nl_species, catch_vision)
+                final_species = matched_nl_species
+                confirmed = False
+            elif catch_photo_path:
+                # No NL match but a photo exists — species (typed or not) is
+                # still a suggestion until reconciled against vision, same
+                # confirm-species flow as the NL path.
+                fallback_species = sc.get("species") or "unidentified sp."
+                suggestions = _build_suggested_species(fallback_species, catch_vision)
+                final_species = sc.get("species") or (
+                    suggestions[0]["species"] if suggestions else "unidentified sp."
+                )
+                confirmed = False
+            elif sc.get("species"):
+                # Typed directly, no photo, no NL match — trusted human
+                # input, not an AI guess, so it skips the confirm step (see
+                # insert_catch's species_confirmed default).
+                suggestions = None
+                final_species = sc["species"]
+                confirmed = True
+            else:
+                # No species, no photo, no NL match — nothing to identify
+                # this catch by. Skip rather than invent a row.
+                continue
+
+            size_cm = sc.get("biggest_size_cm")
+            catch_id = insert_catch(
+                db_conn,
+                stop_id=stop_id,
+                session_id=session_id,
+                user_id=user_id,
+                species=final_species,
+                count=sc.get("count"),
+                biggest_size_cm=size_cm,
+                bait=sc.get("bait"),
+                photo_path=catch_photo_path,
+                photo_url=catch_photo_url,
+                photo_lat=stop.get("photo_lat") if catch_photo_path else None,
+                photo_lng=stop.get("photo_lng") if catch_photo_path else None,
+                photo_taken_at=stop.get("photo_taken_at") if catch_photo_path else None,
+                species_confirmed=confirmed,
+                suggested_species=suggestions,
+            )
+            if not confirmed:
+                pending_catches.append({
+                    "catch_id": catch_id,
+                    "suggested_species": suggestions,
+                    "photo_url": catch_photo_url,
+                })
+            _maybe_update_personal_best(db_conn, user_id, final_species, size_cm, catch_id)
+
+        # Pass 2 — any NL-parsed species no structured entry covered. This is
+        # the *only* pass that runs when structured_catches is empty/absent,
+        # identical to the pre-multi-catch behavior (no regression).
+        for species in remaining_nl_species:
             if not species:
                 continue
             suggestions = _build_suggested_species(species, vision_result)

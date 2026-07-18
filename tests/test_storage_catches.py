@@ -1,6 +1,12 @@
 """Tests for the catches table — one row per species caught at a stop."""
 
-from src.storage.catches import get_catches_for_session, get_catches_for_sessions, insert_catch
+from src.storage.catches import (
+    get_catches_for_session,
+    get_catches_for_sessions,
+    get_personal_best,
+    insert_catch,
+    update_personal_best_if_higher,
+)
 from src.storage.database import get_db
 
 
@@ -80,3 +86,60 @@ def test_get_catches_for_sessions_batches_multiple_sessions(tmp_path):
 def test_get_catches_for_sessions_empty_list_returns_empty_dict(tmp_path):
     db = get_db(path=tmp_path / "test.db")
     assert get_catches_for_sessions(db, []) == {}
+
+
+def test_insert_catch_round_trips_biggest_size_cm(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    session_id, stop_id = _session_and_stop(db)
+
+    insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1, species="smallmouth bass",
+        count=2, biggest_size_cm=35.5, bait="spinnerbait",
+    )
+    catches = get_catches_for_session(db, session_id)
+    assert catches[0]["biggest_size_cm"] == 35.5
+    assert catches[0]["count"] == 2
+    assert catches[0]["bait"] == "spinnerbait"
+
+
+def test_get_personal_best_returns_none_when_unset(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    assert get_personal_best(db, 1, "smallmouth bass") is None
+
+
+def test_update_personal_best_if_higher_sets_and_beats(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    session_id, stop_id = _session_and_stop(db)
+    catch_id = insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1, species="smallmouth bass"
+    )
+
+    assert update_personal_best_if_higher(
+        db, user_id=1, species="smallmouth bass", size_cm=30.0, catch_id=catch_id
+    ) is True
+    assert get_personal_best(db, 1, "smallmouth bass") == 30.0
+
+    # A smaller size does not update it and reports no change.
+    assert update_personal_best_if_higher(
+        db, user_id=1, species="smallmouth bass", size_cm=25.0, catch_id=catch_id
+    ) is False
+    assert get_personal_best(db, 1, "smallmouth bass") == 30.0
+
+    # A bigger size does.
+    assert update_personal_best_if_higher(
+        db, user_id=1, species="smallmouth bass", size_cm=40.0, catch_id=catch_id
+    ) is True
+    assert get_personal_best(db, 1, "smallmouth bass") == 40.0
+
+
+def test_personal_best_is_scoped_per_user(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    session_id, stop_id = _session_and_stop(db)
+    catch_id = insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1, species="smallmouth bass"
+    )
+
+    update_personal_best_if_higher(
+        db, user_id=1, species="smallmouth bass", size_cm=30.0, catch_id=catch_id
+    )
+    assert get_personal_best(db, 2, "smallmouth bass") is None

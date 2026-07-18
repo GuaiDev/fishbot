@@ -70,7 +70,18 @@ export async function sendMessage(messages) {
   return res.json();
 }
 
-export async function logTrip(text, photoLat, photoLng, photoTakenAt, photoFile) {
+// TODO(backend): /log-trip and /log-trip/photo only accept one freeform
+// `text` string + at most one photo file — there is no structured per-catch
+// input path (see src/services/trip_logger.py:log_session, which never
+// passes count/biggest_size/bait to insert_catch even though the `catches`
+// table has those columns). Until the backend accepts a real catches array
+// (JSON body field or additional multipart fields, plus a way to attach more
+// than one photo), `catches` here is carried as an inert `catches_json`
+// field so the wire format is ready the moment the backend reads it — the
+// actual species/pending-catch flow still runs off the synthesized `text`,
+// same as before this param existed. Callers that don't pass `catches` are
+// unaffected.
+export async function logTrip(text, photoLat, photoLng, photoTakenAt, photoFile, catches) {
   let res;
   if (photoFile) {
     const form = new FormData();
@@ -78,6 +89,7 @@ export async function logTrip(text, photoLat, photoLng, photoTakenAt, photoFile)
     form.append('photo', photoFile);
     if (photoLat) { form.append('photo_lat', photoLat); form.append('photo_lng', photoLng); }
     if (photoTakenAt) form.append('photo_taken_at', photoTakenAt);
+    if (catches) form.append('catches_json', JSON.stringify(catches));
 
     const token = getToken();
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -86,6 +98,7 @@ export async function logTrip(text, photoLat, photoLng, photoTakenAt, photoFile)
     const body = { text };
     if (photoLat) { body.photo_lat = photoLat; body.photo_lng = photoLng; }
     if (photoTakenAt) body.photo_taken_at = photoTakenAt;
+    if (catches) body.catches_json = JSON.stringify(catches);
 
     res = await fetch(`${BASE_URL}/log-trip`, {
       method: 'POST',

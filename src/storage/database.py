@@ -16,6 +16,7 @@ def get_db(path: Path | None = None) -> Database:
     db = Database(p)
     ensure_schema(db)
     migrate_catches_species_confirmation(db)
+    migrate_catches_biggest_size_cm(db)
     migrate_behavioral_insights(db)
     migrate_stops(db)
     migrate_angler_context_multi_user(db)
@@ -72,6 +73,22 @@ def migrate_catches_species_confirmation(db: Database) -> None:
         except Exception:
             pass  # column already exists
     db.execute("UPDATE catches SET species_confirmed = 1 WHERE species_confirmed = 0")
+
+
+def migrate_catches_biggest_size_cm(db: Database) -> None:
+    """Add the structured biggest_size_cm column to catches. Idempotent.
+
+    The multi-catch logging UI's size field lands here, normalized to
+    centimeters (see trip_logger.parse_size_to_cm), separate from the
+    legacy free-text biggest_size column that no earlier input path ever
+    populated — keeps the two from colliding on format (numbers vs. "14 in").
+    """
+    if "biggest_size_cm" in {c.name for c in db["catches"].columns}:
+        return  # already migrated
+    try:
+        db.execute("ALTER TABLE catches ADD COLUMN biggest_size_cm REAL")
+    except Exception:
+        pass  # column already exists
 
 
 def migrate_behavioral_insights(db: Database) -> None:
@@ -627,6 +644,7 @@ def ensure_schema(db: Database) -> None:
                 species             TEXT NOT NULL,
                 count               INTEGER,
                 biggest_size        TEXT,
+                biggest_size_cm     REAL,
                 bait                TEXT,
                 photo_path          TEXT,
                 photo_url           TEXT,
@@ -639,6 +657,26 @@ def ensure_schema(db: Database) -> None:
         db.execute("CREATE INDEX IF NOT EXISTS idx_catches_stop ON catches(stop_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_catches_session ON catches(session_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_catches_user ON catches(user_id)")
+
+    if "personal_bests" not in db.table_names():
+        # One row per (user, species) — the current best confirmed-or-not
+        # size on record, updated at catch-insert time by
+        # trip_logger._maybe_update_personal_best whenever a structured
+        # catch (from the multi-catch logging UI) carries a size. Distinct
+        # from computing "best of all catches" on every /fishdex read: this
+        # is the explicit, persisted fact, with an UNIQUE constraint so
+        # ON CONFLICT upserts have a target index to hit.
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS personal_bests (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id         INTEGER NOT NULL,
+                species         TEXT NOT NULL,
+                best_size_cm    REAL NOT NULL,
+                catch_id        INTEGER NOT NULL REFERENCES catches(id) ON DELETE CASCADE,
+                updated_at      TEXT DEFAULT (datetime('now')),
+                UNIQUE(user_id, species)
+            )
+        """)
 
     if "parsed_trips" not in db.table_names():
         db["parsed_trips"].create(

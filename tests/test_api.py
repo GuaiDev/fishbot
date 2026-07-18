@@ -204,6 +204,67 @@ def test_log_trip_with_photo_metadata():
     assert data["stops_logged"] >= 1
 
 
+def test_log_trip_json_with_catches_json_persists_structured_fields(monkeypatch):
+    """The multi-catch UI's catches_json field must actually persist
+    count/size/bait, not just get silently accepted and ignored."""
+    import json
+    from unittest.mock import patch
+
+    from src.storage.catches import get_catches_for_session
+    from src.storage.database import get_db
+
+    canned_parse = {
+        "date": "2026-06-01",
+        "stops": [{
+            "location_text": "Bronte Creek",
+            "species_caught": ["smallmouth bass", "rock bass"],
+        }],
+    }
+    catches_json = json.dumps([
+        {"species": "smallmouth bass", "count": 2, "biggest_size_cm": 35.0, "bait": "spinnerbait"},
+    ])
+    headers = _apikey_headers(monkeypatch)
+    with patch("src.services.trip_parser.parse_session_from_text", return_value=canned_parse):
+        response = client.post(
+            "/log-trip",
+            json={
+                "text": "Caught 2 smallmouth bass on spinnerbait and a rock bass.",
+                "catches_json": catches_json,
+            },
+            headers=headers,
+        )
+    assert response.status_code == 200
+    session_id = response.json()["session_id"]
+
+    db = get_db()
+    catches = {c["species"]: c for c in get_catches_for_session(db, session_id)}
+    assert catches["smallmouth bass"]["count"] == 2
+    assert catches["smallmouth bass"]["biggest_size_cm"] == 35.0
+    assert catches["smallmouth bass"]["bait"] == "spinnerbait"
+    # rock bass wasn't in catches_json — untouched, old NL-only behavior.
+    assert catches["rock bass"]["count"] is None
+
+
+def test_log_trip_malformed_catches_json_degrades_gracefully(monkeypatch):
+    """Garbage catches_json must not 500 the request — falls back to
+    text-only logging, same as if the field were absent."""
+    from unittest.mock import patch
+
+    canned_parse = {
+        "date": "2026-06-01",
+        "stops": [{"location_text": "Bronte Creek", "species_caught": ["creek chub"]}],
+    }
+    headers = _apikey_headers(monkeypatch)
+    with patch("src.services.trip_parser.parse_session_from_text", return_value=canned_parse):
+        response = client.post(
+            "/log-trip",
+            json={"text": "Fished Bronte Creek, caught a creek chub", "catches_json": "not json"},
+            headers=headers,
+        )
+    assert response.status_code == 200
+    assert response.json()["status"] == "logged"
+
+
 def test_log_page_served():
     """GET /log returns the mobile trip logging page."""
     response = client.get("/log")

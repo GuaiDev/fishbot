@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { confirmCatchSpecies, logTrip } from '../api';
 import GrainOverlay from '../components/GrainOverlay';
 import '../fishdex-tokens.css';
@@ -206,21 +206,246 @@ function readGpsCoord(view, tiffStart, offset, le) {
   return d + m/60 + s/3600;
 }
 
+const SIZE_UNIT_STORAGE_KEY = 'fishdex_size_unit';
+
+// Module-scoped id counter for React keys on catch entries — not persisted,
+// just needs to be unique within a session's lifetime.
+let _catchIdSeq = 0;
+function makeBlankCatch() {
+  _catchIdSeq += 1;
+  return { id: _catchIdSeq, photoFile: null, preview: null, species: '', count: 1, biggestSize: '', bait: '' };
+}
+
+const fieldInputStyle = {
+  width: '100%',
+  padding: '10px 12px',
+  borderRadius: 8,
+  border: '1px solid var(--fx-hairline)',
+  background: 'var(--fx-card-fill-quiet)',
+  color: 'var(--fx-text-primary)',
+  fontFamily: 'var(--fx-font-ui)',
+  fontSize: 14,
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+// Composes the structured session into the single freeform string the
+// backend's NL parser (parse_session_from_text) actually understands — see
+// the TODO(backend) note in api.js. This keeps species extraction / photo
+// vision / pending-catch confirmation working exactly as it does today;
+// count, size, and bait ride along in the sentence for the parser to see,
+// but are NOT guaranteed to land in structured columns until the backend
+// reads catches_json.
+function composeSessionText(sessionNotes, catches, unit) {
+  const lines = [];
+  const notes = sessionNotes.trim();
+  if (notes) lines.push(notes);
+
+  for (const c of catches) {
+    const species = c.species.trim();
+    if (!species) continue;
+    const count = c.count || 1;
+    let sentence = `Caught ${count} ${species}`;
+    if (c.bait.trim()) sentence += ` on ${c.bait.trim()}`;
+    if (c.biggestSize.trim()) sentence += `, biggest ${c.biggestSize.trim()}${unit}`;
+    lines.push(sentence + '.');
+  }
+
+  if (lines.length === 0) lines.push('Fishing trip.');
+  return lines.join(' ');
+}
+
+function CountStepper({ value, onChange }) {
+  const stepperBtnStyle = {
+    width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+    border: '1px solid var(--fx-hairline)', background: 'var(--fx-card-fill-quiet)',
+    color: 'var(--fx-moss-lightest)', fontSize: 20, fontWeight: 600, lineHeight: 1,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(1, value - 1))}
+        aria-label="Decrease count"
+        style={stepperBtnStyle}
+      >−</button>
+      <div style={{
+        minWidth: 22, textAlign: 'center',
+        fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 18, color: 'var(--fx-text-primary-2)',
+      }}>{value}</div>
+      <button
+        type="button"
+        onClick={() => onChange(value + 1)}
+        aria-label="Increase count"
+        style={stepperBtnStyle}
+      >+</button>
+    </div>
+  );
+}
+
+function UnitToggle({ unit, onChange }) {
+  return (
+    <div style={{
+      display: 'flex', background: 'var(--fx-card-fill-quiet)',
+      border: '1px solid var(--fx-hairline)', borderRadius: 8, padding: 2, gap: 2, flexShrink: 0,
+    }}>
+      {['in', 'cm'].map(u => (
+        <button
+          key={u}
+          type="button"
+          onClick={() => onChange(u)}
+          style={{
+            padding: '6px 10px', borderRadius: 6, border: 'none',
+            background: unit === u ? 'var(--fx-moss-light)' : 'transparent',
+            color: unit === u ? 'var(--fx-on-accent)' : 'var(--fx-text-muted)',
+            fontFamily: 'var(--fx-font-ui)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+          }}
+        >{u}</button>
+      ))}
+    </div>
+  );
+}
+
+// One "page" of the field notebook per catch — subtle fill + radius for
+// separation rather than a hard-bordered form row, per the naturalist
+// field-journal style used elsewhere (FishDex plates, Map's bottom sheet).
+function CatchEntryCard({ catchEntry, index, canRemove, unit, onChange, onRemove, onPhoto }) {
+  const fileId = `catch-photo-${catchEntry.id}`;
+  const speciesId = `catch-species-${catchEntry.id}`;
+
+  return (
+    <div style={{
+      background: 'var(--fx-card-fill)', borderRadius: 14,
+      padding: '14px 14px 16px', marginBottom: 14,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <span style={{
+          fontFamily: 'var(--fx-font-ui)', fontSize: 10, fontWeight: 700,
+          letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--fx-moss-light)',
+        }}>
+          Catch {index + 1}
+        </span>
+        {canRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Remove catch ${index + 1}`}
+            style={{
+              width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'none',
+              color: 'var(--fx-text-muted)', fontSize: 18, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          ><span aria-hidden="true">×</span></button>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+        <label
+          htmlFor={fileId}
+          className="photo-dropzone"
+          style={{
+            flexShrink: 0, width: 72, height: 72, borderRadius: 10, overflow: 'hidden', cursor: 'pointer',
+            border: catchEntry.preview ? 'none' : '1.5px dashed var(--fx-dashed-border)',
+            background: catchEntry.preview ? 'transparent' : 'var(--fx-card-fill-quiet)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <input
+            id={fileId}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={e => onPhoto(e.target.files[0])}
+          />
+          {catchEntry.preview ? (
+            <img src={catchEntry.preview} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <span aria-hidden="true" style={{ fontSize: 20, color: 'var(--fx-text-locked-3)' }}>📷</span>
+          )}
+        </label>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <label htmlFor={speciesId} className="sr-only">Species</label>
+          <input
+            id={speciesId}
+            type="text"
+            value={catchEntry.species}
+            onChange={e => onChange({ species: e.target.value })}
+            placeholder="Species (e.g. smallmouth bass)"
+            style={fieldInputStyle}
+          />
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 11, color: 'var(--fx-text-muted)' }}>Count</span>
+            <CountStepper value={catchEntry.count} onChange={v => onChange({ count: v })} />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <label htmlFor={`size-${catchEntry.id}`} className="sr-only">Biggest size ({unit})</label>
+        <input
+          id={`size-${catchEntry.id}`}
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.1"
+          value={catchEntry.biggestSize}
+          onChange={e => onChange({ biggestSize: e.target.value })}
+          placeholder={`Biggest size (${unit})`}
+          style={{ ...fieldInputStyle, flex: 1 }}
+        />
+      </div>
+
+      <label htmlFor={`bait-${catchEntry.id}`} className="sr-only">Bait or lure</label>
+      <input
+        id={`bait-${catchEntry.id}`}
+        type="text"
+        value={catchEntry.bait}
+        onChange={e => onChange({ bait: e.target.value })}
+        placeholder="Bait or lure"
+        style={fieldInputStyle}
+      />
+    </div>
+  );
+}
+
 export default function LogTrip({ onNavigate }) {
-  const [text, setText] = useState('');
+  const [sessionNotes, setSessionNotes] = useState('');
   const [exifData, setExifData] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [photoFile, setPhotoFile] = useState(null);
+  const [locationAttempted, setLocationAttempted] = useState(false);
+  const [unit, setUnit] = useState(() => localStorage.getItem(SIZE_UNIT_STORAGE_KEY) || 'in');
+  const [catches, setCatches] = useState(() => [makeBlankCatch()]);
   const [status, setStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [pendingCatches, setPendingCatches] = useState([]);
-  const fileRef = useRef(null);
 
-  async function handlePhoto(e) {
-    const file = e.target.files[0];
+  useEffect(() => {
+    localStorage.setItem(SIZE_UNIT_STORAGE_KEY, unit);
+  }, [unit]);
+
+  function updateCatch(id, patch) {
+    setCatches(prev => prev.map(c => (c.id === id ? { ...c, ...patch } : c)));
+  }
+
+  function addCatch() {
+    setCatches(prev => [...prev, makeBlankCatch()]);
+  }
+
+  function removeCatch(id) {
+    setCatches(prev => (prev.length <= 1 ? prev : prev.filter(c => c.id !== id)));
+  }
+
+  // Location is captured once per session, from whichever photo is added
+  // first across any catch entry — same EXIF-then-geolocation logic as
+  // before, just no longer tied to a single fixed photo slot.
+  async function handleCatchPhoto(catchId, file) {
     if (!file) return;
-    setPhotoFile(file);
-    setPreview(URL.createObjectURL(file));
+    updateCatch(catchId, { photoFile: file, preview: URL.createObjectURL(file) });
+
+    if (locationAttempted) return;
+    setLocationAttempted(true);
+
     const exif = await extractExif(file);
     if (exif && exif.lat) {
       setExifData(exif);
@@ -243,16 +468,34 @@ export default function LogTrip({ onNavigate }) {
   }
 
   async function handleSubmit() {
-    if (!text.trim()) return;
+    if (status === 'loading') return;
     setStatus('loading');
     try {
-      const result = await logTrip(text, exifData?.lat, exifData?.lng, exifData?.takenAt, photoFile);
+      const text = composeSessionText(sessionNotes, catches, unit);
+      // Backend accepts exactly one photo per submission today — see the
+      // TODO(backend) note in api.js. First catch (in entry order) that has
+      // a photo wins; any others are still captured in the UI and sent in
+      // catches_json, but won't be uploaded until the backend supports it.
+      const photoFile = catches.find(c => c.photoFile)?.photoFile || null;
+      const catchesPayload = catches
+        .filter(c => c.species.trim() || c.photoFile)
+        .map(c => ({
+          species: c.species.trim() || null,
+          count: c.count,
+          biggest_size: c.biggestSize.trim() ? `${c.biggestSize.trim()}${unit}` : null,
+          bait: c.bait.trim() || null,
+          has_photo: !!c.photoFile,
+        }));
+
+      const result = await logTrip(
+        text, exifData?.lat, exifData?.lng, exifData?.takenAt, photoFile, catchesPayload
+      );
       setStatus('success');
       setPendingCatches(result.pending_catches || []);
-      setText('');
-      setPreview(null);
+      setSessionNotes('');
       setExifData(null);
-      setPhotoFile(null);
+      setLocationAttempted(false);
+      setCatches([makeBlankCatch()]);
     } catch (err) {
       setStatus('error');
       setErrorMsg(err.message);
@@ -265,6 +508,7 @@ export default function LogTrip({ onNavigate }) {
 
   const hasGps = exifData && exifData.lat && !exifData.trying;
   const tryingGps = exifData?.trying;
+  const hasContent = sessionNotes.trim() || catches.some(c => c.species.trim() || c.photoFile);
 
   return (
     <div style={{
@@ -277,87 +521,23 @@ export default function LogTrip({ onNavigate }) {
     }}>
       <GrainOverlay />
       <h1 style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 22, color: 'var(--fx-text-primary-2)', marginBottom: 4 }}>
-        Log a catch
+        Log a trip
       </h1>
-      <p style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-text-muted)', marginBottom: 20 }}>
-        Photo adds GPS + time automatically
+      <p style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-text-muted)', marginBottom: 16 }}>
+        First photo sets your location. Log every fish you caught below.
       </p>
 
-      {/* Photo zone. Once a photo is picked, this becomes a near-full-bleed
-          photography-led card (DESIGN.md's Catch Photo Card): GPS status
-          sits directly on the image via a bottom scrim, not as separate
-          pills below it. Empty state stays a plain dashed dropzone — there's
-          no photo yet for the photograph to carry. */}
-      <label
-        htmlFor="photo-input"
-        className="photo-dropzone"
-        style={{
-          display: 'block',
-          position: 'relative',
-          border: preview ? 'none' : '1.5px dashed var(--fx-dashed-border)',
-          borderRadius: 14,
-          padding: preview ? 0 : '24px 16px',
-          textAlign: 'center',
-          cursor: 'pointer',
-          marginBottom: 16,
-          overflow: 'hidden',
-          aspectRatio: preview ? '4 / 5' : 'auto',
-          background: preview ? 'transparent' : 'var(--fx-card-fill-quiet)',
-        }}
-      >
-        <input
-          id="photo-input"
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          onChange={handlePhoto}
-          className="sr-only"
-        />
-        {preview ? (
-          <>
-            <img src={preview} alt="Trip" loading="lazy" style={{
-              width: '100%', height: '100%', objectFit: 'cover', display: 'block',
-            }} />
-            <div style={{
-              position: 'absolute', left: 0, right: 0, bottom: 0,
-              padding: '16px',
-              background: 'linear-gradient(to top, rgba(9,10,6,.9), transparent)',
-            }}>
-              {hasGps && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fx-moss-lightest)', fontFamily: 'var(--fx-font-ui)', fontSize: 13, fontWeight: 600 }}>
-                  <span aria-hidden="true">📍</span> GPS captured · {exifData.takenAt ? new Date(exifData.takenAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}
-                </div>
-              )}
-              {tryingGps && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fx-text-primary-2)', fontFamily: 'var(--fx-font-ui)', fontSize: 13 }}>
-                  <span aria-hidden="true">📍</span> Getting location...
-                </div>
-              )}
-              {exifData === null && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-rust)', fontFamily: 'var(--fx-font-ui)', fontSize: 13, fontWeight: 600 }}>
-                  <span aria-hidden="true">📍</span> No GPS — describe location in text
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <>
-            <div aria-hidden="true" style={{ fontSize: 28, marginBottom: 6, color: 'var(--fx-text-locked-3)' }}>📷</div>
-            <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 13, color: 'var(--fx-text-muted)' }}>
-              Tap to add photo
-            </div>
-          </>
-        )}
-      </label>
-
-      <label htmlFor="trip-notes" className="sr-only">
-        What happened on this trip?
+      <label htmlFor="session-notes" style={{
+        display: 'block', fontFamily: 'var(--fx-font-serif)', fontSize: 13, fontWeight: 600,
+        color: 'var(--fx-text-primary-2)', marginBottom: 6,
+      }}>
+        Session notes
       </label>
       <textarea
-        id="trip-notes"
-        value={text}
-        onChange={e => setText(e.target.value)}
-        placeholder="What happened? Species, location, technique, conditions — as much or as little as you remember."
+        id="session-notes"
+        value={sessionNotes}
+        onChange={e => setSessionNotes(e.target.value)}
+        placeholder="Water conditions, weather, access point — optional"
         style={{
           width: '100%',
           background: 'var(--fx-card-fill)',
@@ -369,31 +549,103 @@ export default function LogTrip({ onNavigate }) {
           fontSize: 14,
           resize: 'none',
           outline: 'none',
-          minHeight: 120,
-          marginBottom: 16,
+          minHeight: 76,
           lineHeight: 1.5,
+          boxSizing: 'border-box',
         }}
       />
 
+      {locationAttempted && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6, marginTop: 8,
+          fontFamily: 'var(--fx-font-ui)', fontSize: 12, fontWeight: 600,
+        }}>
+          {hasGps && (
+            <span style={{ color: 'var(--fx-moss-lightest)' }}>
+              <span aria-hidden="true">📍</span> GPS captured
+              {exifData.takenAt ? ` · ${new Date(exifData.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+            </span>
+          )}
+          {tryingGps && (
+            <span style={{ color: 'var(--fx-text-primary-2)', fontWeight: 400 }}>
+              <span aria-hidden="true">📍</span> Getting location...
+            </span>
+          )}
+          {!hasGps && !tryingGps && (
+            <span style={{ color: 'var(--color-rust)' }}>
+              <span aria-hidden="true">📍</span> No GPS — describe location in session notes
+            </span>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '22px 0 10px' }}>
+        <span style={{
+          fontFamily: 'var(--fx-font-ui)', fontSize: 11, fontWeight: 700,
+          letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--fx-text-muted)',
+        }}>
+          Catches
+        </span>
+        <UnitToggle unit={unit} onChange={setUnit} />
+      </div>
+
+      {catches.map((c, i) => (
+        <CatchEntryCard
+          key={c.id}
+          catchEntry={c}
+          index={i}
+          canRemove={catches.length > 1}
+          unit={unit}
+          onChange={patch => updateCatch(c.id, patch)}
+          onRemove={() => removeCatch(c.id)}
+          onPhoto={file => handleCatchPhoto(c.id, file)}
+        />
+      ))}
+
+      <button
+        type="button"
+        onClick={addCatch}
+        style={{
+          width: '100%', padding: '12px', marginBottom: 20,
+          background: 'transparent', border: '1px dashed var(--fx-dashed-border)', borderRadius: 'var(--radius-pill)',
+          color: 'var(--fx-moss-light)', fontFamily: 'var(--fx-font-ui)', fontSize: 13, fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        + Add another catch
+      </button>
+
       <button
         onClick={handleSubmit}
-        disabled={!text.trim() || status === 'loading'}
+        disabled={!hasContent || status === 'loading'}
         style={{
           width: '100%',
-          background: text.trim() && status !== 'loading' ? 'var(--fx-moss-light)' : 'var(--fx-hairline)',
-          color: text.trim() && status !== 'loading' ? 'var(--fx-on-accent)' : 'var(--fx-text-muted)',
+          background: hasContent && status !== 'loading' ? 'var(--fx-moss-light)' : 'var(--fx-hairline)',
+          color: hasContent && status !== 'loading' ? 'var(--fx-on-accent)' : 'var(--fx-text-muted)',
           border: 'none',
           borderRadius: 'var(--radius-pill)',
           padding: '14px',
           fontFamily: 'var(--fx-font-ui)',
           fontSize: 15,
           fontWeight: 600,
-          cursor: text.trim() && status !== 'loading' ? 'pointer' : 'default',
+          cursor: hasContent && status !== 'loading' ? 'pointer' : 'default',
           transition: 'background 0.15s',
         }}
       >
         {status === 'loading' ? 'Logging...' : 'Log trip'}
       </button>
+
+      {/* Honest-gap notice, not a silent drop — see TODO(backend) in api.js.
+          Species (via text) and one photo are genuinely persisted today;
+          count/size/bait and additional photos are captured here and sent,
+          but the backend doesn't store them per-catch yet. */}
+      <p style={{
+        marginTop: 8, fontFamily: 'var(--fx-font-ui)', fontSize: 11, color: 'var(--fx-text-dim)',
+        lineHeight: 1.5, textAlign: 'center',
+      }}>
+        Species and one photo are saved now. Count, size, and bait are captured
+        here but not yet stored server-side — coming soon.
+      </p>
 
       {status === 'success' && (
         <>
