@@ -1,6 +1,6 @@
 # FishDex Backlog
 
-Last updated: July 17 2026 (session 6 — autonomous Claude Code session)
+Last updated: July 18 2026 (session 7 — Claude Code session: multi-catch logging + admin dashboard catch stats)
 Previously: FishBot
 
 ## Project rename
@@ -38,6 +38,16 @@ Built as prototype, will be replaced by Lovable build:
 - Multi-user auth gate
 - react-leaflet@4.2.1 (v5 incompatible with React 18)
 - Deployed at /app on Railway
+
+### Multi-catch logging UI ✅ (July 18 2026)
+Log Trip rebuilt as a session-based flow: session notes captured once (EXIF from
+first photo / geolocation fallback), repeatable catch entries (photo, species,
+count stepper, size with cm/in toggle persisted to localStorage, bait), add/remove
+entries. SpeciesConfirmCard and EXIF parsing kept unchanged.
+
+⚠️ web/dist/ (the built bundle Railway actually serves) has NOT been rebuilt since
+this change — the live app still shows the old single-photo/single-textarea screen.
+See Pending (session 7 handoff) below.
 
 ## Lovable UI rebuild 📋
 Use docs/fishdex_lovable_prompt.md to build FishDex in Lovable.
@@ -104,11 +114,38 @@ Respects fishing gatekeep culture.
   are local-only; this sandbox has no git push credentials configured. Needs a manual
   push + PR/merge.
 
+## Pending (session 7 handoff) 📋
+- **Frontend dist rebuild** — web/dist/ predates the LogTrip.jsx multi-catch rebuild.
+  Run `npm run build` in web/, then commit web/dist/ — until then, real users get the
+  old single-photo/single-textarea Log Trip screen regardless of what's in web/src/.
+- **Dev-only login bypass still in code** — App.jsx auto-logs in via POST
+  /admin/bootstrap when import.meta.env.DEV is true (also falls back to it on a
+  stale/invalid token), and /admin/bootstrap itself is permissive whenever
+  FISHBOT_API_KEY is unset. Both are marked "TEMPORARY DEV-ONLY — REMOVE BEFORE
+  MERGING/DEPLOYING" in comments but were never removed. Must be stripped before
+  onboarding real (non-admin) users — anyone running the app without
+  FISHBOT_API_KEY set skips the invite-code Login screen entirely.
+
 ## Core Intelligence (completed) ✅
 
 ### Trip logging ✅
 Natural language parser, sessions/stops schema, mobile logging page,
 EXIF GPS extraction, geolocation fallback.
+
+### Multi-catch logging + structured catch persistence ✅ (July 18 2026)
+Backend now persists structured per-catch data instead of only round-tripping it
+through NL text parsing:
+- POST /log-trip and /log-trip/photo accept an optional catches_json field (array of
+  {species, count, biggest_size_cm|biggest_size, bait}). Matched against NL-parsed
+  species by name — a match merges structured count/size/bait onto that row (species
+  confidence/confirmation still comes from the NL+vision suggestion flow); an
+  unmatched entry becomes its own row. Absent/empty catches_json is a complete no-op,
+  so existing callers (CLI logging, no catches_json) are unaffected.
+- New personal_bests table (user_id, species, best_size_cm, catch_id), updated at
+  catch-insert time whenever a structured size beats the stored best. GET /fishdex
+  now reports a real personal best instead of only a legacy free-text guess.
+- /log-trip/photo accepts an additive photos[] field for future multi-photo support;
+  the UI currently still uploads one photo per session, same as before.
 
 ### Auto-enrichment pipeline ✅
 session_conditions: Open-Meteo weather + PWQMN water quality per session.
@@ -466,6 +503,16 @@ Found during build: 100% of real synthesis-cache entries today are name-only (no
 lat/lng) — a coordinate-only "top locations" query, which is what a first pass
 produced, would always have returned empty. Fixed to also group name-only entries
 by location name.
+
+Extended July 18 2026 with catch_stats: total catches, top-10 species by count,
+personal-bests summary (users with a recorded PB + top-10 largest fish by
+biggest_size_cm), average catches per session. Fixed during build: by_species/
+total_catches used COUNT(*) over catch rows instead of SUM(count) — a card logged
+as "x3" only counted as 1, letting a real 3-fish catch rank below unrelated 1-fish
+entries; also grouped on the raw species string instead of case-insensitively,
+splitting "Shorthead Redhorse" (typed directly, no NL match) from "shorthead
+redhorse" (NL-parsed) into two dashboard rows instead of merging like
+personal_bests already does.
 
 ## Token management 📋
 /admin/token endpoint added (X-Api-Key only, no Bearer needed).
