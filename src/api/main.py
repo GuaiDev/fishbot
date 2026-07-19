@@ -657,6 +657,88 @@ def get_admin_token(_: None = Depends(verify_api_key)):
     return {"token": token, "bearer": f"Bearer {token}"}
 
 
+@app.post("/admin/delete-user")
+def delete_user(body: dict, _: None = Depends(verify_api_key)):
+    """TEMPORARY — remove a throwaway test user and all their data.
+
+    Not a permanent feature; added for one-off test-account cleanup and
+    removed again afterward, same as /admin/bootstrap was for a different
+    reason. Refuses to touch user_id=1 (the real admin account). Defaults
+    to a dry run (row counts only, no deletion) — pass "dry_run": false to
+    actually delete.
+    """
+    import os
+
+    from src.storage.database import get_db
+
+    user_id = body.get("user_id")
+    dry_run = body.get("dry_run", True)
+    if not isinstance(user_id, int) or user_id <= 1:
+        raise HTTPException(
+            status_code=400,
+            detail="user_id must be an integer > 1 (user_id=1 is the protected admin account)",
+        )
+
+    db = get_db()
+    existing = next(iter(db["users"].rows_where("id = ?", [user_id])), None)
+    if not existing:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    photo_urls: set[str] = set()
+    for table in ("catches", "stops"):
+        rows = db.execute(
+            f"SELECT photo_url FROM {table} WHERE user_id = ?", [user_id]
+        ).fetchall()
+        for row in rows:
+            if row[0]:
+                photo_urls.add(row[0])
+
+    user_scoped_tables = [
+        "personal_bests", "catches", "stops", "sessions",
+        "chat_messages", "chat_sessions", "api_usage", "tool_usage",
+        "daily_usage", "session_conditions", "behavioral_insights",
+        "user_sessions",
+    ]
+    counts: dict[str, int] = {}
+    for table in user_scoped_tables:
+        if table not in db.table_names():
+            continue
+        row = db.execute(f"SELECT COUNT(*) FROM {table} WHERE user_id = ?", [user_id]).fetchone()
+        counts[table] = row[0]
+
+    if dry_run:
+        return {
+            "dry_run": True,
+            "user": {"id": existing["id"], "username": existing["username"]},
+            "would_delete_rows": counts,
+            "would_delete_photos": sorted(photo_urls),
+        }
+
+    for table in user_scoped_tables:
+        if table not in db.table_names():
+            continue
+        db.execute(f"DELETE FROM {table} WHERE user_id = ?", [user_id])
+    db["users"].delete(user_id)
+    db.conn.commit()
+
+    photos_dir = os.environ.get("DATA_DIR", "data")
+    deleted_photos = []
+    for url in photo_urls:
+        path = os.path.join(photos_dir, url.lstrip("/"))
+        try:
+            os.remove(path)
+            deleted_photos.append(url)
+        except OSError:
+            pass
+
+    return {
+        "dry_run": False,
+        "deleted_user": {"id": existing["id"], "username": existing["username"]},
+        "deleted_rows": counts,
+        "deleted_photos": deleted_photos,
+    }
+
+
 @app.get("/admin/db-stats")
 def get_db_stats(_: None = Depends(verify_api_key)):
     """Diagnostic: observation table stats by source. Temporary endpoint."""
