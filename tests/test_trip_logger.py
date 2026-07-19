@@ -276,6 +276,57 @@ def test_structured_catches_empty_is_pure_nl_behavior(db_conn):
     assert catches[0]["biggest_size_cm"] is None
 
 
+def test_structured_catch_no_species_photo_only_keeps_count_size_bait(db_conn, tmp_path):
+    """A structured catch with no typed species (the "let vision suggest it"
+    card) must still create a row carrying count/biggest_size_cm/bait from
+    the structured entry — not silently drop them while only the species
+    placeholder and photo survive. The catch relies on the stop's shared
+    photo (as /log-trip/photo attaches it) since it has no photo of its own."""
+    from PIL import Image
+
+    from src.services.trip_logger import log_session
+    from src.storage.catches import confirm_catch_species, get_catches_for_session
+
+    photo_path = tmp_path / "fish.jpg"
+    Image.new("RGB", (10, 10)).save(photo_path)
+
+    parsed = {
+        "date": "2026-06-01",
+        "stops": [{
+            "location_text": "Bronte Creek",
+            "species_caught": [],
+            "photo_path": str(photo_path),
+            "photo_url": "/photos/shared.jpg",
+        }],
+    }
+    structured = [{
+        "species": None, "count": 3, "biggest_size_cm": 22.0,
+        "bait": "worm", "photo_path": None, "photo_url": None,
+    }]
+
+    result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
+
+    catches = get_catches_for_session(db_conn, result["session_id"])
+    assert len(catches) == 1
+    c = catches[0]
+    assert c["count"] == 3
+    assert c["biggest_size_cm"] == 22.0
+    assert c["bait"] == "worm"
+    assert c["photo_url"] == "/photos/shared.jpg"
+    assert c["species_confirmed"] == 0
+    assert len(result["pending_catches"]) == 1
+    assert result["pending_catches"][0]["catch_id"] == c["id"]
+
+    # Confirming species must attach to this same row, not spawn a new one.
+    assert confirm_catch_species(db_conn, c["id"], user_id=1, species="rock bass") is True
+    confirmed = get_catches_for_session(db_conn, result["session_id"])
+    assert len(confirmed) == 1
+    assert confirmed[0]["species"] == "rock bass"
+    assert confirmed[0]["count"] == 3
+    assert confirmed[0]["biggest_size_cm"] == 22.0
+    assert confirmed[0]["bait"] == "worm"
+
+
 def test_structured_catch_updates_personal_best(db_conn):
     from src.services.trip_logger import log_session
     from src.storage.catches import get_personal_best

@@ -260,7 +260,12 @@ def log_session(
                 catch_photo_path = sc_photo_path
                 catch_photo_url = sc.get("photo_url")
                 catch_vision = _photo_species_candidates(db_conn, sc_photo_path)
-            elif matched_nl_species:
+            elif matched_nl_species or (not sc.get("species") and stop.get("photo_path")):
+                # Either an NL match, or (the "let vision suggest it" card)
+                # no typed species at all — either way this catch has no
+                # photo of its own, so it rides on the stop's shared photo
+                # instead of falling through to the no-photo/no-species
+                # branch below and losing count/size/bait.
                 catch_photo_path = stop.get("photo_path")
                 catch_photo_url = stop.get("photo_url")
                 catch_vision = vision_result
