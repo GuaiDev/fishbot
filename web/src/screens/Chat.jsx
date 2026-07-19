@@ -31,11 +31,11 @@ export default function Chat({ onNavigate, user, onLogout }) {
     setLoading(true);
 
     try {
-      const apiMessages = newMessages
+      const conversationHistory = messages
         .filter((_, i) => i > 0) // skip the initial bot greeting
         .map(m => ({ role: m.role, content: m.content }));
 
-      const data = await sendMessage(apiMessages);
+      const data = await sendMessage(text, conversationHistory);
       const reply = data.reply || data.content || 'No response.';
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
     } catch (err) {

@@ -38,11 +38,11 @@ export async function getMe() {
   return res.json();
 }
 
-export async function sendMessage(messages) {
+export async function sendMessage(message, conversationHistory = []) {
   const res = await fetch(`${BASE_URL}/chat`, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ message, conversation_history: conversationHistory }),
   });
   if (res.status === 429) {
     const data = await res.json();
