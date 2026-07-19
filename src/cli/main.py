@@ -857,7 +857,7 @@ def token() -> None:
     try:
         user = next(db["users"].rows_where("id = 1"), None)
         if not user:
-            console.print("No admin user found. Run on Railway first or use bootstrap endpoint.")
+            console.print("No admin user found.")
             return
 
         new_token = secrets.token_urlsafe(32)

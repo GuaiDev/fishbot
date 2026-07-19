@@ -31,23 +31,6 @@ export async function signup(code, username, displayName) {
   return data;
 }
 
-// TEMPORARY DEV-ONLY CONVENIENCE — REMOVE BEFORE MERGING/DEPLOYING.
-// Calls the permissive /admin/bootstrap endpoint (only permissive when
-// FISHBOT_API_KEY is unset on the backend — i.e. local dev, never
-// production) to fetch a token without going through Login's invite-code
-// form. Only ever called from App.jsx behind `import.meta.env.DEV`, which
-// Vite hardcodes to false in production builds, so this cannot run in a
-// deployed build regardless of this function existing in the bundle.
-export async function devBootstrapLogin() {
-  const res = await fetch(`${BASE_URL}/admin/bootstrap`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  });
-  if (!res.ok) throw new Error(`Dev bootstrap login failed: ${res.status}`);
-  return res.json();
-}
-
 export async function getMe() {
   const res = await fetch(`${BASE_URL}/auth/me`, { headers: authHeaders() });
   if (res.status === 401) return null;

@@ -635,41 +635,6 @@ def log_page():
     return FileResponse(os.path.join(_static_dir, "log.html"))
 
 
-@app.post("/admin/bootstrap")
-def bootstrap(body: dict, _: None = Depends(verify_api_key)):
-    import traceback
-    import secrets
-    from datetime import datetime, timedelta
-    from src.storage.database import get_db
-
-    try:
-        db = get_db()
-        username = body.get("username", "jason")
-
-        existing = list(db.execute("SELECT id FROM users WHERE id = 1").fetchall())
-
-        if not existing:
-            db.execute(
-                "INSERT OR IGNORE INTO users (id, username, display_name, role, daily_message_limit) "
-                "VALUES (1, ?, 'Jason', 'admin', 200)",
-                [username],
-            )
-            db.conn.commit()
-
-        token = secrets.token_urlsafe(32)
-        expires = (datetime.now() + timedelta(days=90)).isoformat()
-        db.execute(
-            "INSERT INTO user_sessions (user_id, token, expires_at, last_used_at) VALUES (1, ?, ?, ?)",
-            [token, expires, datetime.now().isoformat()],
-        )
-        db.conn.commit()
-
-        return {"token": token, "user_id": 1, "username": username}
-
-    except Exception as e:
-        return {"error": str(e), "traceback": traceback.format_exc()}
-
-
 @app.post("/admin/token")
 def get_admin_token(_: None = Depends(verify_api_key)):
     """Generate a fresh admin token. Protected by API key only."""
@@ -680,7 +645,7 @@ def get_admin_token(_: None = Depends(verify_api_key)):
     db = get_db()
     existing = list(db.execute("SELECT id, username FROM users WHERE id = 1").fetchall())
     if not existing:
-        raise HTTPException(status_code=404, detail="Admin user not found. Run bootstrap first.")
+        raise HTTPException(status_code=404, detail="Admin user (id=1) not found in the database.")
 
     token = secrets.token_urlsafe(32)
     expires = (datetime.now() + timedelta(days=90)).isoformat()
