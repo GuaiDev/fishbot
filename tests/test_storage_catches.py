@@ -1,6 +1,7 @@
 """Tests for the catches table — one row per species caught at a stop."""
 
 from src.storage.catches import (
+    confirm_catch_species,
     get_catches_for_session,
     get_catches_for_sessions,
     get_personal_best,
@@ -143,3 +144,26 @@ def test_personal_best_is_scoped_per_user(tmp_path):
         db, user_id=1, species="smallmouth bass", size_cm=30.0, catch_id=catch_id
     )
     assert get_personal_best(db, 2, "smallmouth bass") is None
+
+
+def test_confirm_catch_species_reattributes_personal_best(tmp_path):
+    """A catch logged under a placeholder guess (e.g. "unidentified fish
+    sp.") records its personal best under that placeholder at insert time.
+    Confirming the real species must move the PB to the confirmed species —
+    otherwise GET /fishdex (which looks up personal_bests by the *confirmed*
+    species) never finds it and the PB badge silently never renders."""
+    db = get_db(path=tmp_path / "test.db")
+    session_id, stop_id = _session_and_stop(db)
+    catch_id = insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1,
+        species="unidentified fish sp.", biggest_size_cm=20.0,
+        species_confirmed=False,
+    )
+    update_personal_best_if_higher(
+        db, user_id=1, species="unidentified fish sp.", size_cm=20.0, catch_id=catch_id
+    )
+    assert get_personal_best(db, 1, "rock bass") is None
+
+    assert confirm_catch_species(db, catch_id, user_id=1, species="Rock Bass") is True
+
+    assert get_personal_best(db, 1, "rock bass") == 20.0

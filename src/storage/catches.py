@@ -148,6 +148,17 @@ def confirm_catch_species(db: Database, catch_id: int, user_id: int, species: st
             "confirmed_at": datetime.now().isoformat(),
         },
     )
+    # The personal-best row recorded at insert time is keyed to whatever
+    # placeholder species the NL parser/vision guessed then (e.g.
+    # "unidentified fish sp."), not the species the user is confirming now —
+    # get_fishdex_data only looks up personal_bests under the *confirmed*
+    # species, so without this the PB silently never surfaces for any catch
+    # that went through this flow.
+    size_cm = row.get("biggest_size_cm")
+    if size_cm is not None:
+        update_personal_best_if_higher(
+            db, user_id=user_id, species=species, size_cm=size_cm, catch_id=catch_id
+        )
     return True
 
 
