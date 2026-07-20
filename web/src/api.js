@@ -1,4 +1,11 @@
-const BASE_URL = 'https://web-production-e2094.up.railway.app';
+// The built app is always served by the same backend it should talk to —
+// Railway serves both the API and /app from web-production-e2094...,
+// and `uv run fishbot serve` does the same locally on whatever host:port
+// it's running on (see the /app static mount in src/api/main.py). So the
+// built bundle just uses its own origin, no environment branching needed.
+// Only the Vite dev server (npm run dev, a separate process with no
+// backend of its own) needs an explicit override to a local backend.
+const BASE_URL = import.meta.env.DEV ? 'http://localhost:8000' : window.location.origin;
 
 // catches[].photo_url from GET /sessions is a relative path (e.g. /photos/x.jpg).
 // In production that resolves fine since the backend serves the app itself,
