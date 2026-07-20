@@ -282,6 +282,104 @@ def test_log_trip_json_with_fast_tally_catch_persists_as_unidentified(monkeypatc
     assert response.json()["pending_catches"] == []
 
 
+def test_log_trip_response_includes_summary_card_fields(monkeypatch):
+    """The end-of-session summary card reads location_name/conditions/catches
+    off the /log-trip(/photo) response — must actually be present, not just
+    silently absent because nothing wires them through."""
+    import json
+    from unittest.mock import patch
+
+    canned_parse = {
+        "date": "2026-07-20",
+        "stops": [{
+            "location_text": "Sixteen Mile Creek",
+            "location_name": "Sixteen Mile Creek",
+            "species_caught": [],
+        }],
+    }
+    catches_json = json.dumps([
+        {"species": "smallmouth bass", "count": 1, "biggest_size_cm": 35.0, "bait": "spinnerbait"},
+        {"source": "fast_tally", "count": 1, "caught_at": "2026-07-20T14:00:00"},
+    ])
+    headers = _apikey_headers(monkeypatch)
+    with patch("src.services.trip_parser.parse_session_from_text", return_value=canned_parse):
+        response = client.post(
+            "/log-trip",
+            json={"text": "Sixteen Mile Creek.", "catches_json": catches_json},
+            headers=headers,
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["location_name"] == "Sixteen Mile Creek"
+    # No lat/lng in the canned parse, so condition enrichment never ran —
+    # must be an honest None, not a missing key.
+    assert data["conditions"] is None
+
+    assert len(data["catches"]) == 2
+    by_species = {c["species"]: c for c in data["catches"]}
+    assert by_species["smallmouth bass"]["is_new_pb"] is True
+    assert by_species["smallmouth bass"]["biggest_size_cm"] == 35.0
+    assert by_species["unidentified sp."]["is_new_pb"] is False
+    assert by_species["unidentified sp."]["biggest_size_cm"] is None
+
+
+def test_confirm_species_endpoint_returns_is_new_pb(monkeypatch, tmp_path):
+    """The summary card's PB flag depends on this — a "let vision suggest
+    it" detailed catch (no typed species) doesn't know its real species
+    until this call, so is_new_pb can only be reported here, not at
+    insert time. Mirrors the live E2E finding: vision guessed "warmouth"
+    at insert (which trivially became that placeholder's first-ever PB),
+    then the user corrected it to "smallmouth bass" — a species with no
+    prior record — via this endpoint."""
+    import io
+    from unittest.mock import patch
+
+    from PIL import Image
+
+    from src.auth.auth import _create_token
+    from src.services import photo_storage
+    from src.storage.database import get_db
+
+    monkeypatch.setattr(photo_storage, "PHOTOS_DIR", tmp_path / "photos")
+    headers = _apikey_headers(monkeypatch)
+
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10), color=(60, 110, 70)).save(buf, format="JPEG")
+
+    canned_parse = {
+        "date": "2026-07-20",
+        "stops": [{"location_text": "Sixteen Mile Creek", "species_caught": []}],
+    }
+    with patch("src.services.trip_parser.parse_session_from_text", return_value=canned_parse), \
+         patch("src.services.trip_logger._photo_species_candidates", return_value={
+             "screened": True, "unresolved": False, "note": None,
+             "candidates": [{"species": "warmouth", "confidence": "medium"}],
+         }):
+        response = client.post(
+            "/log-trip/photo",
+            data={"text": "Sixteen Mile Creek.", "catches_json": '[{"biggest_size_cm": 40.0}]'},
+            files={"photo": ("catch.jpg", buf.getvalue(), "image/jpeg")},
+            headers=headers,
+        )
+    assert response.status_code == 200
+    data = response.json()
+    catch_id = data["pending_catches"][0]["catch_id"]
+    # Insert-time provisional species is the vision guess, not the real ID.
+    assert data["catches"][0]["species"] == "warmouth"
+
+    # confirm-species requires a real Bearer token (no X-Api-Key fallback,
+    # unlike /log-trip) — mint one for user_id=1, the same admin/apikey
+    # fallback user the catch above was inserted under.
+    token = _create_token(get_db(), user_id=1)
+    confirm_response = client.post(
+        f"/catches/{catch_id}/confirm-species",
+        json={"species": "smallmouth bass"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["is_new_pb"] is True
+
+
 def test_log_trip_malformed_catches_json_degrades_gracefully(monkeypatch):
     """Garbage catches_json must not 500 the request — falls back to
     text-only logging, same as if the field were absent."""

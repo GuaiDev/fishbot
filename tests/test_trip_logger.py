@@ -318,7 +318,8 @@ def test_structured_catch_no_species_photo_only_keeps_count_size_bait(db_conn, t
     assert result["pending_catches"][0]["catch_id"] == c["id"]
 
     # Confirming species must attach to this same row, not spawn a new one.
-    assert confirm_catch_species(db_conn, c["id"], user_id=1, species="rock bass") is True
+    result2 = confirm_catch_species(db_conn, c["id"], user_id=1, species="rock bass")
+    assert result2["found"] is True
     confirmed = get_catches_for_session(db_conn, result["session_id"])
     assert len(confirmed) == 1
     assert confirmed[0]["species"] == "rock bass"
@@ -336,33 +337,71 @@ def test_structured_catch_updates_personal_best(db_conn):
         "stops": [{"location_text": "Bronte Creek", "species_caught": ["smallmouth bass"]}],
     }
 
-    log_session(parsed, db_conn, user_id=1, structured_catches=[
+    # First-ever catch of the species is trivially a new PB (nothing to beat).
+    result1 = log_session(parsed, db_conn, user_id=1, structured_catches=[
         {"species": "smallmouth bass", "count": 1, "biggest_size_cm": 30.0,
          "bait": None, "photo_path": None, "photo_url": None},
     ])
     assert get_personal_best(db_conn, 1, "smallmouth bass") == 30.0
+    assert result1["catches"][0]["is_new_pb"] is True
 
-    # A smaller catch afterward must not overwrite the recorded best.
+    # A smaller catch afterward must not overwrite the recorded best, and
+    # the summary card's PB flag must report False — a routine catch, not
+    # a record.
     parsed2 = {
         "date": "2026-06-02",
         "stops": [{"location_text": "Bronte Creek", "species_caught": ["smallmouth bass"]}],
     }
-    log_session(parsed2, db_conn, user_id=1, structured_catches=[
+    result2 = log_session(parsed2, db_conn, user_id=1, structured_catches=[
         {"species": "smallmouth bass", "count": 1, "biggest_size_cm": 22.0,
          "bait": None, "photo_path": None, "photo_url": None},
     ])
     assert get_personal_best(db_conn, 1, "smallmouth bass") == 30.0
+    assert result2["catches"][0]["is_new_pb"] is False
 
-    # A bigger catch must update it.
+    # A bigger catch must update it and report a genuine new PB.
     parsed3 = {
         "date": "2026-06-03",
         "stops": [{"location_text": "Bronte Creek", "species_caught": ["smallmouth bass"]}],
     }
-    log_session(parsed3, db_conn, user_id=1, structured_catches=[
+    result3 = log_session(parsed3, db_conn, user_id=1, structured_catches=[
         {"species": "smallmouth bass", "count": 1, "biggest_size_cm": 38.0,
          "bait": None, "photo_path": None, "photo_url": None},
     ])
     assert get_personal_best(db_conn, 1, "smallmouth bass") == 38.0
+    assert result3["catches"][0]["is_new_pb"] is True
+
+
+def test_log_session_catches_summary_includes_confirmed_and_pending_rows(db_conn):
+    """The "catches" summary (distinct from pending_catches, which only
+    covers unconfirmed rows) must include every catch inserted this call —
+    the end-of-session summary card's total-fish/species-count/biggest-catch
+    stats need already-confirmed rows (typed species, fast-tally taps) that
+    never show up in pending_catches at all."""
+    from src.services.trip_logger import log_session
+
+    parsed = {
+        "date": "2026-07-20",
+        "stops": [{"location_text": "Sixteen Mile Creek", "species_caught": []}],
+    }
+    structured = [
+        {"species": "smallmouth bass", "count": 1, "biggest_size_cm": 35.0,
+         "bait": "spinnerbait", "photo_path": None, "photo_url": None},
+        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
+         "photo_path": None, "photo_url": None,
+         "source": "fast_tally", "caught_at": "2026-07-20T14:00:00"},
+    ]
+
+    result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
+
+    assert len(result["catches"]) == 2
+    by_species = {c["species"]: c for c in result["catches"]}
+    assert by_species["smallmouth bass"]["species_confirmed"] is True
+    assert by_species["smallmouth bass"]["biggest_size_cm"] == 35.0
+    assert by_species["unidentified sp."]["species_confirmed"] is True
+    assert by_species["unidentified sp."]["biggest_size_cm"] is None
+    # Neither is pending — both were confirmed at insert time.
+    assert result["pending_catches"] == []
 
 
 def test_fast_tally_no_species_no_photo_inserts_unidentified(db_conn):

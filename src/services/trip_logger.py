@@ -140,18 +140,21 @@ def parse_size_to_cm(raw: str | float | int | None) -> float | None:
 
 def _maybe_update_personal_best(
     db_conn: Database, user_id: int, species: str | None, size_cm: float | None, catch_id: int
-) -> None:
+) -> bool:
     """Update the stored personal-best size for this species if this catch
     beats it. Never raises — bookkeeping failure must not block logging,
-    same policy as _photo_species_candidates."""
+    same policy as _photo_species_candidates. Returns whether this catch
+    became the new personal best, so callers (the summary card's PB flag)
+    can surface it without a second lookup."""
     if not species or size_cm is None:
-        return
+        return False
     try:
-        update_personal_best_if_higher(
+        return update_personal_best_if_higher(
             db_conn, user_id=user_id, species=species, size_cm=size_cm, catch_id=catch_id
         )
     except Exception as e:
         logger.warning("Personal-best update failed for %s: %s", species, e)
+        return False
 
 
 def log_session(
@@ -227,6 +230,12 @@ def log_session(
 
     stops_logged = 0
     pending_catches: list[dict] = []
+    # Every catch inserted this call, confirmed or not — the summary card
+    # needs this beyond just pending_catches (which only covers unconfirmed
+    # rows) because a directly-typed species or a fast-tally tap is already
+    # confirmed at insert time and would otherwise never appear anywhere in
+    # this call's response.
+    catches_summary: list[dict] = []
     for stop_index, stop in enumerate(parsed_session.get("stops", [])):
         stop_id = db_conn["stops"].insert(
             {
@@ -389,7 +398,18 @@ def log_session(
                     "suggested_species": suggestions,
                     "photo_url": catch_photo_url,
                 })
-            _maybe_update_personal_best(db_conn, user_id, final_species, size_cm, catch_id)
+            is_new_pb = _maybe_update_personal_best(
+                db_conn, user_id, final_species, size_cm, catch_id
+            )
+            catches_summary.append({
+                "catch_id": catch_id,
+                "species": final_species,
+                "species_confirmed": confirmed,
+                "count": sc.get("count"),
+                "biggest_size_cm": size_cm,
+                "photo_url": catch_photo_url,
+                "is_new_pb": is_new_pb,
+            })
 
         # Pass 2 — any NL-parsed species no structured entry covered. This is
         # the *only* pass that runs when structured_catches is empty/absent,
@@ -416,6 +436,15 @@ def log_session(
                 "catch_id": catch_id,
                 "suggested_species": suggestions,
                 "photo_url": stop.get("photo_url"),
+            })
+            catches_summary.append({
+                "catch_id": catch_id,
+                "species": species,
+                "species_confirmed": False,
+                "count": None,
+                "biggest_size_cm": None,
+                "photo_url": stop.get("photo_url"),
+                "is_new_pb": False,  # NL-only rows never carry a size, so never a PB
             })
 
         if not stop.get("was_productive") and stop.get("ohn_segment_id"):
@@ -488,6 +517,7 @@ def log_session(
         "session_id": session_id,
         "stops_logged": stops_logged,
         "pending_catches": pending_catches,
+        "catches": catches_summary,
         "followup_questions": followup_questions,
         "proactive_coaching": proactive_coaching,
         "conditions_enriched": conditions_result is not None and

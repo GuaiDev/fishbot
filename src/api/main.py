@@ -429,16 +429,45 @@ def _log_trip_core(
         fallback_photo_taken_at=photo_taken_at, fallback_photo_url=photo_url,
         fallback_photo_path=photo_path,
     )
+
+    # Re-query session_conditions rather than passing log_session's internal
+    # conditions_result straight through — that dict is shaped for enrichment
+    # diagnostics (raw provider payloads, timeout/error markers), not a
+    # client-facing contract. This mirrors the columns GET /sessions already
+    # exposes, so the summary card and the sessions list agree on shape.
+    conditions_row = next(
+        iter(db.execute(
+            "SELECT air_temp_c, pressure_hpa, anomaly_flag "
+            "FROM session_conditions WHERE session_id = ?",
+            [result["session_id"]],
+        ).fetchall()),
+        None,
+    )
+    conditions = None
+    if conditions_row:
+        conditions = {
+            "air_temp_c": conditions_row[0],
+            "pressure_hpa": conditions_row[1],
+            "anomaly_flag": conditions_row[2],
+        }
+
     return {
         "status": "logged",
         "session_id": result["session_id"],
         "stops_logged": result["stops_logged"],
         "location_method": parsed["stops"][0].get("location_method") if parsed.get("stops") else None,
+        "location_name": parsed["stops"][0].get("location_name") if parsed.get("stops") else None,
         "photo_url": photo_url,
+        "conditions": conditions,
         # Every logged catch starts unconfirmed — species is a text-parser/
         # photo-vision suggestion, not committed fact. Client must show these
         # for the user to confirm/correct via POST /catches/{id}/confirm-species.
         "pending_catches": result.get("pending_catches", []),
+        # Every catch inserted this call (confirmed or not) — the FishDex
+        # end-of-session summary card's totals/biggest-catch/PB-flag read
+        # from this, not just pending_catches (which excludes already-
+        # confirmed rows like typed species or fast-tally taps).
+        "catches": result.get("catches", []),
     }
 
 
@@ -649,10 +678,19 @@ def confirm_catch_species_endpoint(
         raise HTTPException(status_code=400, detail="'species' field is required")
 
     db = get_db()
-    ok = confirm_catch_species(db, catch_id, user["id"], species)
-    if not ok:
+    result = confirm_catch_species(db, catch_id, user["id"], species)
+    if not result["found"]:
         raise HTTPException(status_code=404, detail="Catch not found")
-    return {"status": "confirmed", "catch_id": catch_id, "species": species}
+    return {
+        "status": "confirmed",
+        "catch_id": catch_id,
+        "species": species,
+        # Surfaced for the end-of-session summary card: the biggest/only
+        # detailed catch in a session is often still pending this exact call
+        # when the card first renders, so whether it's a new personal best
+        # only becomes knowable here, not at initial log-trip time.
+        "is_new_pb": result["is_new_pb"],
+    }
 
 
 @app.get("/log")

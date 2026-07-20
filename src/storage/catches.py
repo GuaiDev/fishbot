@@ -138,14 +138,24 @@ def get_pending_catches_for_user(db: Database, user_id: int) -> list[dict[str, A
     )
 
 
-def confirm_catch_species(db: Database, catch_id: int, user_id: int, species: str) -> bool:
-    """Commit the user's confirmed/corrected species. Returns False if the
-    catch doesn't exist or belongs to another user."""
+def confirm_catch_species(
+    db: Database, catch_id: int, user_id: int, species: str
+) -> dict[str, bool]:
+    """Commit the user's confirmed/corrected species.
+
+    Returns {"found": bool, "is_new_pb": bool}. found is False if the catch
+    doesn't exist or belongs to another user (is_new_pb is always False in
+    that case). is_new_pb reflects whether confirming this catch's species
+    just made it the new personal best for that species — the biggest/only
+    detailed catch in a session is often still awaiting this call when the
+    end-of-session summary card first renders, so the card needs this signal
+    to surface a PB flag that only becomes knowable at confirm time.
+    """
     from datetime import datetime
 
     row = next(iter(db["catches"].rows_where("id = ? AND user_id = ?", [catch_id, user_id])), None)
     if not row:
-        return False
+        return {"found": False, "is_new_pb": False}
     old_species_key = (row.get("species") or "").strip().lower()
     new_species_key = (species or "").strip().lower()
     db["catches"].update(
@@ -163,8 +173,9 @@ def confirm_catch_species(db: Database, catch_id: int, user_id: int, species: st
     # species, so without this the PB silently never surfaces for any catch
     # that went through this flow.
     size_cm = row.get("biggest_size_cm")
+    is_new_pb = False
     if size_cm is not None:
-        update_personal_best_if_higher(
+        is_new_pb = update_personal_best_if_higher(
             db, user_id=user_id, species=species, size_cm=size_cm, catch_id=catch_id
         )
     # Clean up the stale placeholder-species PB row this same catch created
@@ -179,7 +190,7 @@ def confirm_catch_species(db: Database, catch_id: int, user_id: int, species: st
             [user_id, old_species_key, catch_id],
         )
         db.conn.commit()
-    return True
+    return {"found": True, "is_new_pb": is_new_pb}
 
 
 def get_catches_for_session(db: Database, session_id: int) -> list[dict[str, Any]]:

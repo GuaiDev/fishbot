@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { confirmCatchSpecies, logTrip } from '../api';
+import { confirmCatchSpecies, logTrip, resolvePhotoUrl } from '../api';
 import GrainOverlay from '../components/GrainOverlay';
 import '../fishdex-tokens.css';
 
@@ -26,8 +26,8 @@ function SpeciesConfirmCard({ pending, onConfirmed }) {
     setSaving(true);
     setError('');
     try {
-      await confirmCatchSpecies(pending.catch_id, final);
-      onConfirmed(pending.catch_id);
+      const result = await confirmCatchSpecies(pending.catch_id, final);
+      onConfirmed(pending.catch_id, final, result.is_new_pb);
     } catch (err) {
       setError(err.message);
       setSaving(false);
@@ -118,6 +118,155 @@ function SpeciesConfirmCard({ pending, onConfirmed }) {
       {error && (
         <div style={{ marginTop: 8, fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--color-rust)' }}>{error}</div>
       )}
+    </div>
+  );
+}
+
+function formatDuration(seconds) {
+  if (seconds == null) return null;
+  const mins = Math.round(seconds / 60);
+  if (mins < 1) return 'under a minute';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return remMins ? `${hours}h ${remMins}m` : `${hours}h`;
+}
+
+function StatCell({ label, value }) {
+  return (
+    <div>
+      <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 22, color: 'var(--fx-text-primary-2)' }}>
+        {value}
+      </div>
+      <div style={{
+        fontFamily: 'var(--fx-font-ui)', fontSize: 10, fontWeight: 600,
+        letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--fx-text-muted)', marginTop: 2,
+      }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+// The "obscured" privacy tier by default: display-level location name only
+// (e.g. "Sixteen Mile Creek", already resolved server-side the same way
+// every other screen shows it), never raw lat/lng — this card has no share/
+// export action yet, but the boundary is set now so nothing needs
+// retrofitting when one exists. See PRODUCT.md privacy rule.
+//
+// The end-of-session "Strava moment" — the new success state in place of a
+// plain "Trip logged" box. Reads entirely from data the session already
+// produced: summary.catches is the /log-trip(/photo) response's per-catch
+// summary (species/count/size/confirmed/PB, confirmed rows and
+// still-pending ones alike), kept in sync as SpeciesConfirmCard entries
+// below get confirmed (see LogTrip's handleCatchConfirmed) — so the species
+// count, biggest-catch label, and PB badge all update live rather than
+// freezing at whatever was knowable the instant "End session" returned.
+function SessionSummaryCard({ summary }) {
+  // "unidentified sp." is a real logged catch but not a real species ID —
+  // excluded so the species count reads as a genuine number, not inflated
+  // by an anonymous-fish bucket (explicit product decision, not a default).
+  const speciesCount = new Set(
+    summary.catches
+      .filter(c => c.species_confirmed && (c.species || '').trim().toLowerCase() !== 'unidentified sp.')
+      .map(c => c.species.trim().toLowerCase())
+  ).size;
+
+  const sized = summary.catches.filter(c => c.biggest_size_cm != null);
+  const biggest = sized.length
+    ? sized.reduce((a, b) => (b.biggest_size_cm > a.biggest_size_cm ? b : a))
+    : null;
+
+  const hasNewPb = summary.catches.some(c => c.is_new_pb);
+  const durationLabel = formatDuration(summary.durationSeconds);
+  const photoUrl = biggest?.photo_url ? resolvePhotoUrl(biggest.photo_url) : null;
+
+  const stats = [
+    { label: 'Fish', value: summary.totalFish },
+    { label: 'Species', value: speciesCount },
+  ];
+  if (durationLabel) stats.push({ label: 'Duration', value: durationLabel });
+
+  const pbBadge = (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 5,
+      padding: '5px 10px', borderRadius: 14,
+      background: 'rgba(24,18,8,.65)', backdropFilter: 'blur(4px)',
+      border: '1px solid var(--fx-brass)',
+    }}>
+      <span aria-hidden="true" style={{ color: 'var(--fx-brass-star)' }}>★</span>
+      <span style={{
+        fontFamily: 'var(--fx-font-ui)', fontSize: 10, fontWeight: 600,
+        letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--fx-brass-light)',
+      }}>
+        New Personal Best
+      </span>
+    </div>
+  );
+
+  return (
+    <div style={{
+      marginTop: 12, borderRadius: 18, overflow: 'hidden',
+      border: `1px solid ${hasNewPb ? 'var(--fx-brass)' : 'var(--fx-hairline)'}`,
+      background: 'var(--fx-card-fill)',
+    }}>
+      {photoUrl && (
+        <div style={{ position: 'relative', height: 180, overflow: 'hidden' }}>
+          <img src={photoUrl} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(transparent 40%, rgba(11,12,8,.6) 70%, rgba(9,10,6,.92) 100%)',
+          }} />
+          {hasNewPb && (
+            <div style={{ position: 'absolute', top: 12, right: 12 }}>{pbBadge}</div>
+          )}
+          <div style={{ position: 'absolute', left: 16, right: 16, bottom: 12 }}>
+            <div style={{
+              fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 20,
+              color: 'var(--fx-text-primary-2)', textTransform: 'capitalize',
+            }}>
+              {biggest.species}
+            </div>
+            <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-brass-light)' }}>
+              biggest catch · {(biggest.biggest_size_cm / 2.54).toFixed(1)}″
+              {!biggest.species_confirmed && ' · confirm below'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding: '16px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span aria-hidden="true" style={{ color: 'var(--fx-moss-lightest)', fontSize: 14 }}>❦</span>
+            <span style={{
+              fontFamily: 'var(--fx-font-ui)', fontSize: 10, fontWeight: 600,
+              letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--fx-moss-lightest)',
+            }}>
+              Session Complete
+            </span>
+          </div>
+          {hasNewPb && !photoUrl && pbBadge}
+        </div>
+
+        <div style={{
+          display: 'grid', gridTemplateColumns: `repeat(${stats.length}, 1fr)`, gap: 12,
+          marginBottom: (summary.locationName || summary.conditions) ? 14 : 0,
+        }}>
+          {stats.map(s => <StatCell key={s.label} label={s.label} value={s.value} />)}
+        </div>
+
+        {(summary.locationName || summary.conditions) && (
+          <div style={{
+            fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-text-muted)',
+            display: 'flex', flexWrap: 'wrap', gap: 12,
+          }}>
+            {summary.locationName && <span>📍 {summary.locationName}</span>}
+            {summary.conditions?.air_temp_c != null && <span>{Math.round(summary.conditions.air_temp_c)}°C</span>}
+            {summary.conditions?.pressure_hpa != null && <span>{Math.round(summary.conditions.pressure_hpa)} hPa</span>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -499,6 +648,10 @@ export default function LogTrip({ onNavigate }) {
   const [status, setStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [pendingCatches, setPendingCatches] = useState([]);
+  // The end-of-session summary card's data — set from the log-trip response
+  // on submit, updated in place as SpeciesConfirmCard entries below resolve
+  // (see handleCatchConfirmed). null until the first successful submit.
+  const [sessionSummary, setSessionSummary] = useState(null);
 
   // Live session state — purely client-side for this phase, same as the
   // rest of this form: nothing persists until "Log trip"/"End session" is
@@ -583,6 +736,10 @@ export default function LogTrip({ onNavigate }) {
     }
     setSessionMode('live');
     setSessionStartedAt(Date.now());
+    // Clear the previous session's recap — it's shown until a new session
+    // starts, not just until the next tap, so a solo "log a catch" isn't
+    // stuck staring at last time's card the moment fishing resumes.
+    setSessionSummary(null);
   }
 
   function addTally() {
@@ -627,11 +784,28 @@ export default function LogTrip({ onNavigate }) {
           caught_at: c.caughtAt || null,
         }));
 
+      // Snapshot before the post-submit reset below clears it — duration is
+      // computed purely client-side (both endpoints of it, the "Start
+      // fishing" tap and this very moment, already live in this component;
+      // no backend round-trip needed). null (old-style single-catch log
+      // with no live session) means the summary card omits the stat.
+      const durationSeconds = sessionStartedAt ? (Date.now() - sessionStartedAt) / 1000 : null;
+
       const result = await logTrip(
         text, exifData?.lat, exifData?.lng, exifData?.takenAt, photoFile, catchesPayload
       );
       setStatus('success');
       setPendingCatches(result.pending_catches || []);
+      setSessionSummary({
+        // Server truth, not the client's own filtered catchesPayload — this
+        // is what actually got persisted, so it can't drift from a branch
+        // that silently drops an entry server-side.
+        totalFish: (result.catches || []).reduce((sum, c) => sum + (c.count || 0), 0),
+        durationSeconds,
+        locationName: result.location_name || null,
+        conditions: result.conditions || null,
+        catches: result.catches || [],
+      });
       setSessionNotes('');
       setExifData(null);
       setLocationAttempted(false);
@@ -644,8 +818,19 @@ export default function LogTrip({ onNavigate }) {
     }
   }
 
-  function handleCatchConfirmed(catchId) {
+  function handleCatchConfirmed(catchId, confirmedSpecies, isNewPb) {
     setPendingCatches(prev => prev.filter(p => p.catch_id !== catchId));
+    // Keeps the summary card's species count / biggest-catch label / PB
+    // badge live as confirmations land, instead of freezing at whatever
+    // was knowable the instant "End session" returned.
+    setSessionSummary(prev => prev && {
+      ...prev,
+      catches: prev.catches.map(c =>
+        c.catch_id === catchId
+          ? { ...c, species: confirmedSpecies, species_confirmed: true, is_new_pb: isNewPb }
+          : c
+      ),
+    });
   }
 
   const hasGps = exifData && exifData.lat && !exifData.trying;
@@ -852,27 +1037,7 @@ export default function LogTrip({ onNavigate }) {
 
       {status === 'success' && (
         <>
-          {/* Quiet celebration, not a plain checkmark — same ❦ new-find
-              vocabulary as FishDex's CaughtPlate, dressed for a confirmation
-              moment rather than a collection plate. */}
-          <div style={{
-            marginTop: 12, padding: '16px 18px',
-            background: 'var(--fx-card-fill-quiet)', border: '1px solid var(--fx-hairline)',
-            borderRadius: 14,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <span style={{ color: 'var(--fx-moss-lightest)', fontSize: 14 }} aria-hidden="true">❦</span>
-              <span style={{
-                fontFamily: 'var(--fx-font-ui)', fontSize: 10, fontWeight: 600,
-                letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--fx-moss-lightest)',
-              }}>
-                Logged
-              </span>
-            </div>
-            <div style={{ fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 17, color: 'var(--fx-text-primary-2)' }}>
-              Trip logged. Keep fishing.
-            </div>
-          </div>
+          {sessionSummary && <SessionSummaryCard summary={sessionSummary} />}
           {pendingCatches.map(p => (
             <SpeciesConfirmCard key={p.catch_id} pending={p} onConfirmed={handleCatchConfirmed} />
           ))}

@@ -176,7 +176,9 @@ def test_confirm_catch_species_reattributes_personal_best(tmp_path):
     )
     assert get_personal_best(db, 1, "rock bass") is None
 
-    assert confirm_catch_species(db, catch_id, user_id=1, species="Rock Bass") is True
+    assert confirm_catch_species(db, catch_id, user_id=1, species="Rock Bass") == {
+        "found": True, "is_new_pb": True,
+    }
 
     assert get_personal_best(db, 1, "rock bass") == 20.0
 
@@ -200,7 +202,9 @@ def test_confirm_catch_species_removes_stale_placeholder_pb(tmp_path):
     )
     assert get_personal_best(db, 1, "warmouth") == 36.83
 
-    assert confirm_catch_species(db, catch_id, user_id=1, species="smallmouth bass") is True
+    assert confirm_catch_species(db, catch_id, user_id=1, species="smallmouth bass") == {
+        "found": True, "is_new_pb": True,
+    }
 
     assert get_personal_best(db, 1, "smallmouth bass") == 36.83
     assert get_personal_best(db, 1, "warmouth") is None
@@ -236,8 +240,44 @@ def test_confirm_catch_species_does_not_delete_unrelated_pb_under_old_species_na
     )
     assert get_personal_best(db, 1, "warmouth") == 25.0  # unchanged by the smaller guess
 
-    assert confirm_catch_species(db, other_catch, user_id=1, species="rock bass") is True
+    assert confirm_catch_species(db, other_catch, user_id=1, species="rock bass") == {
+        "found": True, "is_new_pb": True,
+    }
 
     # The real warmouth PB (owned by the other catch) must survive.
     assert get_personal_best(db, 1, "warmouth") == 25.0
     assert get_personal_best(db, 1, "rock bass") == 10.0
+
+
+def test_confirm_catch_species_is_new_pb_false_when_not_a_record(tmp_path):
+    """Confirming a catch's species must report is_new_pb=False when the
+    confirmed species already has a bigger recorded best — the summary
+    card's PB flag must only ever fire on a genuine record, not on every
+    confirm call."""
+    db = get_db(path=tmp_path / "test.db")
+    session_id, stop_id = _session_and_stop(db)
+
+    existing_record_catch = insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1,
+        species="rock bass", biggest_size_cm=30.0, species_confirmed=True,
+    )
+    update_personal_best_if_higher(
+        db, user_id=1, species="rock bass", size_cm=30.0, catch_id=existing_record_catch
+    )
+
+    smaller_catch = insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1,
+        species="unidentified fish sp.", biggest_size_cm=15.0, species_confirmed=False,
+    )
+
+    assert confirm_catch_species(db, smaller_catch, user_id=1, species="rock bass") == {
+        "found": True, "is_new_pb": False,
+    }
+    assert get_personal_best(db, 1, "rock bass") == 30.0  # untouched — 15.0 never beat it
+
+
+def test_confirm_catch_species_not_found_returns_false(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    assert confirm_catch_species(db, 9999, user_id=1, species="rock bass") == {
+        "found": False, "is_new_pb": False,
+    }
