@@ -292,6 +292,13 @@ def _normalize_structured_catches(
     a request failure. extra_photos[i] (already-saved {"path", "url"} dicts
     from /log-trip/photo's `photos[]` field) is attached to catches_json[i]
     by index position, per the multi-photo contract.
+
+    source (optional — "fast_tally" | "detailed", anything else normalized
+    to None) and caught_at (optional — the client's ISO tap timestamp) flow
+    through to log_session for the fast-tally logging feature: source lets
+    log_session tell an anonymous "+1 fish" tap apart from a detailed card
+    left with no species, and caught_at preserves the tap's actual time
+    since every catch in a session is inserted together at submit time.
     """
     if not catches_json:
         return []
@@ -323,6 +330,12 @@ def _normalize_structured_catches(
             size_raw = entry.get("biggest_size")
         biggest_size_cm = parse_size_to_cm(size_raw)
 
+        source = entry.get("source")
+        source = source if source in ("fast_tally", "detailed") else None
+
+        caught_at = entry.get("caught_at")
+        caught_at = caught_at.strip() if isinstance(caught_at, str) and caught_at.strip() else None
+
         photo = extra_photos[i] if extra_photos and i < len(extra_photos) else None
         normalized.append({
             "species": species,
@@ -331,6 +344,8 @@ def _normalize_structured_catches(
             "bait": bait,
             "photo_path": photo["path"] if photo else None,
             "photo_url": photo["url"] if photo else None,
+            "source": source,
+            "caught_at": caught_at,
         })
     return normalized
 

@@ -103,6 +103,18 @@ def test_insert_catch_round_trips_biggest_size_cm(tmp_path):
     assert catches[0]["bait"] == "spinnerbait"
 
 
+def test_insert_catch_round_trips_caught_at(tmp_path):
+    db = get_db(path=tmp_path / "test.db")
+    session_id, stop_id = _session_and_stop(db)
+
+    insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1, species="pumpkinseed",
+        caught_at="2026-07-19T14:00:00",
+    )
+    catches = get_catches_for_session(db, session_id)
+    assert catches[0]["caught_at"] == "2026-07-19T14:00:00"
+
+
 def test_get_personal_best_returns_none_when_unset(tmp_path):
     db = get_db(path=tmp_path / "test.db")
     assert get_personal_best(db, 1, "smallmouth bass") is None

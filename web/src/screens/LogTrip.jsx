@@ -213,7 +213,21 @@ const SIZE_UNIT_STORAGE_KEY = 'fishdex_size_unit';
 let _catchIdSeq = 0;
 function makeBlankCatch() {
   _catchIdSeq += 1;
-  return { id: _catchIdSeq, photoFile: null, preview: null, species: '', count: 1, biggestSize: '', bait: '' };
+  return { id: _catchIdSeq, kind: 'detailed', photoFile: null, preview: null, species: '', count: 1, biggestSize: '', bait: '' };
+}
+
+// A fast-tally "+1 fish" entry — same field shape as a detailed catch (so
+// composeSessionText/updateCatch/the submit payload never need to special-
+// case it), plus caughtAt: the actual tap time, since every catch in a
+// session is inserted server-side together at submit time (see caught_at
+// in trip_logger.py).
+function makeTallyCatch() {
+  _catchIdSeq += 1;
+  return {
+    id: _catchIdSeq, kind: 'tally', photoFile: null, preview: null,
+    species: '', count: 1, biggestSize: '', bait: '',
+    caughtAt: new Date().toISOString(),
+  };
 }
 
 const fieldInputStyle = {
@@ -410,6 +424,72 @@ function CatchEntryCard({ catchEntry, index, canRemove, unit, onChange, onRemove
   );
 }
 
+function relativeTimeLabel(isoString, nowMs) {
+  const then = new Date(isoString).getTime();
+  const seconds = Math.max(0, Math.round((nowMs - then) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours}h ago`;
+}
+
+// The fast-tally row: one tap already recorded this catch (see addTally in
+// LogTrip below) — this just displays it and offers an optional, always-
+// visible (never a popup requiring a dismiss tap) species tag. Deliberately
+// a separate, smaller component from CatchEntryCard rather than a kind-
+// branch inside it: a tally entry has none of CatchEntryCard's photo
+// dropzone / count stepper / size field, so branching inside it would mean
+// carrying a second, mostly-empty rendering path in one component.
+function TallyRow({ catchEntry, nowTick, onChange, onRemove }) {
+  const speciesId = `tally-species-${catchEntry.id}`;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      background: 'var(--fx-card-fill)', borderRadius: 12,
+      padding: '10px 12px', marginBottom: 10,
+    }}>
+      <span aria-hidden="true" style={{
+        flexShrink: 0, width: 28, height: 28, borderRadius: '50%',
+        background: 'var(--fx-moss-light)', color: 'var(--fx-on-accent)',
+        fontFamily: 'var(--fx-font-serif)', fontWeight: 600, fontSize: 13,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>1</span>
+
+      <label htmlFor={speciesId} className="sr-only">Species (optional)</label>
+      <input
+        id={speciesId}
+        type="text"
+        value={catchEntry.species}
+        onChange={e => onChange({ species: e.target.value })}
+        placeholder="Tag species (optional)"
+        style={{
+          flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 8,
+          border: '1px solid var(--fx-hairline)', background: 'var(--fx-card-fill-quiet)',
+          color: 'var(--fx-text-primary)', fontFamily: 'var(--fx-font-ui)', fontSize: 13, outline: 'none',
+        }}
+      />
+
+      <span style={{
+        flexShrink: 0, fontFamily: 'var(--fx-font-ui)', fontSize: 11, color: 'var(--fx-text-muted)',
+      }}>
+        {relativeTimeLabel(catchEntry.caughtAt, nowTick)}
+      </span>
+
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="Remove this catch"
+        style={{
+          flexShrink: 0, width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'none',
+          color: 'var(--fx-text-muted)', fontSize: 16, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      ><span aria-hidden="true">×</span></button>
+    </div>
+  );
+}
+
 export default function LogTrip({ onNavigate }) {
   const [sessionNotes, setSessionNotes] = useState('');
   const [exifData, setExifData] = useState(null);
@@ -420,9 +500,26 @@ export default function LogTrip({ onNavigate }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [pendingCatches, setPendingCatches] = useState([]);
 
+  // Live session state — purely client-side for this phase, same as the
+  // rest of this form: nothing persists until "Log trip"/"End session" is
+  // submitted. If sessionMode never leaves 'idle', none of this renders and
+  // the screen behaves exactly as it did before this feature.
+  const [sessionMode, setSessionMode] = useState('idle'); // 'idle' | 'live'
+  const [sessionStartedAt, setSessionStartedAt] = useState(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
   useEffect(() => {
     localStorage.setItem(SIZE_UNIT_STORAGE_KEY, unit);
   }, [unit]);
+
+  // One shared clock for the whole live session — drives both the elapsed-
+  // time header and every TallyRow's relative timestamp, so no per-row
+  // intervals are needed.
+  useEffect(() => {
+    if (sessionMode !== 'live') return;
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [sessionMode]);
 
   function updateCatch(id, patch) {
     setCatches(prev => prev.map(c => (c.id === id ? { ...c, ...patch } : c)));
@@ -436,35 +533,71 @@ export default function LogTrip({ onNavigate }) {
     setCatches(prev => (prev.length <= 1 ? prev : prev.filter(c => c.id !== id)));
   }
 
-  // Location is captured once per session, from whichever photo is added
-  // first across any catch entry — same EXIF-then-geolocation logic as
-  // before, just no longer tied to a single fixed photo slot.
+  // Location is captured once per session — shared by both entry points:
+  // "Start fishing" (no photo yet, straight to device geolocation) and
+  // adding the first photo to any catch entry (EXIF first, geolocation
+  // fallback). Callers are responsible for the locationAttempted guard so
+  // this stays a plain "go get a location" call either way.
+  async function captureLocationOnce(file = null) {
+    if (file) {
+      const exif = await extractExif(file);
+      if (exif && exif.lat) {
+        setExifData(exif);
+        return;
+      }
+    }
+    setExifData({ lat: null, lng: null, takenAt: null, trying: true });
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => setExifData({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          takenAt: new Date().toISOString(),
+        }),
+        () => setExifData(null),
+        { timeout: 8000 }
+      );
+    } else {
+      setExifData(null);
+    }
+  }
+
   async function handleCatchPhoto(catchId, file) {
     if (!file) return;
     updateCatch(catchId, { photoFile: file, preview: URL.createObjectURL(file) });
 
     if (locationAttempted) return;
     setLocationAttempted(true);
+    // Note: if a live session already captured device geolocation via
+    // "Start fishing", locationAttempted is already true by the time any
+    // photo is added, so this photo's (likely more precise) embedded EXIF
+    // GPS is never consulted — same "captured once per session" invariant
+    // as idle mode, just resolved in favor of whichever source ran first.
+    captureLocationOnce(file);
+  }
 
-    const exif = await extractExif(file);
-    if (exif && exif.lat) {
-      setExifData(exif);
-    } else {
-      setExifData({ lat: null, lng: null, takenAt: null, trying: true });
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          pos => setExifData({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            takenAt: new Date().toISOString(),
-          }),
-          () => setExifData(null),
-          { timeout: 8000 }
-        );
-      } else {
-        setExifData(null);
-      }
+  async function startFishing() {
+    if (!locationAttempted) {
+      setLocationAttempted(true);
+      captureLocationOnce(); // no file yet — goes straight to device geolocation
     }
+    setSessionMode('live');
+    setSessionStartedAt(Date.now());
+  }
+
+  function addTally() {
+    setCatches(prev => [...prev, makeTallyCatch()]);
+  }
+
+  // Undoes only what "Start fishing" itself introduced — tally taps and the
+  // live-mode header — leaving any detailed-card content already typed
+  // untouched. No network call. Exists because "End session" reuses the
+  // same hasContent gate as "Log trip": without this, a session with zero
+  // catches has no way back to idle mode short of a page refresh.
+  function cancelSession() {
+    setCatches(prev => prev.filter(c => c.kind !== 'tally'));
+    setSessionMode('idle');
+    setSessionStartedAt(null);
   }
 
   async function handleSubmit() {
@@ -477,14 +610,21 @@ export default function LogTrip({ onNavigate }) {
       // a photo wins; any others are still captured in the UI and sent in
       // catches_json, but won't be uploaded until the backend supports it.
       const photoFile = catches.find(c => c.photoFile)?.photoFile || null;
+      // A fast-tally entry (kind: 'tally') is always sent even with no
+      // species and no photo — that's the whole point of "+1 fish": a bare
+      // tap is a complete, valid entry (see log_session's fast_tally branch
+      // in trip_logger.py). Detailed entries keep the original rule: only
+      // sent once they have a species or a photo.
       const catchesPayload = catches
-        .filter(c => c.species.trim() || c.photoFile)
+        .filter(c => c.kind === 'tally' || c.species.trim() || c.photoFile)
         .map(c => ({
           species: c.species.trim() || null,
           count: c.count,
           biggest_size: c.biggestSize.trim() ? `${c.biggestSize.trim()}${unit}` : null,
           bait: c.bait.trim() || null,
           has_photo: !!c.photoFile,
+          source: c.kind === 'tally' ? 'fast_tally' : 'detailed',
+          caught_at: c.caughtAt || null,
         }));
 
       const result = await logTrip(
@@ -496,6 +636,8 @@ export default function LogTrip({ onNavigate }) {
       setExifData(null);
       setLocationAttempted(false);
       setCatches([makeBlankCatch()]);
+      setSessionMode('idle');
+      setSessionStartedAt(null);
     } catch (err) {
       setStatus('error');
       setErrorMsg(err.message);
@@ -508,7 +650,7 @@ export default function LogTrip({ onNavigate }) {
 
   const hasGps = exifData && exifData.lat && !exifData.trying;
   const tryingGps = exifData?.trying;
-  const hasContent = sessionNotes.trim() || catches.some(c => c.species.trim() || c.photoFile);
+  const hasContent = sessionNotes.trim() || catches.some(c => c.kind === 'tally' || c.species.trim() || c.photoFile);
 
   return (
     <div style={{
@@ -526,6 +668,21 @@ export default function LogTrip({ onNavigate }) {
       <p style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-text-muted)', marginBottom: 16 }}>
         First photo sets your location. Log every fish you caught below.
       </p>
+
+      {sessionMode === 'idle' && (
+        <button
+          type="button"
+          onClick={startFishing}
+          style={{
+            width: '100%', padding: '12px', marginBottom: 16,
+            background: 'var(--fx-card-fill)', border: '1px solid var(--fx-moss-light)', borderRadius: 'var(--radius-pill)',
+            color: 'var(--fx-moss-lightest)', fontFamily: 'var(--fx-font-ui)', fontSize: 14, fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          <span aria-hidden="true">🎣</span> Start fishing
+        </button>
+      )}
 
       <label htmlFor="session-notes" style={{
         display: 'block', fontFamily: 'var(--fx-font-serif)', fontSize: 13, fontWeight: 600,
@@ -589,18 +746,63 @@ export default function LogTrip({ onNavigate }) {
         <UnitToggle unit={unit} onChange={setUnit} />
       </div>
 
-      {catches.map((c, i) => (
-        <CatchEntryCard
-          key={c.id}
-          catchEntry={c}
-          index={i}
-          canRemove={catches.length > 1}
-          unit={unit}
-          onChange={patch => updateCatch(c.id, patch)}
-          onRemove={() => removeCatch(c.id)}
-          onPhoto={file => handleCatchPhoto(c.id, file)}
-        />
-      ))}
+      {sessionMode === 'live' && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14,
+        }}>
+          <span style={{
+            fontFamily: 'var(--fx-font-ui)', fontSize: 12, color: 'var(--fx-text-muted)', flexShrink: 0,
+          }}>
+            Fishing for {relativeTimeLabel(new Date(sessionStartedAt).toISOString(), nowTick).replace(' ago', '')}
+          </span>
+          <button
+            type="button"
+            onClick={addTally}
+            style={{
+              flex: 1, padding: '12px', border: 'none', borderRadius: 'var(--radius-pill)',
+              background: 'var(--fx-moss-light)', color: 'var(--fx-on-accent)',
+              fontFamily: 'var(--fx-font-ui)', fontSize: 14, fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            + 1 fish
+          </button>
+          <button
+            type="button"
+            onClick={cancelSession}
+            style={{
+              flexShrink: 0, padding: '10px 12px', border: 'none', background: 'none',
+              color: 'var(--fx-text-muted)', fontFamily: 'var(--fx-font-ui)', fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {catches.map((c, i) =>
+        c.kind === 'tally' ? (
+          <TallyRow
+            key={c.id}
+            catchEntry={c}
+            nowTick={nowTick}
+            onChange={patch => updateCatch(c.id, patch)}
+            onRemove={() => removeCatch(c.id)}
+          />
+        ) : (
+          <CatchEntryCard
+            key={c.id}
+            catchEntry={c}
+            index={i}
+            canRemove={catches.length > 1}
+            unit={unit}
+            onChange={patch => updateCatch(c.id, patch)}
+            onRemove={() => removeCatch(c.id)}
+            onPhoto={file => handleCatchPhoto(c.id, file)}
+          />
+        )
+      )}
 
       <button
         type="button"
@@ -632,7 +834,7 @@ export default function LogTrip({ onNavigate }) {
           transition: 'background 0.15s',
         }}
       >
-        {status === 'loading' ? 'Logging...' : 'Log trip'}
+        {status === 'loading' ? 'Logging...' : sessionMode === 'live' ? 'End session' : 'Log trip'}
       </button>
 
       {/* Honest-gap notice, not a silent drop. Species, count, size, and bait

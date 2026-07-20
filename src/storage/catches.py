@@ -28,6 +28,7 @@ def insert_catch(
     photo_lat: float | None = None,
     photo_lng: float | None = None,
     photo_taken_at: str | None = None,
+    caught_at: str | None = None,
     species_confirmed: bool = True,
     suggested_species: list[dict[str, str]] | None = None,
 ) -> int:
@@ -45,6 +46,10 @@ def insert_catch(
     free-text column — no current input path populates it; kept only so
     pre-existing rows that happen to have it keep displaying via fishdex.py's
     legacy fallback parse.
+
+    caught_at is the user's actual tap time for the catch (the fast-tally
+    logging UI's primary field), distinct from created_at, which is fixed to
+    whenever the whole session's INSERT transaction runs at submit time.
     """
     return db["catches"].insert(
         {
@@ -61,6 +66,7 @@ def insert_catch(
             "photo_lat": photo_lat,
             "photo_lng": photo_lng,
             "photo_taken_at": photo_taken_at,
+            "caught_at": caught_at,
             "species_confirmed": int(species_confirmed),
             "suggested_species": json.dumps(suggested_species) if suggested_species else None,
         }

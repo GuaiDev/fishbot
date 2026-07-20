@@ -245,6 +245,43 @@ def test_log_trip_json_with_catches_json_persists_structured_fields(monkeypatch)
     assert catches["rock bass"]["count"] is None
 
 
+def test_log_trip_json_with_fast_tally_catch_persists_as_unidentified(monkeypatch):
+    """A bare '+1 fish' tap sent through catches_json (no species, no photo,
+    source='fast_tally') must persist as its own confirmed-but-unidentified
+    catch row, with caught_at preserved — the one true end-to-end path
+    through _normalize_structured_catches -> log_session -> DB."""
+    import json
+    from unittest.mock import patch
+
+    from src.storage.catches import get_catches_for_session
+    from src.storage.database import get_db
+
+    canned_parse = {
+        "date": "2026-07-19",
+        "stops": [{"location_text": "Sixteen Mile Creek", "species_caught": []}],
+    }
+    catches_json = json.dumps([
+        {"source": "fast_tally", "count": 1, "caught_at": "2026-07-19T14:03:00"},
+    ])
+    headers = _apikey_headers(monkeypatch)
+    with patch("src.services.trip_parser.parse_session_from_text", return_value=canned_parse):
+        response = client.post(
+            "/log-trip",
+            json={"text": "Fishing trip.", "catches_json": catches_json},
+            headers=headers,
+        )
+    assert response.status_code == 200
+    session_id = response.json()["session_id"]
+
+    db = get_db()
+    catches = get_catches_for_session(db, session_id)
+    assert len(catches) == 1
+    assert catches[0]["species"] == "unidentified sp."
+    assert catches[0]["species_confirmed"] == 1
+    assert catches[0]["caught_at"] == "2026-07-19T14:03:00"
+    assert response.json()["pending_catches"] == []
+
+
 def test_log_trip_malformed_catches_json_degrades_gracefully(monkeypatch):
     """Garbage catches_json must not 500 the request — falls back to
     text-only logging, same as if the field were absent."""

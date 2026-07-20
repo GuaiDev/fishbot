@@ -260,12 +260,22 @@ def log_session(
                 catch_photo_path = sc_photo_path
                 catch_photo_url = sc.get("photo_url")
                 catch_vision = _photo_species_candidates(db_conn, sc_photo_path)
-            elif matched_nl_species or (not sc.get("species") and stop.get("photo_path")):
+            elif matched_nl_species or (
+                not sc.get("species")
+                and stop.get("photo_path")
+                and sc.get("source") != "fast_tally"
+            ):
                 # Either an NL match, or (the "let vision suggest it" card)
                 # no typed species at all — either way this catch has no
                 # photo of its own, so it rides on the stop's shared photo
                 # instead of falling through to the no-photo/no-species
-                # branch below and losing count/size/bait.
+                # branch below and losing count/size/bait. Fast-tally taps
+                # are excluded here even when untagged: they're anonymous by
+                # design, and a session can contain several of them
+                # alongside one unrelated detailed photo card — letting all
+                # of them ride that one photo would mis-attach a vision
+                # guess to fish that were never in that photo. See
+                # test_fast_tally_does_not_ride_unrelated_stop_photo.
                 catch_photo_path = stop.get("photo_path")
                 catch_photo_url = stop.get("photo_url")
                 catch_vision = vision_result
@@ -295,9 +305,25 @@ def log_session(
                 suggestions = None
                 final_species = sc["species"]
                 confirmed = True
+            elif sc.get("source") == "fast_tally":
+                # Fast-tally: user explicitly declined to name it — there's
+                # no AI guess to confirm here (no photo, no NL match), so
+                # this is trusted-but-unidentified, not a pending
+                # suggestion. Reuses the same "unidentified sp." placeholder
+                # string as the photo-only fallback above so both paths
+                # group under one FishDex bucket instead of fragmenting
+                # into two unmapped species buckets.
+                suggestions = None
+                final_species = "unidentified sp."
+                confirmed = True
             else:
-                # No species, no photo, no NL match — nothing to identify
-                # this catch by. Skip rather than invent a row.
+                # No species, no photo, no NL match, not a fast-tally
+                # entry — nothing to identify this catch by. Skip rather
+                # than invent a row. Unchanged from before this feature:
+                # today the frontend's payload filter already excludes this
+                # case for detailed cards, so this branch was effectively
+                # dead code until fast-tally introduced a legitimate reason
+                # to reach it.
                 continue
 
             size_cm = sc.get("biggest_size_cm")
@@ -315,6 +341,7 @@ def log_session(
                 photo_lat=stop.get("photo_lat") if catch_photo_path else None,
                 photo_lng=stop.get("photo_lng") if catch_photo_path else None,
                 photo_taken_at=stop.get("photo_taken_at") if catch_photo_path else None,
+                caught_at=sc.get("caught_at"),
                 species_confirmed=confirmed,
                 suggested_species=suggestions,
             )

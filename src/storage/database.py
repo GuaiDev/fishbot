@@ -17,6 +17,7 @@ def get_db(path: Path | None = None) -> Database:
     ensure_schema(db)
     migrate_catches_species_confirmation(db)
     migrate_catches_biggest_size_cm(db)
+    migrate_catches_caught_at(db)
     migrate_behavioral_insights(db)
     migrate_stops(db)
     migrate_angler_context_multi_user(db)
@@ -87,6 +88,24 @@ def migrate_catches_biggest_size_cm(db: Database) -> None:
         return  # already migrated
     try:
         db.execute("ALTER TABLE catches ADD COLUMN biggest_size_cm REAL")
+    except Exception:
+        pass  # column already exists
+
+
+def migrate_catches_caught_at(db: Database) -> None:
+    """Add the fast-tally logging UI's per-catch timestamp column to
+    catches. Idempotent.
+
+    Distinct from created_at: created_at is fixed to whenever the whole
+    session's INSERT transaction runs at submit time (there is no
+    incremental/live persistence — see log_session), so every catch in a
+    multi-hour live session would otherwise share virtually the same
+    created_at. caught_at carries the actual tap time from the client.
+    """
+    if "caught_at" in {c.name for c in db["catches"].columns}:
+        return  # already migrated
+    try:
+        db.execute("ALTER TABLE catches ADD COLUMN caught_at TEXT")
     except Exception:
         pass  # column already exists
 
@@ -651,6 +670,7 @@ def ensure_schema(db: Database) -> None:
                 photo_lat           REAL,
                 photo_lng           REAL,
                 photo_taken_at      TEXT,
+                caught_at           TEXT,
                 created_at          TEXT DEFAULT (datetime('now'))
             )
         """)
