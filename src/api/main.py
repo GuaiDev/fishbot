@@ -650,6 +650,37 @@ def log_page():
     return FileResponse(os.path.join(_static_dir, "log.html"))
 
 
+# Local-dev-only convenience login page — deliberately registered as a
+# route only when NOT running on Railway, not just "logically blocked"
+# inside the handler. Railway injects RAILWAY_ENVIRONMENT into every
+# deployment automatically (confirmed present in this project's Railway
+# variables), so this needs zero local config to resolve correctly: unset
+# locally -> route exists, set on Railway -> route is never added to the
+# app's route table at all. Hitting /admin-login on the deployed app 404s
+# exactly like any other undefined path — there is no code path there to
+# audit or accidentally re-enable, since app.get() was simply never called
+# for it in that process. The underlying POST /admin/token this page wraps
+# is unaffected either way; it stays reachable (and properly gated by
+# FISHBOT_API_KEY, see verify_api_key) on both Railway and local, since
+# that endpoint already existed before this page and other legitimate
+# callers (e.g. re-generating an admin token from a script) may need it in
+# production too. Only the convenience *page* is scoped down.
+if not os.environ.get("RAILWAY_ENVIRONMENT"):
+
+    @app.get("/admin-login")
+    def admin_login_page():
+        """Serve the personal admin-login shortcut page (local dev only).
+
+        Convenience only, not a new auth path: it just wraps the existing
+        POST /admin/token in a form instead of a manual curl + devtools
+        localStorage paste, and optionally remembers the API key on this
+        device so a repeat visit re-logs-in with zero typing. Whoever holds
+        the API key still gets full admin access — this page doesn't change
+        that, it just makes using it less tedious locally.
+        """
+        return FileResponse(os.path.join(_static_dir, "admin-login.html"))
+
+
 @app.post("/admin/token")
 def get_admin_token(_: None = Depends(verify_api_key)):
     """Generate a fresh admin token. Protected by API key only."""
