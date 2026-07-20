@@ -53,17 +53,12 @@ export async function sendMessage(message, conversationHistory = []) {
   return res.json();
 }
 
-// TODO(backend): /log-trip and /log-trip/photo only accept one freeform
-// `text` string + at most one photo file — there is no structured per-catch
-// input path (see src/services/trip_logger.py:log_session, which never
-// passes count/biggest_size/bait to insert_catch even though the `catches`
-// table has those columns). Until the backend accepts a real catches array
-// (JSON body field or additional multipart fields, plus a way to attach more
-// than one photo), `catches` here is carried as an inert `catches_json`
-// field so the wire format is ready the moment the backend reads it — the
-// actual species/pending-catch flow still runs off the synthesized `text`,
-// same as before this param existed. Callers that don't pass `catches` are
-// unaffected.
+// TODO(backend): the backend accepts `photos[]` (one extra file per
+// catches_json entry, by index — see log_trip_with_photo in src/api/main.py)
+// but this function still only ever sends a single `photo` file. Wire up
+// per-catch photo uploads here to close that gap; count/size/bait already
+// persist correctly via catches_json (see trip_logger.py's structured_catches
+// path).
 export async function logTrip(text, photoLat, photoLng, photoTakenAt, photoFile, catches) {
   let res;
   if (photoFile) {

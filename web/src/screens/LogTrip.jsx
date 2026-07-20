@@ -635,16 +635,17 @@ export default function LogTrip({ onNavigate }) {
         {status === 'loading' ? 'Logging...' : 'Log trip'}
       </button>
 
-      {/* Honest-gap notice, not a silent drop — see TODO(backend) in api.js.
-          Species (via text) and one photo are genuinely persisted today;
-          count/size/bait and additional photos are captured here and sent,
-          but the backend doesn't store them per-catch yet. */}
+      {/* Honest-gap notice, not a silent drop. Species, count, size, and bait
+          are all genuinely persisted per catch today (see trip_logger.py's
+          structured_catches path) — only multi-photo upload is still a real
+          gap: only the first catch's photo is sent (see handleSubmit above
+          and the TODO(backend) note in api.js). */}
       <p style={{
         marginTop: 8, fontFamily: 'var(--fx-font-ui)', fontSize: 11, color: 'var(--fx-text-dim)',
         lineHeight: 1.5, textAlign: 'center',
       }}>
-        Species and one photo are saved now. Count, size, and bait are captured
-        here but not yet stored server-side — coming soon.
+        Only the first catch's photo is uploaded today — add more here and
+        they'll be captured, but not sent until multi-photo upload ships.
       </p>
 
       {status === 'success' && (
