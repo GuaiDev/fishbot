@@ -146,6 +146,8 @@ def confirm_catch_species(db: Database, catch_id: int, user_id: int, species: st
     row = next(iter(db["catches"].rows_where("id = ? AND user_id = ?", [catch_id, user_id])), None)
     if not row:
         return False
+    old_species_key = (row.get("species") or "").strip().lower()
+    new_species_key = (species or "").strip().lower()
     db["catches"].update(
         catch_id,
         {
@@ -165,6 +167,18 @@ def confirm_catch_species(db: Database, catch_id: int, user_id: int, species: st
         update_personal_best_if_higher(
             db, user_id=user_id, species=species, size_cm=size_cm, catch_id=catch_id
         )
+    # Clean up the stale placeholder-species PB row this same catch created
+    # at insert time, if the species actually changed on confirm (e.g. the
+    # top vision guess "warmouth" reattributed to "smallmouth bass") — else
+    # a phantom PB lingers for a species the user never actually confirmed
+    # catching. Scoped to catch_id so a real, independently-earned PB under
+    # the old species name (from some other catch) is never touched.
+    if old_species_key and old_species_key != new_species_key:
+        db.execute(
+            "DELETE FROM personal_bests WHERE user_id = ? AND species = ? AND catch_id = ?",
+            [user_id, old_species_key, catch_id],
+        )
+        db.conn.commit()
     return True
 
 

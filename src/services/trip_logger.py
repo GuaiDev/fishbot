@@ -159,6 +159,11 @@ def log_session(
     db_conn: Database,
     user_id: int = 1,
     structured_catches: list[dict] | None = None,
+    fallback_lat: float | None = None,
+    fallback_lng: float | None = None,
+    fallback_photo_taken_at: str | None = None,
+    fallback_photo_url: str | None = None,
+    fallback_photo_path: str | None = None,
 ) -> dict:
     """Insert a parsed session and all its stops into the database.
 
@@ -176,8 +181,41 @@ def log_session(
     structured_catches is a complete no-op — pure NL-parsed behavior,
     unchanged, exercised by every caller that doesn't pass it.
 
+    fallback_lat/fallback_lng (plus the photo metadata that rides with them —
+    e.g. the "Start fishing" device geolocation, or a catch photo's EXIF GPS)
+    exist to cover a gap in parse_session_from_text: it's an LLM call, and
+    generic text with no location/narrative content (composeSessionText's
+    "Fishing trip." fallback, sent when a session is nothing but untagged
+    fast-tally taps and blank session notes) legitimately parses to zero
+    stops. Without this, log_session's per-stop loop below never runs and
+    every real structured catch — every "+1 fish" tap, any detailed card —
+    is silently discarded even though the API reports success. The NL
+    parser's job is enrichment (location name, technique, conditions), not
+    gatekeeping whether real structured data gets saved — so if there are
+    structured catches to persist and parse_session_from_text found no stop
+    to hold them, synthesize one from whatever location data the client
+    already captured. See test_fast_tally_session_with_no_notes_still_persists.
+
     Returns {"session_id": int, "stops_logged": int, ...}
     """
+    if not parsed_session.get("stops") and structured_catches:
+        parsed_session["stops"] = [{
+            "location_text": "",
+            "location_name": None,
+            "species_caught": [],
+            "party_species_caught": [],
+            "was_productive": True,
+            "lat": fallback_lat,
+            "lng": fallback_lng,
+            "location_method": "device_geolocation" if fallback_lat is not None else "unknown",
+            "location_confidence": 0.95 if fallback_lat is not None else None,
+            "photo_lat": fallback_lat,
+            "photo_lng": fallback_lng,
+            "photo_taken_at": fallback_photo_taken_at,
+            "photo_url": fallback_photo_url,
+            "photo_path": fallback_photo_path,
+        }]
+
     session_id = db_conn["sessions"].insert(
         {
             "date": parsed_session.get("date"),

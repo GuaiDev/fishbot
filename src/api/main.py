@@ -417,7 +417,18 @@ def _log_trip_core(
         if photo_path:
             first_stop["photo_path"] = photo_path
 
-    result = log_session(parsed, db, user_id=user["id"], structured_catches=structured_catches)
+    # fallback_* let log_session synthesize a stop itself when
+    # parse_session_from_text found none at all (e.g. generic text with no
+    # location/narrative content) — see log_session's docstring. This is the
+    # same photo/GPS metadata as the "Inject photo metadata into the first
+    # stop" block above; that block is a no-op when parsed has no stops yet,
+    # which is exactly the case this covers.
+    result = log_session(
+        parsed, db, user_id=user["id"], structured_catches=structured_catches,
+        fallback_lat=photo_lat, fallback_lng=photo_lng,
+        fallback_photo_taken_at=photo_taken_at, fallback_photo_url=photo_url,
+        fallback_photo_path=photo_path,
+    )
     return {
         "status": "logged",
         "session_id": result["session_id"],

@@ -179,3 +179,65 @@ def test_confirm_catch_species_reattributes_personal_best(tmp_path):
     assert confirm_catch_species(db, catch_id, user_id=1, species="Rock Bass") is True
 
     assert get_personal_best(db, 1, "rock bass") == 20.0
+
+
+def test_confirm_catch_species_removes_stale_placeholder_pb(tmp_path):
+    """Confirming a catch's species away from its pre-confirmation guess
+    must not leave a phantom personal-best behind for the old, never-
+    actually-confirmed species. Regression for a bug found in this
+    session's E2E report: a catch provisionally guessed "warmouth" by
+    photo vision, then confirmed by the user as "smallmouth bass", left a
+    stray 'warmouth' PB row in personal_bests even though the user never
+    confirmed catching a warmouth."""
+    db = get_db(path=tmp_path / "test.db")
+    session_id, stop_id = _session_and_stop(db)
+    catch_id = insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1,
+        species="warmouth", biggest_size_cm=36.83, species_confirmed=False,
+    )
+    update_personal_best_if_higher(
+        db, user_id=1, species="warmouth", size_cm=36.83, catch_id=catch_id
+    )
+    assert get_personal_best(db, 1, "warmouth") == 36.83
+
+    assert confirm_catch_species(db, catch_id, user_id=1, species="smallmouth bass") is True
+
+    assert get_personal_best(db, 1, "smallmouth bass") == 36.83
+    assert get_personal_best(db, 1, "warmouth") is None
+
+
+def test_confirm_catch_species_does_not_delete_unrelated_pb_under_old_species_name(tmp_path):
+    """The stale-PB cleanup on confirm is scoped to the catch being
+    confirmed — a genuine, independently-earned PB under the old species
+    name owned by a *different* catch must survive untouched. Without the
+    catch_id scoping, a plain "delete personal_bests for this species"
+    would wipe out a real angler's real PB just because some unrelated
+    catch was once provisionally guessed as the same species."""
+    db = get_db(path=tmp_path / "test.db")
+    session_id, stop_id = _session_and_stop(db)
+
+    # A real, already-confirmed warmouth catch holds the PB.
+    real_warmouth_catch = insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1,
+        species="warmouth", biggest_size_cm=25.0, species_confirmed=True,
+    )
+    update_personal_best_if_higher(
+        db, user_id=1, species="warmouth", size_cm=25.0, catch_id=real_warmouth_catch
+    )
+
+    # A second, unrelated catch was also provisionally guessed "warmouth"
+    # (smaller, so it never overtook the stored PB) and gets corrected.
+    other_catch = insert_catch(
+        db, stop_id=stop_id, session_id=session_id, user_id=1,
+        species="warmouth", biggest_size_cm=10.0, species_confirmed=False,
+    )
+    update_personal_best_if_higher(
+        db, user_id=1, species="warmouth", size_cm=10.0, catch_id=other_catch
+    )
+    assert get_personal_best(db, 1, "warmouth") == 25.0  # unchanged by the smaller guess
+
+    assert confirm_catch_species(db, other_catch, user_id=1, species="rock bass") is True
+
+    # The real warmouth PB (owned by the other catch) must survive.
+    assert get_personal_best(db, 1, "warmouth") == 25.0
+    assert get_personal_best(db, 1, "rock bass") == 10.0

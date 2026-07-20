@@ -486,6 +486,98 @@ def test_fast_tally_does_not_ride_unrelated_stop_photo(db_conn, tmp_path):
     assert result["pending_catches"][0]["catch_id"] == detailed_rows[0]["id"]
 
 
+def test_fast_tally_session_with_no_notes_still_persists(db_conn):
+    """Regression for the empty-notes data-loss bug: a session that's
+    nothing but untagged '+1 fish' taps, with no session notes and no
+    location text typed anywhere, composes (see LogTrip.jsx's
+    composeSessionText) to text the NL parser can't extract any stop from
+    (parse_session_from_text legitimately returns stops: [] — there's no
+    location/narrative content to work with). Without a fallback,
+    log_session's per-stop loop never runs and every tap is silently
+    discarded even though the caller sees a normal "status": "logged"
+    response. Reproduced live against Railway on 2026-07-20: a real session
+    (user_id=5) logged 4 taps that all vanished, stops_logged=0. The device
+    geolocation captured at "Start fishing" must be enough on its own to
+    create a stop to hold them."""
+    from src.services.trip_logger import log_session
+    from src.storage.catches import get_catches_for_session
+
+    parsed = {"date": None, "date_approx": None, "overall_notes": None, "stops": []}
+    structured = [
+        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
+         "photo_path": None, "photo_url": None,
+         "source": "fast_tally", "caught_at": "2026-07-20T13:00:00.000Z"},
+        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
+         "photo_path": None, "photo_url": None,
+         "source": "fast_tally", "caught_at": "2026-07-20T13:01:00.000Z"},
+        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
+         "photo_path": None, "photo_url": None,
+         "source": "fast_tally", "caught_at": "2026-07-20T13:02:00.000Z"},
+        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
+         "photo_path": None, "photo_url": None,
+         "source": "fast_tally", "caught_at": "2026-07-20T13:03:00.000Z"},
+    ]
+
+    result = log_session(
+        parsed, db_conn, user_id=1, structured_catches=structured,
+        fallback_lat=43.4675, fallback_lng=-79.6877,
+    )
+
+    assert result["stops_logged"] == 1
+    catches = get_catches_for_session(db_conn, result["session_id"])
+    assert len(catches) == 4
+    assert all(c["species"] == "unidentified sp." for c in catches)
+    assert all(c["species_confirmed"] == 1 for c in catches)
+    assert sorted(c["caught_at"] for c in catches) == [
+        "2026-07-20T13:00:00.000Z", "2026-07-20T13:01:00.000Z",
+        "2026-07-20T13:02:00.000Z", "2026-07-20T13:03:00.000Z",
+    ]
+
+    stop = next(iter(db_conn["stops"].rows_where("session_id = ?", [result["session_id"]])))
+    assert stop["lat"] == 43.4675
+    assert stop["lng"] == -79.6877
+    assert stop["location_method"] == "device_geolocation"
+
+
+def test_fast_tally_session_with_no_notes_and_no_gps_still_creates_stop(db_conn):
+    """Even with no device GPS available at all (e.g. permission denied),
+    structured catches must still be saved rather than dropped — the
+    fallback stop is created with lat/lng null and an honest
+    location_method rather than fabricating a location."""
+    from src.services.trip_logger import log_session
+    from src.storage.catches import get_catches_for_session
+
+    parsed = {"date": None, "date_approx": None, "overall_notes": None, "stops": []}
+    structured = [
+        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
+         "photo_path": None, "photo_url": None,
+         "source": "fast_tally", "caught_at": "2026-07-20T13:00:00.000Z"},
+    ]
+
+    result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
+
+    assert result["stops_logged"] == 1
+    catches = get_catches_for_session(db_conn, result["session_id"])
+    assert len(catches) == 1
+
+    stop = next(iter(db_conn["stops"].rows_where("session_id = ?", [result["session_id"]])))
+    assert stop["lat"] is None
+    assert stop["location_method"] == "unknown"
+
+
+def test_structured_catches_empty_does_not_synthesize_stop(db_conn):
+    """The fallback-stop guarantee only kicks in when there's real
+    structured data to save — a plain NL-only call with no stops and no
+    structured_catches (e.g. genuinely empty/unparseable text) must still
+    log zero stops, unchanged pre-existing behavior."""
+    from src.services.trip_logger import log_session
+
+    parsed = {"date": None, "date_approx": None, "overall_notes": None, "stops": []}
+    result = log_session(parsed, db_conn, user_id=1, structured_catches=[])
+    assert result["stops_logged"] == 0
+    assert result["pending_catches"] == []
+
+
 def test_non_fast_tally_no_species_no_photo_still_skipped(db_conn):
     """Regression: a structured catch with no species, no photo, and no
     source marker (i.e. anything other than 'fast_tally') must still be
