@@ -254,10 +254,14 @@ def test_parse_benthic_empty_visit_jurisdictions():
 def test_parse_benthic_zero_count_skipped(tmp_path):
     """Rows with Count=0 are skipped."""
     csv_path = tmp_path / "benthic_zero.csv"
+    # Explicit UTF-8: the bilingual CABIN headers are non-ASCII, and without
+    # this the file is written in the platform default codec (cp1252 on
+    # Windows) while _detect_encoding falls back to reading it as UTF-8.
     csv_path.write_text(
         '"SiteVisitID/IdentifiantdeVisite","SubSample/Sous-échantillon",'
         '"TotalSample/Échantillontotal","Order/Ordre","Family/Famille","Count/Décompte"\n'
-        '"SV001","300","500","Ephemeroptera","Baetidae","0"\n'
+        '"SV001","300","500","Ephemeroptera","Baetidae","0"\n',
+        encoding="utf-8",
     )
     agg = parse_benthic(csv_path, {"SV001": "CA-ON"})
     assert len(agg) == 0

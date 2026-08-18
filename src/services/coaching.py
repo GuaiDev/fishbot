@@ -30,6 +30,7 @@ def get_species_coaching(
     db: Database,
     species: str,
     specific_question: str | None = None,
+    user_id: int = 1,
 ) -> str:
     """Analyze the user's logged history with a species and identify gaps,
     patterns, and specific improvement opportunities."""
@@ -40,7 +41,8 @@ def get_species_coaching(
                st.notes, s.date, s.date_approx
         FROM stops st
         JOIN sessions s ON st.session_id = s.id
-    """).fetchall()
+        WHERE st.user_id = ?
+    """, [user_id]).fetchall()
 
     all_stops = [dict(zip(_STOP_COLS, r)) for r in rows]
 
@@ -65,9 +67,9 @@ def get_species_coaching(
         SELECT condition_type, condition_context, conclusion, confidence,
                recommendation, condition_season, location_name
         FROM behavioral_insights
-        WHERE LOWER(species) LIKE ? AND is_current = 1
+        WHERE LOWER(species) LIKE ? AND is_current = 1 AND user_id = ?
         ORDER BY confidence DESC, created_at DESC
-    """, [f"%{species_lower}%"]).fetchall()
+    """, [f"%{species_lower}%", user_id]).fetchall()
 
     context_parts = []
 
@@ -144,6 +146,7 @@ def get_location_coaching(
     db: Database,
     location_query: str,
     specific_question: str | None = None,
+    user_id: int = 1,
 ) -> str:
     """Analyze the user's history at a specific location and identify
     what's working, what isn't, and what to try differently."""
@@ -154,9 +157,10 @@ def get_location_coaching(
                s.date, s.date_approx
         FROM stops st
         JOIN sessions s ON st.session_id = s.id
-        WHERE LOWER(st.location_name) LIKE ?
-           OR LOWER(st.location_text) LIKE ?
-    """, [f"%{location_query.lower()}%", f"%{location_query.lower()}%"]).fetchall()
+        WHERE st.user_id = ?
+          AND (LOWER(st.location_name) LIKE ?
+               OR LOWER(st.location_text) LIKE ?)
+    """, [user_id, f"%{location_query.lower()}%", f"%{location_query.lower()}%"]).fetchall()
 
     if not rows:
         return f"No logged trips found at '{location_query}'. Log a session there first."

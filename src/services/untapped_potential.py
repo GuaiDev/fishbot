@@ -1,18 +1,36 @@
-"""Untapped potential scoring — combines habitat, pressure, and access.
+"""Untapped potential scoring — combines pressure, access, and structure.
 
 Formula per segment:
-  untapped_score = habitat_score × (1 - observation_pressure) × access_modifier
+  untapped_score = (1 - observation_pressure) × access_modifier
                    × structural_bonus × remoteness_multiplier
+                   × plausibility_gate
 
 Where:
-  habitat_score        = mean SDM presence probability across species (0–1),
-                         with a floor of 0.35 for zero-observation segments
-                         that have stream_order≥3 and coarse/mixed substrate
   observation_pressure = normalised observation_density_25km (0–1)
   access_modifier      = access_score (easy_access), (1-access+0.1) (adventure),
                          or 1.0 (balanced)
   structural_bonus     = confluence and waterbody proximity multiplier (1.0–2.0)
   remoteness_multiplier = 1.5 if obs_density==0, 1.25 if 1–4, 1.0 if 5+
+  plausibility_gate    = 1.0 normally, 0.0 for segments with affirmative
+                         evidence they are not fishable water (see below)
+
+No habitat term. The SDM that formerly supplied one scored 0.51–0.61 AUC on
+spatial cross-validation — barely better than random — and its unreliability
+had been patched over with a 0.35 floor. A weak signal presented as a ranking
+term is worse than no term, because it launders noise as confidence.
+
+What replaces it is a gate, not a score. The gate only ever rules segments
+OUT, and only on affirmative evidence (a mapped ditch, a measured hypoxic
+reading). Missing data never excludes: 99.3% of segments have no thermal
+class and 99.3% have no dissolved-oxygen reading, so treating absence as
+disqualifying would erase the corpus. This mirrors the project rule that
+water-quality data rules out implausible predictions but never confirms
+presence.
+
+Consequence, stated plainly: ranking is now driven by observation scarcity,
+structure, and access. The gate trims known-bad water; it does not and cannot
+rank water by quality. Judging whether a stretch is worth the drive is the
+job of describe(), which surfaces the underlying records.
 
 Result cached to data/processed/untapped_potential.parquet.
 """
@@ -39,16 +57,20 @@ _KM_PER_DEGREE = 111.0
 def compute_untapped_potential(
     db,
     feature_matrix: pd.DataFrame | None = None,
-    species: str | None = None,
     force_recompute_access: bool = False,
     mode: str = "balanced",
 ) -> pd.DataFrame:
     """Compute untapped potential for all segments.
 
     mode options:
-      "balanced"     — habitat × (1-pressure) × remoteness  (default — access ignored)
-      "easy_access"  — habitat × (1-pressure) × access × remoteness  (road-accessible)
-      "adventure"    — habitat × (1-pressure) × (1-access+0.1) × remoteness  (remote)
+      "balanced"     — (1-pressure) × structure × remoteness  (default — access ignored)
+      "easy_access"  — (1-pressure) × access × structure × remoteness  (road-accessible)
+      "adventure"    — (1-pressure) × (1-access+0.1) × structure × remoteness  (remote)
+
+    All modes are multiplied by the plausibility gate. There is no species
+    parameter: without a habitat model there is nothing species-specific to
+    weight by, and accepting one would imply a per-species ranking that the
+    data cannot support.
 
     All three scores are always computed and stored as separate columns
     (untapped_score_balanced, untapped_score_easy, untapped_score_adventure).
@@ -83,9 +105,6 @@ def compute_untapped_potential(
     if access_scores is None:
         logger.info("Computing access scores (not cached)...")
         access_scores = compute_access_scores(db, feature_matrix)
-
-    # --- habitat scores ---
-    habitat_scores = _load_habitat_scores(db, species)
 
     # --- observation pressure ---
     pressure = _compute_pressure(feature_matrix)
@@ -125,51 +144,48 @@ def compute_untapped_potential(
         else:
             base[col] = float("nan")
 
-    # Substrate category — needed for habitat floor correction
     if "substrate_category" in feature_matrix.columns:
         base["substrate_category"] = feature_matrix["substrate_category"].fillna("").values
     else:
         base["substrate_category"] = ""
 
+    # Dissolved oxygen — read by the plausibility gate. Measured on ~0.7% of
+    # segments; NaN elsewhere, which the gate treats as "no evidence", not
+    # "unfishable".
+    if "do_median_mgl" in feature_matrix.columns:
+        base["do_median_mgl"] = feature_matrix["do_median_mgl"].values
+    else:
+        base["do_median_mgl"] = float("nan")
+
     base = base.set_index("ogf_id")
 
-    base["habitat_score"] = habitat_scores.reindex(base.index).fillna(0.0)
     base["access_score"] = access_scores.reindex(base.index).fillna(0.5)
     base["observation_pressure"] = pressure.reindex(base.index).fillna(0.0)
 
-    # Sampling bias correction: the SDM was trained on presence records biased toward
-    # accessible locations. Remote segments with good environmental features score low
-    # not because habitat is poor but because they have sparse training data.
-    # Floor habitat_score at 0.35 for zero-observation segments with order≥3 and
-    # coarse/mixed substrate — the minimum "probably decent" signal.
-    _COARSE_SUBSTRATES = {"coarse", "mixed"}
-    remote_good_env = (
-        (base["observation_density_25km"] == 0)
-        & (base["stream_order"] >= 3)
-        & (base["substrate_category"].str.lower().isin(_COARSE_SUBSTRATES))
-    )
-    base.loc[remote_good_env, "habitat_score"] = (
-        base.loc[remote_good_env, "habitat_score"].clip(lower=0.35)
-    )
-    n_floored = int(remote_good_env.sum())
+    # Plausibility gate — removes water we have affirmative evidence is not
+    # fishable. Never ranks; only zeroes. See module docstring.
+    _gate = plausibility_gate(base).astype(float)
+    base["passes_plausibility_gate"] = _gate.astype(bool)
     logger.info(
-        "Habitat floor applied to %d remote segments with coarse/mixed substrate", n_floored
+        "Plausibility gate excluded %d of %d segments (%.2f%%)",
+        int((_gate == 0).sum()),
+        len(base),
+        100.0 * float((_gate == 0).mean()),
     )
 
     # Compute all three mode scores so the map can toggle between them
-    _h = base["habitat_score"]
     _p = base["observation_pressure"]
     _a = base["access_score"]
     _struct = _structural_bonus(base)
     _remote = _remoteness_multiplier(base["observation_density_25km"])
 
-    logger.info("Balanced:  habitat × (1-pressure) × structural × remoteness  [no access]")
-    logger.info("Easy:      habitat × (1-pressure) × access × structural × remoteness")
-    logger.info("Adventure: habitat × (1-pressure) × (1-access+0.1) × structural × remoteness")
+    logger.info("Balanced:  (1-pressure) × structural × remoteness × gate  [no access]")
+    logger.info("Easy:      (1-pressure) × access × structural × remoteness × gate")
+    logger.info("Adventure: (1-pressure) × (1-access+0.1) × structural × remoteness × gate")
 
-    base["untapped_score_balanced"] = _h * (1.0 - _p) * _struct * _remote
-    base["untapped_score_easy"] = _h * (1.0 - _p) * _a * _struct * _remote
-    base["untapped_score_adventure"] = _h * (1.0 - _p) * (1.0 - _a + 0.1) * _struct * _remote
+    base["untapped_score_balanced"] = (1.0 - _p) * _struct * _remote * _gate
+    base["untapped_score_easy"] = (1.0 - _p) * _a * _struct * _remote * _gate
+    base["untapped_score_adventure"] = (1.0 - _p) * (1.0 - _a + 0.1) * _struct * _remote * _gate
 
     if mode == "adventure":
         base["untapped_score"] = base["untapped_score_adventure"]
@@ -230,22 +246,10 @@ def find_untapped_water_for_agent(
             }
         )
 
-    # Species filter: recompute habitat scores on-the-fly
-    if species:
-        habitat = _load_habitat_scores(db, species)
-        if len(habitat) == 0:
-            return json.dumps(
-                {
-                    "error": f"No SDM predictions found for species '{species}'.",
-                    "note": "Run `make train-sdm` to train models, then `make compute-untapped`.",
-                }
-            )
-        df = df.copy()
-        df["habitat_score"] = df["ogf_id"].map(habitat).fillna(0.0)
-        df["untapped_score"] = (
-            df["habitat_score"] * (1.0 - df["observation_pressure"]) * df["access_score"]
-        )
-        df = df.sort_values("untapped_score", ascending=False)
+    # A species filter no longer reweights the ranking — there is no per-species
+    # habitat signal to reweight it with. The species name is carried through to
+    # the per-segment notes, which report what has actually been recorded.
+    df = df.copy()
 
     # Culverted stream heuristic: only first-order streams in dense urban core
     culverted_filtered = False
@@ -329,7 +333,6 @@ def find_untapped_water_for_agent(
                 "stream_order": int(row["stream_order"])
                 if not pd.isna(row["stream_order"])
                 else None,
-                "habitat_score": round(float(row["habitat_score"]), 3),
                 "access_score": round(access_score_val, 3),
                 "observation_pressure": round(float(row["observation_pressure"]), 3),
                 "untapped_score": round(float(row["untapped_score"]), 4),
@@ -348,7 +351,6 @@ def find_untapped_water_for_agent(
                     named_stream,
                     road_access,
                     osm_access,
-                    float(row["habitat_score"]),
                     float(row["observation_pressure"]),
                     top_species,
                     species,
@@ -374,10 +376,14 @@ def find_untapped_water_for_agent(
             "min_stream_order": min_stream_order,
         },
         "model_note": (
-            "habitat_score is RF model-predicted habitat suitability — "
-            "not confirmed presence. "
-            "observation_pressure reflects iNaturalist + GBIF report density "
-            "— high pressure may mean popular water, not high fish abundance. "
+            "This ranking contains no habitat-quality term and no species prediction. "
+            "It scores observation scarcity, structure, access, and remoteness, then "
+            "gates out water with affirmative evidence of being unfishable. "
+            "A high untapped_score means 'few people have reported here and the "
+            "structure looks reasonable' — NOT 'fish are here'. "
+            "observation_pressure reflects iNaturalist + GBIF report density — high "
+            "pressure may mean popular water, not high fish abundance; low pressure "
+            "may mean nobody has looked. "
             "access_score reflects road proximity, park type, and tagged access points."
         ),
         "count": len(segments),
@@ -418,18 +424,8 @@ def find_exploration_targets(
             }
         )
 
-    # Species filter: recompute habitat scores on-the-fly
-    if species:
-        habitat = _load_habitat_scores(db, species)
-        if len(habitat) == 0:
-            return json.dumps(
-                {
-                    "error": f"No SDM predictions found for species '{species}'.",
-                    "note": "Run `make train-sdm` to train models, then `make compute-untapped`.",
-                }
-            )
-        df = df.copy()
-        df["habitat_score"] = df["ogf_id"].map(habitat).fillna(0.0)
+    # `species` no longer reweights the ranking — see find_untapped_water_for_agent.
+    # It is carried through to the per-segment notes as a records filter.
 
     # Recompute score from stored components based on mode
     df = df.copy()
@@ -546,7 +542,6 @@ def find_exploration_targets(
             named_stream_10km,
             road_access,
             osm_access,
-            float(row["habitat_score"]),
             float(row["observation_pressure"]),
             top_sp,
             species,
@@ -579,7 +574,6 @@ def find_exploration_targets(
                 "stream_order": int(row["stream_order"])
                 if not pd.isna(row["stream_order"])
                 else None,
-                "habitat_score": round(float(row["habitat_score"]), 3),
                 "access_score": round(access_score_val, 3),
                 "observation_pressure": round(float(row["observation_pressure"]), 3),
                 "score": round(float(row["score"]), 4),
@@ -615,7 +609,9 @@ def find_exploration_targets(
                 "min_stream_order": min_stream_order,
             },
             "model_note": (
-                "habitat_score is RF model-predicted habitat suitability — not confirmed presence. "
+                "This ranking contains no habitat-quality term and no species prediction. "
+                "A high score means 'few people have reported here and the structure looks "
+                "reasonable' — NOT 'fish are here'. "
                 "nearby_confirmed_species comes from iNaturalist + GBIF within 5km — "
                 "not necessarily from this specific stream reach. "
                 "connectivity_note is inferred from stream proximity, not confirmed by survey data."
@@ -810,7 +806,6 @@ def _exploration_note(
     named_stream: str | None,
     road_access: str | None,
     osm_access: str | None,
-    habitat_score: float,
     pressure: float,
     top_species: list[str],
     filter_species: str | None,
@@ -843,22 +838,23 @@ def _exploration_note(
         else:
             parts.append("Unnamed stream segment.")
 
-    # Habitat signal
+    # Recorded species — what has actually been observed near this segment.
+    # Never a prediction: if nothing is recorded, say that rather than
+    # inferring what the water "should" hold.
     if filter_species:
-        if habitat_score >= 0.6:
-            parts.append(f"Strong predicted habitat for {filter_species}.")
-        elif habitat_score >= 0.35:
-            parts.append(f"Moderate predicted habitat for {filter_species}.")
+        if any(filter_species.lower() in s.lower() for s in top_species):
+            parts.append(f"{filter_species} recorded nearby.")
+        elif top_species:
+            parts.append(
+                f"No {filter_species} recorded nearby — "
+                f"nearest records are {' and '.join(top_species[:2])}."
+            )
         else:
-            parts.append(f"Low predicted habitat for {filter_species}.")
+            parts.append(f"No {filter_species} recorded nearby, and no other species either.")
     elif top_species:
-        sp_str = " and ".join(top_species[:2])
-        if habitat_score >= 0.6:
-            parts.append(f"Strong predicted habitat ({sp_str}).")
-        elif habitat_score >= 0.35:
-            parts.append(f"Moderate predicted habitat ({sp_str}).")
-        else:
-            parts.append(f"Low predicted habitat ({sp_str}).")
+        parts.append(f"Recorded nearby: {' and '.join(top_species[:2])}.")
+    else:
+        parts.append("Nothing recorded nearby — unsurveyed, not necessarily empty.")
 
     # Access
     if road_access:
@@ -910,6 +906,61 @@ def _access_note(is_crown_land: bool, access_score: float) -> str:
             "Low road access + private land = trespassing risk."
         )
     return "Road or park access nearby — verify public right of way."
+
+
+# Dissolved oxygen below this cannot support a persistent fish community.
+# Applied only where a reading actually exists.
+_DO_FLOOR_MGL = 4.0
+
+# OHN watercourse types that are not fishable stream reaches. "Virtual Flow"
+# and "Virtual Connector" are connectivity artifacts through lakes, not water
+# you can stand in; "Ditch" is mapped drainage infrastructure.
+_NON_FISHABLE_TYPES = {"Virtual Flow", "Virtual Connector", "Ditch"}
+
+
+def plausibility_gate(df: pd.DataFrame) -> pd.Series:
+    """Boolean mask: True = no evidence this isn't fishable water.
+
+    Rules segments OUT on affirmative evidence only. A segment with no data
+    passes — absence of evidence is not evidence of absence, and for the
+    fields involved absence is the overwhelming majority case.
+
+    This is deliberately not a quality score. It cannot rank two segments
+    that both pass; it only removes ones we can show are not viable.
+    """
+    keep = pd.Series(True, index=df.index)
+
+    if "watercourse_type" in df.columns:
+        keep &= ~df["watercourse_type"].astype(str).isin(_NON_FISHABLE_TYPES)
+
+    # Measured hypoxia. NaN comparisons are False, so unmeasured segments
+    # are never excluded here.
+    if "do_median_mgl" in df.columns:
+        keep &= ~(df["do_median_mgl"] < _DO_FLOOR_MGL)
+
+    return keep
+
+
+def gate_exclusion_reason(row) -> str | None:
+    """Why a single segment failed the gate, or None if it passed.
+
+    Callers surface this instead of dropping segments silently — an excluded
+    segment with a stated reason is information; a missing row is not.
+    """
+    wtype = str(row.get("watercourse_type") or "")
+    if wtype in _NON_FISHABLE_TYPES:
+        if wtype == "Ditch":
+            return "mapped as a drainage ditch, not a stream reach"
+        return f"OHN {wtype.lower()} — a connectivity artifact, not a fishable reach"
+
+    do = row.get("do_median_mgl")
+    if do is not None and not pd.isna(do) and float(do) < _DO_FLOOR_MGL:
+        return (
+            f"measured dissolved oxygen {float(do):.1f} mg/L is below the "
+            f"{_DO_FLOOR_MGL} mg/L floor for a persistent fish community"
+        )
+
+    return None
 
 
 def _remoteness_multiplier(observation_density: pd.Series) -> pd.Series:
@@ -971,15 +1022,14 @@ def _structural_note(
 
 def _compute_mode_score(df: pd.DataFrame, mode: str) -> pd.Series:
     """Return untapped scores for each row based on mode, structural bonus, and remoteness."""
-    h = df["habitat_score"]
     p = df["observation_pressure"]
     a = df["access_score"]
     if mode == "adventure":
-        base = h * (1.0 - p) * (1.0 - a + 0.1)
+        base = (1.0 - p) * (1.0 - a + 0.1)
     elif mode == "balanced":
-        base = h * (1.0 - p)
+        base = 1.0 - p
     else:  # easy_access
-        base = h * (1.0 - p) * a
+        base = (1.0 - p) * a
 
     # Default density to 5 (no remoteness bonus) when column is absent
     density = (
@@ -987,7 +1037,8 @@ def _compute_mode_score(df: pd.DataFrame, mode: str) -> pd.Series:
         if "observation_density_25km" in df.columns
         else pd.Series(5, index=df.index, dtype=float)
     )
-    return base * _structural_bonus(df) * _remoteness_multiplier(density)
+    gate = plausibility_gate(df).astype(float)
+    return base * _structural_bonus(df) * _remoteness_multiplier(density) * gate
 
 
 def _nearby_confirmed_species(db, lat: float, lng: float, radius_km: float = 5.0) -> list[str]:
@@ -1087,30 +1138,6 @@ def _build_maps_urls(lat: float, lng: float, mapbox_token: str | None) -> dict[s
     return {k: v for k, v in raw.items() if v is not None}
 
 
-def _load_habitat_scores(db, species: str | None) -> pd.Series:
-    """Load SDM predictions from DB, averaged per segment across species (or one species)."""
-    if "sdm_predictions" not in db.table_names():
-        return pd.Series(dtype=float)
-
-    if species:
-        # Resolve common → scientific name
-        sci = _resolve_species(species)
-        rows = list(
-            db["sdm_predictions"].rows_where(
-                "LOWER(species) = ?", [sci.lower() if sci else species.lower()]
-            )
-        )
-    else:
-        rows = list(db["sdm_predictions"].rows)
-
-    if not rows:
-        return pd.Series(dtype=float)
-
-    df = pd.DataFrame(rows)
-    # Average presence probability across species per segment
-    habitat = df.groupby("ogf_id")["presence_probability"].mean()
-    return habitat
-
 
 _SATURATED_DENSITY = 10_000.0
 """Reference density treated as fully sampled.
@@ -1155,15 +1182,6 @@ _COMMON_NAMES = {
     "Ambloplites rupestris": "Rock Bass",
     "Micropterus nigricans": "Largemouth Bass",
 }
-_COMMON_TO_SCI = {v.lower(): k for k, v in _COMMON_NAMES.items()}
-for _k in list(_COMMON_NAMES.keys()):
-    _COMMON_TO_SCI[_k.lower()] = _k
-
-
-def _resolve_species(name: str) -> str:
-    return _COMMON_TO_SCI.get(name.lower(), name)
-
-
 # ── seen-before helpers ───────────────────────────────────────────────────────
 
 _SNAP_RADIUS_KM = 0.5  # 500m — trip location must be this close to snap to a segment

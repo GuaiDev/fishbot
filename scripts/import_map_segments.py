@@ -46,10 +46,6 @@ def main():
             "is_confluence": 1 if p.get("is_confluence_segment") else 0,
             "connected_to_waterbody": 1 if p.get("connected_to_waterbody") else 0,
             "observation_pressure": p.get("observation_pressure"),
-            "top1_species": p.get("top1_species"),
-            "top1_prob": p.get("top1_prob"),
-            "top2_species": p.get("top2_species"),
-            "top2_prob": p.get("top2_prob"),
             "google_maps_url": p.get("google_maps_url"),
             "swoop_url": p.get("swoop_url"),
         })

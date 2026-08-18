@@ -113,10 +113,6 @@ async def lifespan(app):
                         "is_confluence": 1 if p.get("is_confluence_segment") else 0,
                         "connected_to_waterbody": 1 if p.get("connected_to_waterbody") else 0,
                         "observation_pressure": p.get("observation_pressure"),
-                        "top1_species": p.get("top1_species"),
-                        "top1_prob": p.get("top1_prob"),
-                        "top2_species": p.get("top2_species"),
-                        "top2_prob": p.get("top2_prob"),
                         "google_maps_url": p.get("google_maps_url"),
                         "swoop_url": p.get("swoop_url"),
                     })
@@ -617,6 +613,95 @@ def get_sessions(user: dict = Depends(get_current_user)):
         return {"sessions": sessions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Regional fallback when a user has no GPS grant and no located trips yet —
+# mirrors the frontend map's own default center (web/src/screens/Map.jsx),
+# kept in sync deliberately so a brand-new user still sees real, plausible
+# conditions rather than an empty credibility panel on the Chat screen.
+_DEFAULT_REGION = {"lat": 43.5, "lng": -79.8, "name": "Southern Ontario"}
+
+
+@app.get("/conditions")
+def get_conditions(
+    user: dict = Depends(get_current_user),
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+):
+    """Live conditions for the Chat coach's "showing its work" evidence panel.
+
+    Reads through the *same* weather functions the chat agent's own
+    get_conditions / get_pressure_trend tools call (src.services.weather ->
+    src.ingest.global.weather), so the panel shows literally the data the
+    coach reasons from, never a parallel source that could drift.
+
+    Location resolves via a fallback chain so the panel is never empty:
+      1. explicit lat/lng (frontend passes these only when the browser
+         already has a *granted* geolocation permission — never prompts),
+      2. the user's most recent trip that has real coordinates,
+      3. a regional default (_DEFAULT_REGION) for brand-new users.
+    The response labels which of these it used, and the real place name, so
+    the UI can be honest about whose conditions it's showing.
+    """
+    import importlib
+
+    # "global" is a Python keyword, so this subpackage can't be imported with a
+    # normal `from src.ingest.global import weather` — same reason the weather
+    # service itself reaches it via importlib. Reuse that exact module so this
+    # endpoint reads through the identical code path the coach's tools use.
+    _weather = importlib.import_module("src.ingest.global.weather")
+    from src.services.weather import _FISHING_NOTES
+    from src.storage.database import get_db
+
+    if lat is not None and lng is not None:
+        loc = {"lat": lat, "lng": lng, "name": "your current location", "source": "gps"}
+    else:
+        db = get_db()
+        row = db.execute(
+            """
+            SELECT st.lat, st.lng, st.location_name, st.location_text
+            FROM sessions s
+            LEFT JOIN stops st ON st.session_id = s.id
+            WHERE s.user_id = ? AND st.lat IS NOT NULL AND st.lng IS NOT NULL
+            ORDER BY s.id DESC
+            LIMIT 1
+            """,
+            [user["id"]],
+        ).fetchone()
+        if row and row[0] is not None:
+            loc = {
+                "lat": row[0],
+                "lng": row[1],
+                "name": row[2] or row[3] or "your last trip",
+                "source": "last_trip",
+            }
+        else:
+            loc = {**_DEFAULT_REGION, "source": "regional_default"}
+
+    try:
+        conditions = _weather.get_current_conditions(loc["lat"], loc["lng"])
+        trend = _weather.compute_pressure_trend(loc["lat"], loc["lng"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Conditions unavailable: {e}")
+
+    return {
+        "location": {
+            "name": loc["name"],
+            "lat": loc["lat"],
+            "lng": loc["lng"],
+            "source": loc["source"],
+        },
+        "time": conditions.time.isoformat(),
+        "temperature_c": conditions.temperature_c,
+        "humidity_pct": conditions.humidity_pct,
+        "wind_speed_kmh": conditions.wind_speed_kmh,
+        "cloud_cover_pct": conditions.cloud_cover_pct,
+        "weather_code": conditions.weather_code,
+        "pressure_hpa": conditions.pressure_hpa,
+        "pressure_trend": trend.trend,
+        "pressure_delta_24h_hpa": trend.delta_24h_hpa,
+        "pressure_note": _FISHING_NOTES[trend.trend],
+    }
 
 
 @app.get("/fishdex")
@@ -1283,8 +1368,7 @@ def get_map_segments(
     rows = list(db.execute(f"""
         SELECT ogf_id, lat, lng, {score_col} as score,
                watercourse_name, nearest_named_stream,
-               stream_order, top1_species, top1_prob,
-               top2_species, top2_prob,
+               stream_order,
                is_confluence, connected_to_waterbody,
                google_maps_url, swoop_url,
                habitat_score, access_score
@@ -1298,8 +1382,8 @@ def get_map_segments(
 
     cols = [
         "ogf_id", "lat", "lng", "score", "watercourse_name",
-        "nearest_named_stream", "stream_order", "top1_species", "top1_prob",
-        "top2_species", "top2_prob", "is_confluence", "connected_to_waterbody",
+        "nearest_named_stream", "stream_order",
+        "is_confluence", "connected_to_waterbody",
         "google_maps_url", "swoop_url", "habitat_score", "access_score",
     ]
     return {

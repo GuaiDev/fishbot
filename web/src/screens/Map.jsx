@@ -344,35 +344,6 @@ export default function Map() {
                 </div>
               </div>
 
-              {selected.top1_species && (
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 11, color: 'var(--fx-text-muted)', marginBottom: 4 }}>
-                    Likely species
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <span style={{
-                      background: 'var(--fx-card-fill-quiet)', color: 'var(--fx-moss-light)',
-                      fontFamily: 'var(--fx-font-ui)',
-                      borderRadius: 6, padding: '3px 8px', fontSize: 11,
-                    }}>
-                      {selected.top1_species}{selected.top1_prob
-                        ? ` (${(selected.top1_prob * 100).toFixed(0)}%)`
-                        : ''}
-                    </span>
-                    {selected.top2_species && (
-                      <span style={{
-                        background: 'var(--fx-card-fill)', color: 'var(--fx-text-muted)',
-                        border: '1px solid var(--fx-hairline)',
-                        fontFamily: 'var(--fx-font-ui)',
-                        borderRadius: 6, padding: '3px 8px', fontSize: 11,
-                      }}>
-                        {selected.top2_species}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 {selected.google_maps_url && (
                   <a

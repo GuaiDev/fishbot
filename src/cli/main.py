@@ -547,12 +547,14 @@ def compute_access() -> None:
 
 
 @app.command(name="compute-untapped")
-def compute_untapped(
-    species: str = typer.Option(None, "--species", "-s", help="Filter to a specific species"),
-) -> None:
-    """Compute untapped potential scores: habitat × (1 - pressure) × access.
+def compute_untapped() -> None:
+    """Compute untapped potential: (1 - pressure) × access × structure × remoteness.
 
-    Requires SDM predictions (make train-sdm) and access scores (make compute-access).
+    Gated by plausibility — segments with affirmative evidence of not being
+    fishable water score 0. There is no habitat term and no species filter:
+    the ranking measures how unreported a stretch is, not whether fish are in it.
+
+    Requires access scores (make compute-access).
     Shows top 5 results sorted by untapped_score.
     """
     import time
@@ -575,7 +577,7 @@ def compute_untapped(
     t0 = time.time()
     console.print("[dim]Computing untapped potential…[/dim]")
     try:
-        df = compute_untapped_potential(db, feature_matrix, species=species)
+        df = compute_untapped_potential(db, feature_matrix)
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -593,7 +595,6 @@ def compute_untapped(
     table = Table(title="Top 5 Untapped Water")
     table.add_column("Name", overflow="fold")
     table.add_column("Order", justify="right")
-    table.add_column("Habitat", justify="right")
     table.add_column("Access", justify="right")
     table.add_column("Pressure", justify="right")
     table.add_column("Untapped", justify="right")
@@ -604,7 +605,6 @@ def compute_untapped(
         table.add_row(
             name,
             str(int(row["stream_order"])) if not pd.isna(row["stream_order"]) else "—",
-            f"{row['habitat_score']:.3f}",
             f"{row['access_score']:.3f}",
             f"{row['observation_pressure']:.3f}",
             f"{row['untapped_score']:.4f}",

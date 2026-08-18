@@ -1,16 +1,16 @@
 import json
 
 import pytest
-from sqlite_utils import Database
 
-from src.storage.database import ensure_schema
+from src.storage.database import get_db
 
 
 @pytest.fixture
 def db_conn(tmp_path):
-    db = Database(tmp_path / "test.db")
-    ensure_schema(db)
-    return db
+    # get_db() applies ensure_schema + every migration, matching production.
+    # ensure_schema() alone omits user_id on stops/sessions, which hid the
+    # cross-user data leak these tests now cover.
+    return get_db(tmp_path / "test.db")
 
 
 def test_species_coaching_no_data(db_conn):
@@ -29,6 +29,62 @@ def test_location_coaching_no_data(db_conn):
 
     result = get_location_coaching(db_conn, "Nonexistent Creek")
     assert "No logged trips" in result
+
+
+def _insert_stop(db, user_id: int, location: str, species: list[str]) -> None:
+    db["sessions"].insert({"date": "2025-06-14", "overall_notes": None, "user_id": user_id})
+    session_id = db.execute("SELECT MAX(id) FROM sessions").fetchone()[0]
+    db["stops"].insert({
+        "session_id": session_id,
+        "user_id": user_id,
+        "location_text": location,
+        "location_name": location,
+        "species_caught": json.dumps(species),
+        "party_species_caught": json.dumps([]),
+        "was_productive": 1,
+        "technique": "Santee Cooper rig",
+        "gear": "cutbait",
+        "notes": f"logged by user {user_id}",
+    })
+
+
+def test_location_coaching_excludes_other_users(db_conn):
+    """A user's coaching must not read another user's stops."""
+    from src.services.coaching import get_location_coaching
+
+    _insert_stop(db_conn, user_id=2, location="Byng Island", species=["channel catfish"])
+
+    # user 1 has never fished here; user 2's stop must stay invisible.
+    result = get_location_coaching(db_conn, "Byng Island", user_id=1)
+    assert "No logged trips" in result
+
+
+def test_species_coaching_excludes_other_users(db_conn, monkeypatch):
+    """Another user's catches must not reach the coaching prompt."""
+    import src.services.coaching as coaching
+
+    captured: dict = {}
+
+    class _Msg:
+        def __init__(self, text):
+            self.content = [type("B", (), {"text": text})()]
+
+    class _Client:
+        class messages:
+            @staticmethod
+            def create(**kwargs):
+                captured["prompt"] = kwargs["messages"][0]["content"]
+                return _Msg("stub response")
+
+    monkeypatch.setattr(coaching, "get_client", lambda: _Client())
+
+    _insert_stop(db_conn, user_id=2, location="Byng Island", species=["channel catfish"])
+
+    coaching.get_species_coaching(db_conn, "channel catfish", user_id=1)
+
+    assert "Byng Island" not in captured["prompt"]
+    assert "logged by user 2" not in captured["prompt"]
+    assert "SUCCESSFUL CATCHES: None logged" in captured["prompt"]
 
 
 def test_species_coaching_with_data(db_conn):

@@ -781,16 +781,6 @@ def _execute_tool(name: str, inputs: dict, user_id: int = 1) -> str:
             lng=inputs["lng"],
             radius_km=inputs.get("radius_km", 50),
         )
-    if name == "get_species_habitat_predictions":
-        from src.services.sdm_predictions import get_species_predictions_for_agent
-
-        return get_species_predictions_for_agent(
-            lat=inputs["lat"],
-            lng=inputs["lng"],
-            radius_km=inputs.get("radius_km", 25),
-            species=inputs.get("species"),
-            min_probability=inputs.get("min_probability", 0.5),
-        )
     if name == "find_untapped_water":
         from src.services.untapped_potential import find_untapped_water_for_agent
 
@@ -918,12 +908,12 @@ def _execute_tool(name: str, inputs: dict, user_id: int = 1) -> str:
             location = inputs.get("location")
             if not location:
                 return "Please specify a location for location coaching."
-            return get_location_coaching(db, location, question)
+            return get_location_coaching(db, location, question, user_id=user_id)
         else:
             species = inputs.get("species")
             if not species:
                 return "Please specify a species for species coaching."
-            return get_species_coaching(db, species, question)
+            return get_species_coaching(db, species, question, user_id=user_id)
     if name == "get_session_conditions":
         db = get_db()
         session_id = inputs.get("session_id")
@@ -2113,51 +2103,6 @@ def _tools(profile: Any) -> list[dict]:
                     },
                 },
                 "required": ["ogf_id"],
-            },
-        },
-        {
-            "name": "get_species_habitat_predictions",
-            "description": (
-                "Returns RF model predictions of species presence probability based on "
-                "habitat features (substrate, thermal regime, water quality, EPT community, "
-                "stream connectivity). "
-                "Available for 8 species: Creek Chub, Pumpkinseed, Yellow Perch, "
-                "Brown Bullhead, White Sucker, Brook Stickleback, Rainbow Darter, Rock Bass. "
-                "Probabilities reflect habitat suitability — not confirmed presence. "
-                "Always note this framing to the user. "
-                "Requires `make train-sdm` to have been run first; returns a setup message "
-                "if predictions are not yet generated."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "lat": {
-                        "type": "number",
-                        "description": lat_desc,
-                    },
-                    "lng": {
-                        "type": "number",
-                        "description": lng_desc,
-                    },
-                    "radius_km": {
-                        "type": "number",
-                        "description": "Search radius in kilometres. Default 25.",
-                    },
-                    "species": {
-                        "type": "string",
-                        "description": (
-                            "Filter to a single species. "
-                            "Accepts common name (e.g. 'Creek Chub') or "
-                            "scientific name (e.g. 'Semotilus atromaculatus'). "
-                            "Omit to return all modelled species."
-                        ),
-                    },
-                    "min_probability": {
-                        "type": "number",
-                        "description": "Minimum presence probability threshold. Default 0.5.",
-                    },
-                },
-                "required": ["lat", "lng"],
             },
         },
         {

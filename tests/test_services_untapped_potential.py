@@ -11,12 +11,12 @@ from src.services.untapped_potential import (
     _build_connectivity_note,
     _compute_mode_score,
     _compute_pressure,
-    _load_habitat_scores,
-    _resolve_species,
     _structural_bonus,
     compute_untapped_potential,
     find_exploration_targets,
     find_untapped_water_for_agent,
+    gate_exclusion_reason,
+    plausibility_gate,
 )
 from src.storage.database import get_db
 
@@ -100,48 +100,88 @@ def test_compute_pressure_preserves_index():
     assert set(pressure.index) == set(fm["ogf_id"])
 
 
-# ── unit: habitat score loading ───────────────────────────────────────────────
+# ── unit: plausibility gate ───────────────────────────────────────────────────
+#
+# The gate replaced the SDM habitat term. It rules segments OUT on affirmative
+# evidence only; missing data must never exclude, because the fields it reads
+# are absent for ~99% of segments.
 
 
-def test_load_habitat_scores_no_predictions_table(tmp_path: Path):
-    db = get_db(tmp_path / "test.db")
-    scores = _load_habitat_scores(db, None)
-    assert len(scores) == 0
+def test_gate_passes_segment_with_no_evidence_either_way():
+    df = pd.DataFrame({"watercourse_type": ["Stream"], "do_median_mgl": [float("nan")]})
+    assert bool(plausibility_gate(df).iloc[0]) is True
 
 
-def test_load_habitat_scores_averages_across_species(tmp_path: Path):
-    db = get_db(tmp_path / "test.db")
-    _insert_predictions(db, "Species A", {1: 0.8, 2: 0.6})
-    _insert_predictions(db, "Species B", {1: 0.4, 2: 0.2})
-
-    scores = _load_habitat_scores(db, None)
-    assert scores.loc[1] == pytest.approx(0.6)
-    assert scores.loc[2] == pytest.approx(0.4)
+def test_gate_missing_columns_entirely_passes_everything():
+    df = pd.DataFrame({"ogf_id": [1, 2, 3]})
+    assert plausibility_gate(df).all()
 
 
-def test_load_habitat_scores_filters_by_species(tmp_path: Path):
-    db = get_db(tmp_path / "test.db")
-    _insert_predictions(db, "semotilus atromaculatus", {1: 0.9, 2: 0.1})
-    _insert_predictions(db, "perca flavescens", {1: 0.3, 2: 0.7})
-
-    scores = _load_habitat_scores(db, "Semotilus atromaculatus")
-    assert scores.loc[1] == pytest.approx(0.9)
-    assert scores.loc[2] == pytest.approx(0.1)
-
-
-def test_resolve_species_common_name():
-    assert _resolve_species("Creek Chub") == "Semotilus atromaculatus"
-    assert _resolve_species("creek chub") == "Semotilus atromaculatus"
+def test_gate_excludes_ditch_and_virtual_types():
+    df = pd.DataFrame(
+        {
+            "watercourse_type": ["Stream", "Ditch", "Virtual Flow", "Virtual Connector"],
+            "do_median_mgl": [float("nan")] * 4,
+        }
+    )
+    assert list(plausibility_gate(df)) == [True, False, False, False]
 
 
-def test_resolve_species_scientific_passthrough():
-    assert _resolve_species("Perca flavescens") == "Perca flavescens"
+def test_gate_excludes_measured_hypoxia_only():
+    df = pd.DataFrame(
+        {
+            "watercourse_type": ["Stream"] * 3,
+            # below floor, above floor, never measured
+            "do_median_mgl": [2.4, 9.1, float("nan")],
+        }
+    )
+    assert list(plausibility_gate(df)) == [False, True, True]
+
+
+def test_gate_does_not_rank_two_passing_segments():
+    """The gate is boolean by design — it must not express preference."""
+    df = pd.DataFrame(
+        {
+            "watercourse_type": ["Stream", "Stream"],
+            "do_median_mgl": [4.1, 13.9],
+        }
+    )
+    gate = plausibility_gate(df)
+    assert gate.iloc[0] == gate.iloc[1]
+
+
+def test_gate_exclusion_reason_is_specific_or_none():
+    df = pd.DataFrame(
+        {
+            "watercourse_type": ["Stream", "Ditch", "Stream"],
+            "do_median_mgl": [float("nan"), float("nan"), 2.4],
+        }
+    )
+    assert gate_exclusion_reason(df.iloc[0]) is None
+    assert "ditch" in gate_exclusion_reason(df.iloc[1]).lower()
+    assert "2.4" in gate_exclusion_reason(df.iloc[2])
+
+
+def test_gate_zeroes_score_for_excluded_segment():
+    """A gated segment must score 0 regardless of how good its other terms are."""
+    df = pd.DataFrame(
+        {
+            "watercourse_type": ["Stream", "Ditch"],
+            "do_median_mgl": [float("nan"), float("nan")],
+            "observation_pressure": [0.1, 0.1],
+            "access_score": [0.9, 0.9],
+            "observation_density_25km": [0, 0],
+        }
+    )
+    scores = _compute_mode_score(df, "balanced")
+    assert scores.iloc[0] > 0.0
+    assert scores.iloc[1] == 0.0
 
 
 # ── unit: formula correctness ─────────────────────────────────────────────────
 
 
-def test_untapped_formula_high_habitat_low_pressure_good_access(tmp_path: Path, monkeypatch):
+def test_untapped_formula_low_pressure_remote_scores_highest(tmp_path: Path, monkeypatch):
     import src.services.accessibility as acc_mod
     import src.services.untapped_potential as up_mod
 
@@ -155,17 +195,16 @@ def test_untapped_formula_high_habitat_low_pressure_good_access(tmp_path: Path, 
     fm = _make_feature_matrix(5)
     fm["observation_density_25km"] = [0.0, 5.0, 5.0, 5.0, 5.0]
 
-    _insert_predictions(db, "TestSpecies", {1: 1.0, 2: 0.5, 3: 0.5, 4: 0.5, 5: 0.5})
     _insert_access_scores(tmp_path, {1: 1.0, 2: 0.5, 3: 0.5, 4: 0.5, 5: 0.5})
 
     df = compute_untapped_potential(db, fm)
 
-    # Segment 1: habitat=1.0, density=0 → pressure=0.10 (floor), remoteness=1.5
-    # balanced: 1.0 × (1-0.10) × struct=1.0 × 1.5 = 1.35
+    # Segment 1: density=0 → pressure=0.10 (floor), remoteness=1.5, struct=1.0
+    # balanced: (1-0.10) × 1.0 × 1.5 = 1.35
     seg1 = df[df["ogf_id"] == 1].iloc[0]
     assert seg1["untapped_score"] == pytest.approx(1.35)
 
-    # Segment 2: habitat=0.5, pressure>0, access=0.5 → lower
+    # Segment 2: higher density → more pressure, no remoteness bonus → lower
     seg2 = df[df["ogf_id"] == 2].iloc[0]
     assert seg2["untapped_score"] < seg1["untapped_score"]
 
@@ -182,7 +221,6 @@ def test_untapped_sorted_descending(tmp_path: Path, monkeypatch):
     fm = _make_feature_matrix(10)
     fm["observation_density_25km"] = np.linspace(0, 9, 10)
 
-    _insert_predictions(db, "Sp", {i: 0.5 for i in range(1, 11)})
     _insert_access_scores(tmp_path, {i: 0.5 for i in range(1, 11)})
 
     df = compute_untapped_potential(db, fm)
@@ -190,7 +228,13 @@ def test_untapped_sorted_descending(tmp_path: Path, monkeypatch):
     assert np.all(scores[:-1] >= scores[1:])
 
 
-def test_untapped_species_filter_changes_scores(tmp_path: Path, monkeypatch):
+def test_untapped_ignores_sdm_predictions_entirely(tmp_path: Path, monkeypatch):
+    """SDM predictions in the DB must not influence the ranking any more.
+
+    Previously `species=` reweighted scores by per-species habitat probability.
+    That model scored 0.51-0.61 AUC, so the reweighting was noise. Predictions
+    may still exist in the DB from the research path; they must be inert here.
+    """
     import src.services.accessibility as acc_mod
     import src.services.untapped_potential as up_mod
 
@@ -201,18 +245,18 @@ def test_untapped_species_filter_changes_scores(tmp_path: Path, monkeypatch):
     db = get_db(tmp_path / "test.db")
     fm = _make_feature_matrix(5)
     fm["observation_density_25km"] = 0.0
-
-    _insert_predictions(db, "Semotilus atromaculatus", {1: 0.9, 2: 0.1, 3: 0.5, 4: 0.5, 5: 0.5})
-    _insert_predictions(db, "Perca flavescens", {1: 0.1, 2: 0.9, 3: 0.5, 4: 0.5, 5: 0.5})
     _insert_access_scores(tmp_path, {i: 1.0 for i in range(1, 6)})
 
-    df_creek = compute_untapped_potential(db, fm, species="Creek Chub")
-    df_perch = compute_untapped_potential(db, fm, species="Yellow Perch")
+    before = compute_untapped_potential(db, fm)
 
-    # Creek Chub: seg 1 should rank highest
-    assert df_creek.iloc[0]["ogf_id"] == 1
-    # Yellow Perch: seg 2 should rank highest
-    assert df_perch.iloc[0]["ogf_id"] == 2
+    # Wildly lopsided predictions — would have dominated the old formula.
+    _insert_predictions(db, "Semotilus atromaculatus", {1: 0.99, 2: 0.01, 3: 0.5, 4: 0.5, 5: 0.5})
+    after = compute_untapped_potential(db, fm)
+
+    pd.testing.assert_series_equal(
+        before.set_index("ogf_id")["untapped_score"],
+        after.set_index("ogf_id")["untapped_score"],
+    )
 
 
 # ── agent wrapper tests ───────────────────────────────────────────────────────
@@ -305,7 +349,6 @@ def test_scoring_modes_produce_different_rankings():
     df = pd.DataFrame(
         {
             "ogf_id": [1, 2],
-            "habitat_score": [0.8, 0.8],
             "observation_pressure": [0.1, 0.1],
             "access_score": [0.9, 0.1],  # seg1=road-accessible, seg2=remote
         }
@@ -327,7 +370,6 @@ def test_adventure_mode_rewards_low_access():
     df = pd.DataFrame(
         {
             "ogf_id": [1, 2],
-            "habitat_score": [0.7, 0.7],
             "observation_pressure": [0.2, 0.2],
             "access_score": [0.9, 0.1],
         }
@@ -422,7 +464,6 @@ def test_structural_bonus_confluence_scores_higher():
     """Confluence segment scores higher than identical non-confluence segment."""
 
     df = pd.DataFrame({
-        "habitat_score": [0.6, 0.6],
         "observation_pressure": [0.2, 0.2],
         "access_score": [0.5, 0.5],
         "is_confluence_segment": [True, False],
@@ -463,7 +504,7 @@ def test_structural_bonus_capped_at_two():
 def test_structural_bonus_graceful_missing_columns():
     """_structural_bonus returns 1.0 when structural columns are absent."""
 
-    df = pd.DataFrame({"habitat_score": [0.5, 0.7]})
+    df = pd.DataFrame({"observation_pressure": [0.5, 0.7]})
     bonus = _structural_bonus(df)
     assert (bonus == 1.0).all()
 
