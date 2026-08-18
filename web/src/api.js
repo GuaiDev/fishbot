@@ -4,8 +4,9 @@
 // it's running on (see the /app static mount in src/api/main.py). So the
 // built bundle just uses its own origin, no environment branching needed.
 // Only the Vite dev server (npm run dev, a separate process with no
-// backend of its own) needs an explicit override to a local backend.
-const BASE_URL = import.meta.env.DEV ? 'http://localhost:8000' : window.location.origin;
+// backend of its own) needs an explicit override — pointed at the live
+// Railway deployment since no local backend exists for this project.
+const BASE_URL = import.meta.env.DEV ? 'https://web-production-e2094.up.railway.app' : window.location.origin;
 
 // catches[].photo_url from GET /sessions is a relative path (e.g. /photos/x.jpg).
 // In production that resolves fine since the backend serves the app itself,
@@ -118,6 +119,23 @@ export async function getSessions() {
   const res = await fetch(`${BASE_URL}/sessions`, { headers: authHeaders() });
   if (res.status === 401) throw Object.assign(new Error('Not authenticated'), { status: 401 });
   if (!res.ok) throw new Error(`Sessions failed: ${res.status}`);
+  return res.json();
+}
+
+// Live conditions for the Chat coach's evidence panel. Reads through the same
+// weather functions the coach's own tools use, so the panel shows the data the
+// coach reasons from. lat/lng are optional — pass them ONLY when the browser
+// already has a granted geolocation permission; otherwise the backend resolves
+// location from the user's last trip, then a regional default, so the response
+// is never empty. Callers should degrade quietly (hide the panel) on failure,
+// never surface a hard error here — the Chat screen must stay calm.
+export async function getConditions(lat, lng) {
+  const qs = (lat != null && lng != null)
+    ? `?${new URLSearchParams({ lat, lng })}`
+    : '';
+  const res = await fetch(`${BASE_URL}/conditions${qs}`, { headers: authHeaders() });
+  if (res.status === 401) throw Object.assign(new Error('Not authenticated'), { status: 401 });
+  if (!res.ok) throw new Error(`Conditions fetch failed: ${res.status}`);
   return res.json();
 }
 

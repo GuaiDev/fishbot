@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { getFishDex, resolvePhotoUrl } from '../api';
 import GrainOverlay from '../components/GrainOverlay';
+import JournalReveal from '../components/JournalReveal';
 import '../fishdex-tokens.css';
 
 // ============================================================================
@@ -209,10 +210,13 @@ function CaughtPlate({ species }) {
   const caption = showPB ? `best · ${c.count} logged` : 'logged';
 
   return (
-    <div style={{
-      position: 'relative', borderRadius: 18, height: 214, overflow: 'hidden',
-      border: '1px solid var(--fx-hairline)', marginBottom: 13, background: 'var(--fx-card-fill-quiet)',
-    }}>
+    <div
+      className={showNewFind ? 'fx-new-find-settle' : undefined}
+      style={{
+        position: 'relative', borderRadius: 18, height: 214, overflow: 'hidden',
+        border: '1px solid var(--fx-hairline)', marginBottom: 13, background: 'var(--fx-card-fill-quiet)',
+      }}
+    >
       {photoUrl ? (
         <img src={photoUrl} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
       ) : (
@@ -665,46 +669,48 @@ export default function FishDex({ onNavigate }) {
   const effectiveIsGrouped = devView === 'grouped' ? true : devView === 'flat' ? false : isGrouped;
 
   return (
-    <div style={{
-      position: 'relative',
-      minHeight: '100dvh',
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'radial-gradient(circle at 50% 0%, var(--fx-bg-grad-1), var(--fx-bg-grad-2) 45%, var(--fx-bg-grad-3) 100%)',
-      paddingBottom: 84,
-    }}>
-      <GrainOverlay />
-      <DevViewOverride value={devView} onChange={setDevView} />
+    <JournalReveal>
+      <div style={{
+        position: 'relative',
+        minHeight: '100dvh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'radial-gradient(circle at 50% 0%, var(--fx-bg-grad-1), var(--fx-bg-grad-2) 45%, var(--fx-bg-grad-3) 100%)',
+        paddingBottom: 84,
+      }}>
+        <GrainOverlay />
+        <DevViewOverride value={devView} onChange={setDevView} />
 
-      {error && (
-        <div style={{ padding: 16, fontFamily: 'var(--fx-font-ui)', fontSize: 13, color: 'var(--fx-brass-light)' }}>
-          {error.includes('401') ? 'Not authenticated.' : `Couldn't load your FishDex: ${error}`}
-        </div>
-      )}
+        {error && (
+          <div style={{ padding: 16, fontFamily: 'var(--fx-font-ui)', fontSize: 13, color: 'var(--fx-brass-light)' }}>
+            {error.includes('401') ? 'Not authenticated.' : `Couldn't load your FishDex: ${error}`}
+          </div>
+        )}
 
-      {!error && !data && (
-        <div style={{ padding: 16, fontFamily: 'var(--fx-font-ui)', fontSize: 13, color: 'var(--fx-text-muted)' }}>
-          Loading…
-        </div>
-      )}
+        {!error && !data && (
+          <div style={{ padding: 16, fontFamily: 'var(--fx-font-ui)', fontSize: 13, color: 'var(--fx-text-muted)' }}>
+            Loading…
+          </div>
+        )}
 
-      {data && (
-        <>
-          <DiscoveryHeader
-            discovered={discovered}
-            total={total}
-            distinctFamilyCount={distinctFamilyCount}
-            isGrouped={effectiveIsGrouped}
-          />
-          {effectiveIsEmpty ? (
-            <EmptyState onNavigate={onNavigate} />
-          ) : effectiveIsGrouped ? (
-            <GroupedView families={families} />
-          ) : (
-            <FlatView caughtSpecies={caughtSpeciesMerged} undiscoveredSpecies={undiscoveredSpecies} />
-          )}
-        </>
-      )}
-    </div>
+        {data && (
+          <>
+            <DiscoveryHeader
+              discovered={discovered}
+              total={total}
+              distinctFamilyCount={distinctFamilyCount}
+              isGrouped={effectiveIsGrouped}
+            />
+            {effectiveIsEmpty ? (
+              <EmptyState onNavigate={onNavigate} />
+            ) : effectiveIsGrouped ? (
+              <GroupedView families={families} />
+            ) : (
+              <FlatView caughtSpecies={caughtSpeciesMerged} undiscoveredSpecies={undiscoveredSpecies} />
+            )}
+          </>
+        )}
+      </div>
+    </JournalReveal>
   );
 }

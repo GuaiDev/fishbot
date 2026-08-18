@@ -1,8 +1,41 @@
 import { useState, useRef, useEffect } from 'react';
 import Message from '../components/Message';
-import { sendMessage } from '../api';
+import { sendMessage, getConditions, getSessions } from '../api';
 import GrainOverlay from '../components/GrainOverlay';
+import CompassWatermark from '../components/CompassWatermark';
+import ConditionsPanel from '../components/ConditionsPanel';
+import { seasonNote } from '../conditions-format';
 import '../fishdex-tokens.css';
+
+// Dev-only toggle to compare the two Chat design directions side by side
+// (same pattern as FishDex's DevViewOverride). Dead code in production
+// builds (import.meta.env.DEV is false).
+function DevVariantToggle({ value, onChange }) {
+  if (!import.meta.env.DEV) return null;
+  const options = [
+    { id: 'journal', label: 'Journal' },
+    { id: 'instrument', label: 'Instrument' },
+  ];
+  return (
+    <div style={{
+      position: 'fixed', top: 8, right: 8, zIndex: 200,
+      display: 'flex', gap: 4, padding: 4,
+      background: 'rgba(9,10,6,.85)', borderRadius: 10, border: '1px solid var(--fx-hairline)',
+    }}>
+      {options.map(opt => (
+        <button key={opt.id} type="button" onClick={() => onChange(opt.id)}
+          style={{
+            font: '600 9px system-ui', letterSpacing: '.03em', padding: '4px 7px',
+            borderRadius: 6, border: 'none', cursor: 'pointer',
+            background: value === opt.id ? 'var(--fx-moss-light)' : 'transparent',
+            color: value === opt.id ? 'var(--fx-on-accent)' : 'var(--fx-text-muted)',
+          }}>
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function Chat({ onNavigate, user, onLogout }) {
   const [messages, setMessages] = useState([
@@ -13,12 +46,73 @@ export default function Chat({ onNavigate, user, onLogout }) {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [conditions, setConditions] = useState(null);
+  const [headerLine, setHeaderLine] = useState(`We're into ${seasonNote()} on Ontario water.`);
+  const [variant, setVariant] = useState('journal');
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Conditions for the evidence panel. Uses GPS only if already granted —
+  // never prompts on load (a forced permission dialog is a bad first
+  // impression); otherwise the backend resolves location from the user's
+  // last trip, then a regional default. Fails quietly: the panel simply
+  // doesn't render, so the screen stays calm even offline.
+  function loadConditions(lat, lng) {
+    getConditions(lat, lng).then(setConditions).catch(() => {});
+  }
+
+  useEffect(() => {
+    if (navigator.geolocation && navigator.permissions?.query) {
+      navigator.permissions.query({ name: 'geolocation' }).then(status => {
+        if (status.state === 'granted') {
+          navigator.geolocation.getCurrentPosition(
+            pos => loadConditions(pos.coords.latitude, pos.coords.longitude),
+            () => loadConditions(),
+            { timeout: 5000 },
+          );
+        } else {
+          loadConditions();
+        }
+      }).catch(() => loadConditions());
+    } else {
+      loadConditions();
+    }
+  }, []);
+
+  // Fishing-grounded header line — references the user's real history, never
+  // a time-of-day greeting. Falls back to a seasonal (still fishing) line for
+  // users with no located trips yet.
+  useEffect(() => {
+    let cancelled = false;
+    getSessions().then(data => {
+      if (cancelled) return;
+      const s = data.sessions?.[0];
+      if (s && s.location && s.location !== 'Unknown location') {
+        const sp = s.species_caught || [];
+        if (sp.length) {
+          const phrase = sp.length > 1 ? `${sp[0]} and more` : sp[0];
+          setHeaderLine(`Last time out, you brought ${phrase} to hand at ${s.location}.`);
+        } else {
+          setHeaderLine(`Your last line was in the water at ${s.location}.`);
+        }
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Explicit, user-initiated GPS read (the one place a permission prompt is
+  // acceptable — a tap, not an on-load dialog).
+  function useMyLocation() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos => loadConditions(pos.coords.latitude, pos.coords.longitude),
+      () => {},
+    );
+  }
 
   async function handleSend() {
     const text = input.trim();
@@ -60,6 +154,7 @@ export default function Chat({ onNavigate, user, onLogout }) {
   }
 
   const displayName = user?.display_name || user?.username || 'You';
+  const showLocationOptIn = conditions && conditions.location.source !== 'gps';
 
   return (
     <div style={{
@@ -70,6 +165,8 @@ export default function Chat({ onNavigate, user, onLogout }) {
       background: 'radial-gradient(circle at 50% 0%, var(--fx-bg-grad-1), var(--fx-bg-grad-2) 45%, var(--fx-bg-grad-3) 100%)',
     }}>
       <GrainOverlay />
+      <CompassWatermark variant={variant} />
+      <DevVariantToggle value={variant} onChange={setVariant} />
 
       {/* Header */}
       <div style={{
@@ -87,12 +184,12 @@ export default function Chat({ onNavigate, user, onLogout }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontFamily: 'var(--fx-font-serif)', fontSize: 16, fontWeight: 600, color: 'var(--fx-on-accent)',
           }}>F</div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ fontFamily: 'var(--fx-font-serif)', fontSize: 17, fontWeight: 600, color: 'var(--fx-text-primary-2)', margin: 0 }}>
               FishBot
             </h1>
-            <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 11, color: 'var(--fx-text-muted)' }}>
-              Ontario freshwater intelligence
+            <div style={{ fontFamily: 'var(--fx-font-ui)', fontSize: 11.5, color: 'var(--fx-text-muted)', lineHeight: 1.35 }}>
+              {headerLine}
             </div>
           </div>
           {user && (
@@ -108,6 +205,7 @@ export default function Chat({ onNavigate, user, onLogout }) {
                 fontFamily: 'var(--fx-font-ui)',
                 fontSize: '11px',
                 cursor: 'pointer',
+                flexShrink: 0,
               }}
             >
               {displayName}
@@ -116,38 +214,54 @@ export default function Chat({ onNavigate, user, onLogout }) {
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Scroll area — evidence panel first, then the conversation. z-index:1
+          keeps content above the compass atmosphere behind it. */}
       <div
         role="log"
         aria-live="polite"
         aria-relevant="additions"
         style={{
+          position: 'relative',
+          zIndex: 1,
           flex: 1,
           overflowY: 'auto',
-          padding: '16px 16px 80px',
+          padding: '14px 0 80px',
         }}
       >
-        {messages.map((msg, i) => (
-          <Message key={i} role={msg.role} content={msg.content} />
-        ))}
-        {loading && (
-          <div style={{
-            display: 'flex', justifyContent: 'flex-start', marginBottom: 8,
-          }}>
-            <div role="status" style={{
-              padding: '10px 14px',
-              borderRadius: '4px 14px 14px 14px',
-              background: 'var(--fx-card-fill)',
-              borderLeft: '2px solid var(--fx-moss)',
-              color: 'var(--fx-text-muted)',
-              fontFamily: 'var(--fx-font-ui)',
-              fontSize: 14,
+        <ConditionsPanel data={conditions} variant={variant} />
+        {showLocationOptIn && (
+          <div style={{ margin: '-6px 16px 14px', textAlign: 'right' }}>
+            <button type="button" onClick={useMyLocation} style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              fontFamily: 'var(--fx-font-ui)', fontSize: 11, color: 'var(--fx-moss-light)',
+              textDecoration: 'underline', textUnderlineOffset: 2,
             }}>
-              thinking...
-            </div>
+              Use my current location
+            </button>
           </div>
         )}
-        <div ref={bottomRef} />
+
+        <div style={{ padding: '0 16px' }}>
+          {messages.map((msg, i) => (
+            <Message key={i} role={msg.role} content={msg.content} />
+          ))}
+          {loading && (
+            <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8 }}>
+              <div role="status" style={{
+                padding: '10px 14px',
+                borderRadius: '4px 14px 14px 14px',
+                background: 'var(--fx-card-fill)',
+                borderLeft: '2px solid var(--fx-moss)',
+                color: 'var(--fx-text-muted)',
+                fontFamily: 'var(--fx-font-ui)',
+                fontSize: 14,
+              }}>
+                thinking...
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
       </div>
 
       {/* Input bar */}
