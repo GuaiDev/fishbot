@@ -58,6 +58,11 @@ Access scores (`src/services/accessibility.py`) are only meaningful within the O
 
 `find_untapped_water` results are most reliable when filtered to the home-area radius. For exploration targets beyond 55km, the untapped score is dominated by habitat quality × observation pressure — access score adds no signal.
 
+## Known issues
+
+- **`stream_order` is unpopulated on all 20,339 OHN segments.** The adapter ingests the segments but captures no stream order, so `describe()` reports `FIELD_NOT_POPULATED_BY_SOURCE` for it — correctly, but the field is unusable until the adapter is fixed. `explore()` is unaffected: it reads `stream_order` from the feature-matrix parquet, which does have it.
+- **BC NuSEDS and QC species-ranges discovery filters use brittle label matching**, the same failure class as the PWQMN bug (matching an exact published label rather than structure). `ca_bc/nuseds.py` anchors on `name.startswith("all areas nuseds")`; `ca_qc/species_ranges.py` matches a fixed keyword set. Both are in frozen jurisdictions and not yet fixed; a rename upstream would silently yield zero records. `src/ingest/discovery.py::check_resource_discovery` exists to make that loud — neither adapter calls it yet.
+
 ## Data quality principle: culverted urban streams
 
 Small order-1 and order-2 streams in high-density urban areas are frequently culverted in southern Ontario. OHN maps these hydrologically but they may not be fishable on the ground. Default `min_stream_order=3` in `find_untapped_water` excludes most culverted reaches. The culverted heuristic filter (`exclude_likely_culverted=True`) additionally removes order-1/2 segments where `observation_density_25km > 100` — the combination of small stream + very dense urban reporting is a strong signal for piped infrastructure.

@@ -359,3 +359,59 @@ def test_enrich_session_no_match_returns_empty(tmp_path):
     assert result["followup_questions"] == []
 
 
+
+
+# ── cross-user isolation ──────────────────────────────────────────────────────
+#
+# Pattern detection read every angler's stops and insights. Across users it
+# would invent slumps and species gaps out of other people's trips.
+
+
+def _add_stop(db, user_id, lat=43.40, lng=-79.75, species=("channel catfish",), productive=True):
+    db["sessions"].insert({"date": "2025-06-14", "user_id": user_id})
+    sid = db.execute("SELECT MAX(id) FROM sessions").fetchone()[0]
+    db["stops"].insert({
+        "session_id": sid, "user_id": user_id,
+        "location_text": "Byng Island", "location_name": "Byng Island",
+        "lat": lat, "lng": lng,
+        "species_caught": json.dumps(list(species)),
+        "party_species_caught": json.dumps([]),
+        "was_productive": 1 if productive else 0,
+    }, alter=True)
+
+
+def test_stop_summary_only_returns_the_requested_users_stops(tmp_path):
+    from src.services.trip_enrichment import _get_all_stops_summary
+
+    db = _make_db(tmp_path)
+    for _ in range(3):
+        _add_stop(db, user_id=2)
+
+    assert _get_all_stops_summary(db, user_id=1) == []
+    assert len(_get_all_stops_summary(db, user_id=2)) == 3
+
+
+def test_insight_matching_ignores_another_users_insights(tmp_path):
+    from src.services.trip_enrichment import match_insights_to_stop
+
+    db = _make_db(tmp_path)
+    other = insert_insight(db, _catfish_insight(lat=43.40, lng=-79.75))
+    db["behavioral_insights"].update(other, {"user_id": 2})
+
+    blank_stop = {
+        "species_caught": [], "was_productive": 0,
+        "lat": 43.40, "lng": -79.75, "location_name": "Byng Island",
+        "session_id": None, "technique": None,
+    }
+    assert match_insights_to_stop(db, blank_stop, user_id=1) == []
+
+
+def test_pattern_detection_does_not_count_another_users_sessions(tmp_path):
+    """The session-count gate decided whether to run at all, unfiltered."""
+    from src.services.trip_enrichment import detect_proactive_patterns
+
+    db = _make_db(tmp_path)
+    for _ in range(20):
+        _add_stop(db, user_id=2)
+
+    assert detect_proactive_patterns(db, [], user_id=1) is None

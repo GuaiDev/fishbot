@@ -39,9 +39,13 @@ def query_insights(
     species: str,
     condition_type: str | None = None,
     current_only: bool = True,
+    user_id: int = 1,
 ) -> list[BehavioralInsight]:
-    where = "LOWER(species) LIKE ?"
-    params: list[Any] = [f"%{species.lower()}%"]
+    # behavioral_insights is a per-user table (see migrate_user_fields). Without
+    # this filter one angler's stored conclusions surface in another's conflict
+    # checks — the same leak that was found in coaching.py.
+    where = "user_id = ? AND LOWER(species) LIKE ?"
+    params: list[Any] = [user_id, f"%{species.lower()}%"]
 
     if condition_type:
         where += " AND condition_type = ?"
@@ -115,12 +119,14 @@ def check_conflicts(
     lng: float | None = None,
     condition_season: str | None = None,
     radius_km: float = 1.0,
+    user_id: int = 1,
 ) -> list[BehavioralInsight]:
     """Find existing current insights that might conflict with a new recommendation.
 
     Matches on species + proximity (if lat/lng provided) + season (if provided).
+    Scoped to one angler: a conflict against someone else's insight is noise.
     """
-    candidates = query_insights(db, species=species, current_only=True)
+    candidates = query_insights(db, species=species, current_only=True, user_id=user_id)
     if not candidates:
         return []
 
@@ -150,11 +156,12 @@ def check_conflicts_for_agent(
     lat: float | None = None,
     lng: float | None = None,
     condition_season: str | None = None,
+    user_id: int = 1,
 ) -> str:
     """Agent-facing conflict check. Returns JSON describing any conflicts found."""
     import json
 
-    conflicts = check_conflicts(db, species, lat, lng, condition_season)
+    conflicts = check_conflicts(db, species, lat, lng, condition_season, user_id=user_id)
     if not conflicts:
         return json.dumps({"conflicts": [], "safe_to_recommend": True})
 

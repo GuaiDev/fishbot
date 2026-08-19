@@ -70,7 +70,7 @@ def test_species_gap_detected(db_conn):
     from src.services import trip_enrichment as te
     original = te._detect_species_gap
 
-    def patched_gap(stops):
+    def patched_gap(stops, user_id=1):
         species_caught_count: dict[str, int] = {}
         for stop in stops:
             for sp in stop["species_caught"]:

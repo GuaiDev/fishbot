@@ -15,6 +15,19 @@ def get_db(path: Path | None = None) -> Database:
     p.parent.mkdir(parents=True, exist_ok=True)
     db = Database(p)
     ensure_schema(db)
+    return db
+
+
+def _apply_migrations(db: Database) -> None:
+    """Bring an existing schema up to current. Every step is idempotent.
+
+    Called from ensure_schema so that "the schema exists" and "the schema is
+    current" are the same statement. They used to differ: ensure_schema created
+    tables while the migrations lived in get_db(), so anything constructing a
+    Database directly got a schema with no user_id on stops/sessions — which is
+    precisely why a cross-user data leak in coaching.py was invisible to nine
+    test files at once.
+    """
     migrate_catches_species_confirmation(db)
     migrate_catches_biggest_size_cm(db)
     migrate_catches_caught_at(db)
@@ -26,7 +39,6 @@ def get_db(path: Path | None = None) -> Database:
     migrate_observations_source(db)
     migrate_regulation_chunks_zone_name(db)
     migrate_segment_synthesis_jurisdiction(db)
-    return db
 
 
 def migrate_stops(db: Database) -> None:
@@ -1000,6 +1012,8 @@ def ensure_schema(db: Database) -> None:
         CREATE INDEX IF NOT EXISTS idx_map_segments_score_balanced
             ON map_segments(score_balanced DESC)
     """)
+
+    _apply_migrations(db)
 
 
 def migrate_angler_context_multi_user(db: Database) -> None:

@@ -153,3 +153,38 @@ def test_empty_query(tmp_path):
     db = _make_db(tmp_path)
     results = query_insights(db, species="walleye")
     assert results == []
+
+
+# ── cross-user isolation ──────────────────────────────────────────────────────
+#
+# behavioral_insights is a per-user table. query_insights filtered on species and
+# is_current but not user_id, so one angler's stored conclusions surfaced in
+# another's conflict checks — the same leak class found in coaching.py, and live
+# in the request path via chat.py's check_recommendation_conflicts.
+
+
+def test_query_insights_is_scoped_to_one_user(tmp_path):
+    db = _make_db(tmp_path)
+    mine = insert_insight(db, _insight())
+    theirs = insert_insight(db, _insight(conclusion="Someone else's conclusion entirely."))
+    db["behavioral_insights"].update(theirs, {"user_id": 2})
+    db["behavioral_insights"].update(mine, {"user_id": 1})
+
+    got = query_insights(db, species="brook trout", user_id=1)
+    assert [i.conclusion for i in got] == [_insight().conclusion]
+
+    other = query_insights(db, species="brook trout", user_id=2)
+    assert len(other) == 1
+    assert "Someone else" in other[0].conclusion
+
+
+def test_check_conflicts_does_not_see_another_users_insights(tmp_path):
+    from src.storage.insights import check_conflicts
+
+    db = _make_db(tmp_path)
+    theirs = insert_insight(db, _insight(lat=43.40, lng=-79.75))
+    db["behavioral_insights"].update(theirs, {"user_id": 2})
+
+    # user 1 has recorded nothing, so nothing of theirs can conflict
+    assert check_conflicts(db, "brook trout", lat=43.40, lng=-79.75, user_id=1) == []
+    assert len(check_conflicts(db, "brook trout", lat=43.40, lng=-79.75, user_id=2)) == 1

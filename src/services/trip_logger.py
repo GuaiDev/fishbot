@@ -459,7 +459,7 @@ def log_session(
         from src.agent.client import get_client
         from src.services.trip_enrichment import enrich_session
         client = get_client()
-        enrichment = enrich_session(db_conn, session_id, client)
+        enrichment = enrich_session(db_conn, session_id, client, user_id=user_id)
         followup_questions = enrichment.get("followup_questions", [])
         proactive_coaching = enrichment.get("proactive_coaching")
     except Exception as e:

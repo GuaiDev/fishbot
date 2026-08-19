@@ -618,6 +618,7 @@ def _execute_tool(name: str, inputs: dict, user_id: int = 1) -> str:
             recommendation=inputs.get("recommendation"),
             condition_season=inputs.get("condition_season"),
             location_name=inputs.get("location_name"),
+            user_id=user_id,
         )
     if name == "check_recommendation_conflicts":
         from src.services.insights import check_conflicts_for_agent_service
@@ -627,6 +628,7 @@ def _execute_tool(name: str, inputs: dict, user_id: int = 1) -> str:
             lat=inputs.get("lat"),
             lng=inputs.get("lng"),
             condition_season=inputs.get("condition_season"),
+            user_id=user_id,
         )
     if name == "get_gbif_observations":
         from src.services.gbif import query_for_agent as gbif_query_for_agent

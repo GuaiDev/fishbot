@@ -16,7 +16,9 @@ def get_behavioral_insights_for_agent(
     user_id: int = 1,
 ) -> str:
     db = get_db()
-    insights = query_insights(db, species=species, condition_type=condition_type, current_only=True)
+    insights = query_insights(
+        db, species=species, condition_type=condition_type, current_only=True, user_id=user_id
+    )
 
     if not insights:
         msg = f"No behavioral insights stored for '{species}'"
@@ -89,6 +91,7 @@ def record_behavioral_insight_for_agent(
     recommendation: str | None = None,
     condition_season: str | None = None,
     location_name: str | None = None,
+    user_id: int = 1,
 ) -> str:
     if confidence == "unverified":
         return json.dumps(
@@ -126,6 +129,7 @@ def record_behavioral_insight_for_agent(
         lat=lat, lng=lng,
         condition_season=condition_season,
         radius_km=1.0,
+        user_id=user_id,
     )
 
     # Auto-refine if new insight directly contradicts an existing one
@@ -197,8 +201,11 @@ def check_conflicts_for_agent_service(
     lat: float | None = None,
     lng: float | None = None,
     condition_season: str | None = None,
+    user_id: int = 1,
 ) -> str:
     from src.storage.insights import check_conflicts_for_agent
 
     db = get_db()
-    return check_conflicts_for_agent(db, species, lat, lng, condition_season)
+    return check_conflicts_for_agent(
+        db, species, lat, lng, condition_season, user_id=user_id
+    )

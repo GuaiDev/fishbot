@@ -38,7 +38,7 @@ def get_season(month: int) -> str:
     return "fall"
 
 
-def match_insights_to_stop(db: Database, stop: dict) -> list:
+def match_insights_to_stop(db: Database, stop: dict, user_id: int = 1) -> list:
     """Find behavioral insights that match this stop.
 
     Productive stops: match by species + location proximity + season.
@@ -83,7 +83,8 @@ def match_insights_to_stop(db: Database, stop: dict) -> list:
     elif not was_productive and lat is not None and lng is not None:
         # Blank stop with known coords — check for location-based contradictions
         all_insights = list(db["behavioral_insights"].rows_where(
-            "is_current = 1 AND lat IS NOT NULL AND lng IS NOT NULL"
+            "user_id = ? AND is_current = 1 AND lat IS NOT NULL AND lng IS NOT NULL",
+            [user_id],
         ))
         for row in all_insights:
             if _haversine_km(lat, lng, row["lat"], row["lng"]) <= 1.0:
@@ -270,6 +271,7 @@ def enrich_session(
     db: Database,
     session_id: int,
     client,
+    user_id: int = 1,
 ) -> dict:
     """Main entry point. Called after a session is logged.
 
@@ -284,7 +286,7 @@ def enrich_session(
 
     for stop in stops:
         was_productive = bool(stop.get("was_productive"))
-        matched = match_insights_to_stop(db, stop)
+        matched = match_insights_to_stop(db, stop, user_id=user_id)
 
         for match in matched:
             insight = match["insight"]
@@ -309,7 +311,7 @@ def enrich_session(
     proactive = None
     try:
         current_stops_dicts = [dict(s) for s in stops]
-        proactive = detect_proactive_patterns(db, current_stops_dicts)
+        proactive = detect_proactive_patterns(db, current_stops_dicts, user_id=user_id)
     except Exception:
         pass  # Non-fatal — never block enrichment for coaching errors
 
@@ -327,16 +329,21 @@ _SLUMP_THRESHOLD = 2
 _LOW_SUCCESS_RATE = 0.40
 
 
-def _get_all_stops_summary(db: Database) -> list[dict]:
-    """Return a lightweight summary of all logged stops for pattern analysis."""
+def _get_all_stops_summary(db: Database, user_id: int = 1) -> list[dict]:
+    """Return a lightweight summary of this angler's stops for pattern analysis.
+
+    "All stops" means all of *theirs*. Pattern detection across users would
+    invent slumps and species gaps out of other people's trips.
+    """
     rows = list(db.execute("""
         SELECT st.location_name, st.location_text, st.species_caught,
                st.was_productive, st.technique, st.lat, st.lng,
                s.date, s.date_approx
         FROM stops st
         JOIN sessions s ON st.session_id = s.id
+        WHERE st.user_id = ?
         ORDER BY s.date DESC, st.id DESC
-    """).fetchall())
+    """, [user_id]).fetchall())
 
     stops = []
     for r in rows:
@@ -352,7 +359,7 @@ def _get_all_stops_summary(db: Database) -> list[dict]:
     return stops
 
 
-def _detect_species_gap(stops: list[dict]) -> dict | None:
+def _detect_species_gap(stops: list[dict], user_id: int = 1) -> dict | None:
     """Detect species in behavioral insights that the user has never personally caught."""
     species_caught_count: dict[str, int] = {}
     total_stops = len(stops)
@@ -368,8 +375,8 @@ def _detect_species_gap(stops: list[dict]) -> dict | None:
         db = get_db()
         targeted_species = list(db.execute("""
             SELECT DISTINCT LOWER(species) FROM behavioral_insights
-            WHERE is_current = 1
-        """).fetchall())
+            WHERE is_current = 1 AND user_id = ?
+        """, [user_id]).fetchall())
         targeted = {r[0] for r in targeted_species}
     except Exception:
         targeted = set()
@@ -486,6 +493,7 @@ def _detect_technique_pattern(stops: list[dict]) -> dict | None:
 def detect_proactive_patterns(
     db: Database,
     current_session_stops: list[dict],
+    user_id: int = 1,
 ) -> dict | None:
     """Check for meaningful patterns across all trip history.
 
@@ -493,20 +501,22 @@ def detect_proactive_patterns(
     Priority: slump > species gap > technique pattern.
     """
     try:
-        session_count = db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        session_count = db.execute(
+            "SELECT COUNT(*) FROM sessions WHERE user_id = ?", [user_id]
+        ).fetchone()[0]
     except Exception:
         return None
 
     if session_count < _MIN_SESSIONS_FOR_PATTERNS:
         return None
 
-    all_stops = _get_all_stops_summary(db)
+    all_stops = _get_all_stops_summary(db, user_id=user_id)
 
     slump = _detect_location_slump(all_stops, current_session_stops)
     if slump:
         return slump
 
-    gap = _detect_species_gap(all_stops)
+    gap = _detect_species_gap(all_stops, user_id=user_id)
     if gap:
         return gap
 
