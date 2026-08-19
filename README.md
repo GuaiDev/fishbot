@@ -4,7 +4,9 @@ A personal fishing exploration AI assistant. Built for anglers who want to find 
 
 ## What it does
 
-fishbot answers fishing questions from a local database of integrated public datasets, using the Claude API to reason over retrieved records. It runs as a CLI chat bot and as a web app (chat, map, trip log, FishDex) backed by a FastAPI service.
+Fishdex answers fishing questions from a local database of integrated public datasets, using the Claude API to reason over retrieved records. It runs as a CLI chat bot and as a web app — chat, map, trip log and a species collection — backed by a FastAPI service.
+
+(The repository, Python package and CLI command are still named `fishbot`.)
 
 The core thesis: **fish presence and angler pressure are different signals**, and collapsing them into a single score is how most fishing apps go wrong. High report density usually means popular water, not abundant fish. Low density often means nobody has looked.
 
