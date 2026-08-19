@@ -577,3 +577,28 @@ def test_no_segments_at_all_still_reads_as_a_radius_gap(db):
     _add_segment(db, 601, "Elsewhere Creek", 45.0, -80.0, stream_order=3)
     order = describe(db, lat=43.40, lng=-79.75, caller="map_tap").structure.stream_order
     assert order.empty_reason is EmptyReason.NO_RECORDS_IN_RADIUS
+
+
+def test_conditions_assigns_every_field_even_when_the_live_source_fails(db, monkeypatch):
+    """Found by running a real query: three fields rendered the bug string.
+
+    build_conditions only set air_temp_c and pressure_trend, and only on the
+    success path. A failed weather fetch left flow/water_temp/air_temp
+    default-constructed — no value AND no reason.
+    """
+    import src.services.context.slices as slices
+
+    def boom(**kwargs):
+        raise RuntimeError("weather unreachable")
+
+    monkeypatch.setattr("src.services.weather.get_conditions_for_agent", boom)
+
+    ctx = describe(db, lat=43.5474, lng=-80.1973, caller="coach")
+    for fname, f in ctx.conditions.__dict__.items():
+        assert f.empty_reason is not None, f"conditions.{fname} has no empty_reason"
+        assert "this is a bug" not in f.explain(), fname
+
+    # a transient outage must not read as permanent missing coverage
+    assert ctx.conditions.air_temp_c.empty_reason is EmptyReason.LIVE_LOOKUP_FAILED
+    assert "try again" in ctx.conditions.air_temp_c.explain()
+    assert slices  # module imported for the monkeypatch target

@@ -45,6 +45,15 @@ class EmptyReason(StrEnum):
     WEB_SEARCH_EMPTY = "web_search_empty"
     SOURCE_DOES_NOT_COVER_AREA = "source_does_not_cover_area"
 
+    LIVE_LOOKUP_FAILED = "live_lookup_failed"
+    """A live source could not be reached just now.
+
+    Only the conditions slice is live, and this is the one empty case that is
+    transient: the remedy is "try again", not "log a trip" or "we don't cover
+    that". Rendering it as missing coverage would send the reader looking for
+    a permanent gap that isn't there.
+    """
+
     FIELD_NOT_POPULATED_BY_SOURCE = "field_not_populated_by_source"
     """The record exists here, but this particular field was never filled in.
 
@@ -69,6 +78,9 @@ _EMPTY_PHRASING: dict[EmptyReason, str] = {
     EmptyReason.USER_NEVER_FISHED_HERE: "you have not logged a trip here",
     EmptyReason.WEB_SEARCH_EMPTY: "a web search turned up nothing",
     EmptyReason.SOURCE_DOES_NOT_COVER_AREA: "this data source does not cover this area",
+    EmptyReason.LIVE_LOOKUP_FAILED: (
+        "the live conditions lookup could not be reached just now — try again"
+    ),
     EmptyReason.FIELD_NOT_POPULATED_BY_SOURCE: (
         "we hold records here, but this field is not populated in them"
     ),

@@ -621,34 +621,59 @@ def _crown_land(db: Database, place: Place) -> ContextField:
 
 
 def build_conditions(db: Database, place: Place, fetch_live: bool = True) -> ConditionsSlice:
+    """Live conditions. Every field is assigned on every path.
+
+    Leaving a field default-constructed means no value AND no reason, which
+    renders the internal "this is a bug" fallback to the reader. Weather and
+    flow are the two fields most likely to be absent, so they are also the
+    two most important to explain.
+    """
     out = ConditionsSlice()
+
+    # Neither flow nor water temperature is wired into this slice yet — the
+    # WSC gauge and thermal lookups live elsewhere. Say so rather than
+    # implying the reading was attempted and missing.
+    not_wired = ContextField.empty(EmptyReason.SOURCE_DOES_NOT_COVER_AREA)
+    out.flow_vs_median = not_wired
+    out.water_temp_c = not_wired
+
     if not fetch_live:
-        empty = ContextField.empty(EmptyReason.SOURCE_DOES_NOT_COVER_AREA)
-        out.air_temp_c = empty
-        out.pressure_trend = empty
-        out.flow_vs_median = empty
+        # A caller bundle that deliberately skips the live call (a map tap
+        # should be free) — not a failure, but still not a value.
+        skipped = ContextField.empty(EmptyReason.SOURCE_DOES_NOT_COVER_AREA)
+        out.air_temp_c = skipped
+        out.pressure_trend = skipped
         return out
 
     try:
         from src.services.weather import get_conditions_for_agent
 
         raw = json.loads(get_conditions_for_agent(lat=place.lat, lng=place.lng))
+        reachable = True
     except Exception:  # noqa: BLE001 - live fetch must never break describe()
         logger.warning("conditions slice failed", exc_info=True)
         raw = {}
+        reachable = False
+
+    unavailable = EmptyReason.LIVE_LOOKUP_FAILED if not reachable else (
+        EmptyReason.FIELD_NOT_POPULATED_BY_SOURCE
+    )
 
     temp = raw.get("temperature_c") or raw.get("air_temp_c")
-    if temp is not None:
-        out.air_temp_c = ContextField.recorded(temp, source="Open-Meteo")
+    out.air_temp_c = (
+        ContextField.recorded(temp, source="Open-Meteo")
+        if temp is not None
+        else ContextField.empty(unavailable)
+    )
 
     trend = raw.get("pressure_trend")
-    meaning = translate.pressure_trend(trend)
-    if trend:
-        out.pressure_trend = ContextField.recorded(
-            trend, source="Open-Meteo", meaning=meaning
+    out.pressure_trend = (
+        ContextField.recorded(
+            trend, source="Open-Meteo", meaning=translate.pressure_trend(trend)
         )
-    else:
-        out.pressure_trend = ContextField.empty(EmptyReason.NO_RECORDS_IN_RADIUS)
+        if trend
+        else ContextField.empty(unavailable)
+    )
 
     return out
 
