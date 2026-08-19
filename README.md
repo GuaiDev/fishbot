@@ -4,17 +4,37 @@ A personal fishing exploration AI assistant. Built for anglers who want to find 
 
 ## What it does
 
-Fishdex answers fishing questions from a local database of integrated public datasets, using the Claude API to reason over retrieved records. It runs as a CLI chat bot and as a web app — chat, map, trip log and a species collection — backed by a FastAPI service.
+Fishdex answers fishing questions from a local corpus of integrated public datasets, using Claude to reason over retrieved records. It runs as a CLI chat bot and as a web app — chat, map, trip log and a species collection — backed by a FastAPI service.
 
 (The repository, Python package and CLI command are still named `fishbot`.)
 
-The core thesis: **fish presence and angler pressure are different signals**, and collapsing them into a single score is how most fishing apps go wrong. High report density usually means popular water, not abundant fish. Low density often means nobody has looked.
+## The thesis
 
-### Two related principles the design leans on
+Most fishing apps take one of two shapes. Either they rank the popular spots better than the last app did, or they hand you a model's confidence score — 87% — and ask you to trust it. Both fail the same way for the angler who wants to find water nobody has written about.
 
-**Retrieval over prediction.** Claude reasons *over* retrieved specifics; it is never the source of a factual claim about a particular stretch of water. Every field carries structured provenance (`record` / `web` / `inference`) and, when empty, a specific reason for being empty — "nothing recorded within the radius" and "this source doesn't cover this area" are different statements and stay different all the way to the surface.
+Fishdex is built on a different bet about what AI is *for* here.
 
-**Say why, not just what.** Raw values travel with their plain-language meaning. If a number has no honest "so what" for an angler, it isn't surfaced at all — a mid-range pH is reported as measured-but-unremarkable rather than dressed up as insight.
+**The AI does not predict where fish are. It retrieves what is actually recorded, and reasons over that.** This is not a hedge — it is the whole design. A model that outputs a suitability score is compressing a corpus of specific, checkable facts into one opaque number. That number is worse than the facts it replaced: you cannot verify it, you cannot learn from it, and you cannot tell the difference between "this water is poor" and "nobody has ever looked here".
+
+This project tested the alternative honestly. A species distribution model was built, evaluated, and **retired** at 0.51–0.61 AUC — barely better than random. The failure was instructive: the generalist species with enough training data live nearly everywhere, and the specialists this app exists to serve never clear the threshold. The replacement is not a better model. It is no model, and a retrieval layer instead.
+
+### What that buys the person using it
+
+**You can check its work.** Every claim carries structured provenance — a record with its source and date, a web result marked unverified, or an inference with no source at all. These render differently, always. When the app says a species is in a creek, you can see it came from an iNaturalist observation dated last June. A score cannot do that, and the stakes are concrete: acting on a fabricated claim means a 45-minute drive to water that never held the fish.
+
+**It tells you what it does not know, and why.** "No data" is not an acceptable answer, so it is never given. Nothing recorded within the radius, you have never fished here, the web search came back empty, this source does not cover this area, we hold records here but this field is unpopulated — five different statements with five different remedies. Knowing *which* gap you are looking at is what makes a gap actionable.
+
+**It works for the species nobody else covers.** Because nothing depends on a per-species trained model, a darter, a madtom and a smallmouth are all first-class. The long tail is not a rounding error here; it is the point.
+
+**It adapts to you from what you do, not what you configure.** There is no profile screen asking you to pick target species or a skill level. What you care about, how experienced you are, and what counts as a useful insight are all derived from your logged trips — including the blanks, which are half the signal and the hardest thing to get people to record. Telling an angler who logs madtoms on a tanago hook something obvious, confidently, destroys credibility. So the register is calibrated from demonstrated expertise, and claims about *your* patterns wait until there is a comparison set to support them.
+
+**It biases toward discovery.** Rankings reward water that is under-reported, structurally interesting and reachable — not water that is already popular. Finding the places nobody ranked is the product.
+
+### The data principle underneath
+
+**Fish presence and angler pressure are different signals**, and collapsing them is how the ranking goes wrong. High report density usually means popular water, not abundant fish. Low density often means nobody has looked. Habitat features and systematic survey data are stronger evidence than catch reports — and water chemistry is a constraint, never a confirmation: it can rule a species out of a reach, but passing it only means the water is habitable, not occupied.
+
+One more rule the whole layer obeys: **a value only ships with its "so what"**. Raw numbers travel with their plain-language meaning, and if a number has no honest meaning for an angler, it is not surfaced. A mid-range pH is reported as measured-but-unremarkable rather than dressed up as insight.
 
 ### Data sources integrated
 
@@ -50,17 +70,13 @@ Water chemistry is used as a **constraint, never a confirmation**: readings can 
 
 **Phase 1 (data layer) is complete.** All ingestion adapters are built and verified — 19 sub-phases covering observations, hydrology, water chemistry, benthic health, substrate, thermal regime, regulations and access.
 
-**Phase 2 is in progress**, and one significant thing was tried and reversed:
-
-A species distribution model was built to predict habitat suitability. It scored **0.51–0.61 AUC** on spatial cross-validation — barely better than random — largely because the specialist species this project exists to serve can't clear the minimum training threshold, while the generalists that can are found nearly everywhere. Worse, a single suitability score *concealed* the underlying records rather than revealing them.
-
-It has been **retired from the product path**. What replaced it is a central context layer:
+**Phase 2 is in progress.** The SDM retirement described above landed here; what replaced it is the central context layer, which is built and tested but not yet wired to every call site:
 
 - `describe(place)` — everything known about one stretch of water, in slices (records, water, structure, access, conditions, personal history), each field carrying provenance and an empty-reason
-- `explore(area)` — ranks water the user hasn't fished by observation scarcity, structure, access and remoteness, with **no habitat-quality term**. A plausibility gate rules segments out on affirmative evidence (a mapped ditch, a measured hypoxic reading) but never ranks them up
-- `user_layer(user)` — patterns, demonstrated expertise and known gaps derived from logged activity, never configured
+- `explore(area)` — ranks water you haven't fished by observation scarcity, structure, access and remoteness, with **no habitat-quality term**. A plausibility gate rules segments out on affirmative evidence — a mapped ditch, a measured hypoxic reading — but never ranks them up
+- `user_layer(user)` — patterns, demonstrated expertise and known gaps, derived from logged activity
 
-The model training code remains as a research tool, off the request path.
+The model training code survives as a research tool, off the request path.
 
 Also in Phase 2: accessibility scoring, untapped-potential ranking, spot discovery, and a satellite-imagery screening pass.
 
