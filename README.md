@@ -1,4 +1,4 @@
-# fishbot
+# Fishdex
 
 A personal fishing exploration AI assistant. Built for anglers who want to find small streams and microhabitats, instead of only popular gamefish spots. 
 
