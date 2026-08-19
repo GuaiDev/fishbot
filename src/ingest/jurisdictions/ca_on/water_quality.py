@@ -19,6 +19,7 @@ from pathlib import Path
 
 import httpx
 
+from src.ingest.discovery import check_resource_discovery
 from src.models.water_quality_reading import WaterQualityReading
 
 _STATIONS_URL = "https://files.ontario.ca/moe_mapping/downloads/2Water/PWQMN/PWQMN_Stations.csv"
@@ -34,6 +35,11 @@ _PACKAGE_TTL = 30 * 86400
 _PAST_YEAR_TTL = 365 * 86400
 _CURRENT_YEAR_TTL = 7 * 86400
 _USER_AGENT = "fishbot/1.0 (personal fishing exploration bot)"
+
+# Earliest year we ingest, matching this module's documented "2021-present"
+# scope. Ontario publishes chemistry back to 1964; pulling all of it is a
+# separate decision, not an accident of string matching.
+_MIN_DATA_YEAR = 2021
 
 logger = logging.getLogger(__name__)
 
@@ -100,10 +106,36 @@ def _get_field_data_resources() -> list[dict]:
     for res in resources:
         name = res.get("name", "")
         url = res.get("url", "")
-        if "field data" in name.lower() and url:
+        if url and _covers_recent_data(name, res.get("format", "")):
             field_resources.append({"name": name, "url": url})
+
+    check_resource_discovery(
+        source="PWQMN",
+        matched=len(field_resources),
+        candidates=[r.get("name", "") for r in resources],
+        matcher=f"CSV resources covering {_MIN_DATA_YEAR} or later",
+    )
     logger.info("Found %d PWQMN field data resources", len(field_resources))
     return field_resources
+
+
+def _covers_recent_data(name: str, fmt: str) -> bool:
+    """True for a CSV data file whose year range reaches _MIN_DATA_YEAR.
+
+    Ontario names these by the period they cover — 'Data 2025',
+    'Data March 2021 - 2024', 'Data 2019 - March 2021'. Matching on the years
+    in the name rather than a fixed label survives the wording changing again,
+    and it excludes the non-data resources ('Metadata', 'Coordinates',
+    'Parameter Lookup') for free, since none of them carry a year.
+
+    A range that merely *ends* inside the window still qualifies: the 2019-2021
+    file holds the first quarter of 2021, and dropping it would leave a hole
+    rather than a clean boundary.
+    """
+    if fmt and fmt.strip().upper() != "CSV":
+        return False
+    years = [int(y) for y in re.findall(r"(?:19|20)\d{2}", name)]
+    return bool(years) and max(years) >= _MIN_DATA_YEAR
 
 
 def _label_for_resource(name: str) -> str:
@@ -171,14 +203,62 @@ def _parse_float(s: str) -> float | None:
         return None
 
 
+# Ontario has published collection dates in both US-style and ISO order across
+# the archive; the long-format files use ISO. Tried in order, first match wins.
+_DATE_FORMATS = ("%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d")
+
+
 def _parse_date(s: str) -> date | None:
     s = s.strip()
     if not s:
         return None
-    try:
-        return datetime.strptime(s, "%m/%d/%Y").date()
-    except ValueError:
-        return None
+    # Long-format rows carry a timestamp on some exports; the date is enough.
+    s = s.split("T")[0].split(" ")[0]
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+# Analyte labels in the long-format files, mapped to our reading fields. Ontario
+# publishes several near-synonyms (both "pH" and "Field pH", both "Conductivity"
+# and "Specific Conductance"); each maps to the same destination and the first
+# non-null value for a sample wins.
+_ANALYTE_FIELDS: dict[str, str] = {
+    "dissolved oxygen": "do_mgl",
+    "ph": "ph",
+    "field ph": "ph",
+    "water temperature": "temp_c",
+    "temperature": "temp_c",
+    "conductivity": "conductivity_us_cm",
+    "specific conductance": "conductivity_us_cm",
+    "turbidity": "turbidity_fnu",
+    "sample turbidity": "turbidity_fnu",
+}
+
+# The pre-2021 exports are also long, but use legacy parameter CODES and legacy
+# column names (STATION / PARM / DATE_YYYYMMDD) instead of the current
+# Collection Site / Analyte / Collection Date.
+_LEGACY_PARM_FIELDS: dict[str, str] = {
+    "do": "do_mgl",
+    "fwph": "ph",
+    "ph": "ph",
+    "fwtemp": "temp_c",
+    "cond25": "conductivity_us_cm",
+    "condam": "conductivity_us_cm",
+    "turb": "turbidity_fnu",
+    "turb (fnu)": "turbidity_fnu",
+}
+
+# Column aliases across both long variants: canonical name -> candidates.
+_LONG_COLUMNS: dict[str, tuple[str, ...]] = {
+    "site": ("collection site", "station"),
+    "date": ("collection date", "date_yyyymmdd"),
+    "parameter": ("analyte", "parm"),
+    "value": ("result",),
+}
 
 
 def parse_field_data(
@@ -187,15 +267,114 @@ def parse_field_data(
 ) -> list[WaterQualityReading]:
     """Parse a PWQMN field data CSV into WaterQualityReading models.
 
-    Handles the three column-schema variants published across 2021-2024:
-    - 2024: Field_ID, Collection_Site, underscore-separated column names
-    - 2023: Lab_Workorder_ID + Lab_Sample_ID, Collection_Site, underscores
-    - 2021-2022: Lab Workorder ID + Lab Sample ID, Collection Site, space-separated
+    Two published layouts, detected from the header rather than the filename:
 
-    Skips rows where all five parameters are null. Logs a warning per skipped row.
+    * **long** (current) — one row per measurement, parameter in `Analyte` and
+      value in `Result`. Rows are pivoted back into one reading per
+      (site, date) sample.
+    * **wide** (2021-2024 archives) — one row per sample with a column per
+      parameter, in three column-naming variants.
+
+    Ontario switched to long without renaming anything, so the wide parser
+    silently matched no parameter columns and dropped every row. Sniffing the
+    header keeps both eras readable.
     """
+    with csv_path.open(newline="", encoding="utf-8-sig", errors="replace") as f:
+        header = csv.DictReader(f).fieldnames or []
+    normalized = {h.strip().lower() for h in header}
+
+    is_long = "result" in normalized and (
+        "analyte" in normalized or "parm" in normalized
+    )
+    if is_long:
+        return _parse_long_format(csv_path, stations)
+    return _parse_wide_format(csv_path, stations)
+
+
+def _parse_long_format(
+    csv_path: Path,
+    stations: dict[str, tuple[str | None, float | None, float | None]],
+) -> list[WaterQualityReading]:
+    """Pivot one-row-per-measurement into one reading per (site, date)."""
+    samples: dict[tuple[str, str], dict] = {}
+
+    def pick(row: dict, key: str) -> str:
+        for candidate in _LONG_COLUMNS[key]:
+            if candidate in row:
+                return row[candidate]
+        return ""
+
+    with csv_path.open(newline="", encoding="utf-8-sig", errors="replace") as f:
+        for raw in csv.DictReader(f):
+            row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
+            parameter = pick(row, "parameter").lower()
+            field = _ANALYTE_FIELDS.get(parameter) or _LEGACY_PARM_FIELDS.get(parameter)
+            if field is None:
+                continue  # one of the 50+ parameters we do not model
+
+            site = _normalize_station_id(pick(row, "site").lstrip("'"))
+            sampled_at = _parse_date(pick(row, "date"))
+            if not site or sampled_at is None:
+                continue
+
+            value = _parse_float(pick(row, "value"))
+            if value is None:
+                continue  # non-detects arrive as "<0.5" and carry no usable number
+
+            key = (site, sampled_at.isoformat())
+            sample = samples.setdefault(
+                key,
+                {
+                    "record_id": f"{site}_{sampled_at.isoformat()}",
+                    "station_id": site,
+                    "sampled_at": sampled_at,
+                },
+            )
+            sample.setdefault(field, value)
+
     records: list[WaterQualityReading] = []
-    with csv_path.open(newline="", encoding="utf-8-sig") as f:
+    rejected = 0
+    for sample in samples.values():
+        name, lat, lng = stations.get(sample["station_id"], (None, None, None))
+        try:
+            records.append(
+                WaterQualityReading(
+                    record_id=sample["record_id"],
+                    station_id=sample["station_id"],
+                    station_name=name,
+                    lat=lat,
+                    lng=lng,
+                    jurisdiction="CA-ON",
+                    sampled_at=sample["sampled_at"],
+                    do_mgl=sample.get("do_mgl"),
+                    ph=sample.get("ph"),
+                    temp_c=sample.get("temp_c"),
+                    conductivity_us_cm=sample.get("conductivity_us_cm"),
+                    turbidity_fnu=sample.get("turbidity_fnu"),
+                )
+            )
+        except ValueError:
+            # The published archive contains physically impossible values
+            # (a pH of 17.58, for one). The model is right to refuse them, and
+            # one bad sample must not discard the other thousands in the file.
+            rejected += 1
+
+    if rejected:
+        logger.warning(
+            "PWQMN %s: %d sample(s) rejected by validation (out-of-range values in "
+            "the published data), %d kept",
+            csv_path.name, rejected, len(records),
+        )
+    return records
+
+
+def _parse_wide_format(
+    csv_path: Path,
+    stations: dict[str, tuple[str | None, float | None, float | None]],
+) -> list[WaterQualityReading]:
+    """One row per sample, one column per parameter (2021-2024 archives)."""
+    records: list[WaterQualityReading] = []
+    with csv_path.open(newline="", encoding="utf-8-sig", errors="replace") as f:
         reader = csv.DictReader(f)
         for i, raw_row in enumerate(reader, start=1):
             # Normalize: strip whitespace from keys/values, replace spaces with underscores

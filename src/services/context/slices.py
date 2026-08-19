@@ -8,6 +8,7 @@ the way through.
 
 import json
 import logging
+from pathlib import Path
 
 from sqlite_utils import Database
 
@@ -30,6 +31,8 @@ from src.services.context import translate
 logger = logging.getLogger(__name__)
 
 _KM_PER_DEGREE = 111.0
+
+_FEATURE_MATRIX_PATH = Path("data/processed/sdm_feature_matrix.parquet")
 
 
 # ── records (the only escalating slice) ───────────────────────────────────────
@@ -269,7 +272,10 @@ def _fill_substrate(db: Database, place: Place, out: WaterSlice) -> None:
         out.substrate = ContextField.empty(EmptyReason.NO_RECORDS_IN_RADIUS)
         return
 
-    category = getattr(unit, "substrate_category", None) or getattr(unit, "unit_type", None)
+    category = (
+        getattr(unit, "substrate_class", None)
+        or getattr(unit, "primary_material", None)
+    )
     meaning = translate.substrate(category)
     out.substrate = (
         ContextField.recorded(category, source="Ontario surficial geology", meaning=meaning)
@@ -309,13 +315,14 @@ def _fill_chemistry(db: Database, place: Place, out: WaterSlice) -> None:
     if ph_vals:
         median = sorted(ph_vals)[len(ph_vals) // 2]
         meaning = translate.ph(float(median))
-        # pH between 5.5 and 9.0 has no actionable meaning; don't surface it.
+        # A mid-range pH was measured; it just tells an angler nothing. Saying
+        # "nothing recorded" would be false — the reading exists.
         out.ph = (
             ContextField.recorded(
                 round(float(median), 1), source="PWQMN", meaning=meaning
             )
             if meaning
-            else ContextField.empty(EmptyReason.NO_RECORDS_IN_RADIUS)
+            else ContextField.empty(EmptyReason.RECORDED_BUT_NOT_DECISION_RELEVANT)
         )
     else:
         out.ph = ContextField.empty(EmptyReason.NO_RECORDS_IN_RADIUS)
@@ -356,13 +363,31 @@ def build_structure(db: Database, place: Place) -> StructureSlice:
     out = StructureSlice()
 
     order = _stream_order(db, place)
-    out.stream_order = (
-        ContextField.recorded(order, source="OHN", meaning=translate.stream_order(order))
-        if order is not None
-        else ContextField.empty(EmptyReason.SOURCE_DOES_NOT_COVER_AREA)
-    )
+    if order is not None:
+        out.stream_order = ContextField.recorded(
+            order, source="OHN", meaning=translate.stream_order(order)
+        )
+    elif place.segment_ids:
+        # We resolved segments here, so the water is covered — the column is
+        # simply not populated in them. Saying "nothing recorded" would blame
+        # the world for a gap in our own ingest.
+        out.stream_order = ContextField.empty(EmptyReason.FIELD_NOT_POPULATED_BY_SOURCE)
+    else:
+        out.stream_order = ContextField.empty(
+            EmptyReason.NO_RECORDS_IN_RADIUS
+            if _table_has_rows(db, "stream_segments")
+            else EmptyReason.SOURCE_DOES_NOT_COVER_AREA
+        )
 
-    if "barriers" not in db.table_names():
+    out.is_confluence, out.waterbody_connection = _confluence_and_waterbody(db, place)
+
+    # A barrier count of zero is only a fact where we actually hold barrier
+    # data. Checking that the TABLE is non-empty is not enough: barrier ingest
+    # is radius-limited, so a corpus covering only southern Ontario would let a
+    # query at 52N sail through and assert "fish can move through freely" from
+    # no local evidence at all — inference wearing a record tag, which is the
+    # exact failure this layer exists to stop. Coverage is therefore local.
+    if not _has_barrier_coverage(db, place):
         empty = ContextField.empty(EmptyReason.SOURCE_DOES_NOT_COVER_AREA)
         out.barriers_upstream = empty
         out.barriers_downstream = empty
@@ -373,6 +398,87 @@ def build_structure(db: Database, place: Place) -> StructureSlice:
     out.barriers_upstream = ContextField.recorded(up, source="OHN barriers", meaning=meaning)
     out.barriers_downstream = ContextField.recorded(down, source="OHN barriers")
     return out
+
+
+def _table_has_rows(db: Database, table: str) -> bool:
+    """True only if the table exists AND holds at least one row.
+
+    Presence of an empty table means the schema was created, not that the data
+    was ingested — treating those as the same thing manufactures false facts.
+    """
+    if table not in db.table_names():
+        return False
+    try:
+        return db[table].count > 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
+# How far out we look before concluding barrier data covers this place. Wide
+# enough that a genuinely barrier-free catchment still reads as covered, narrow
+# enough that a distant ingest footprint does not vouch for the whole province.
+_BARRIER_COVERAGE_RADIUS_KM = 100.0
+
+
+def _has_barrier_coverage(db: Database, place: Place) -> bool:
+    """True if any mapped barrier lies near enough to make absence meaningful."""
+    if not _table_has_rows(db, "barriers"):
+        return False
+    deg = _BARRIER_COVERAGE_RADIUS_KM / _KM_PER_DEGREE
+    for row in db["barriers"].rows:
+        blat, blng = _barrier_point(row)
+        if blat is None or blng is None:
+            continue
+        if abs(blat - place.lat) <= deg and abs(blng - place.lng) <= deg:
+            return True
+    return False
+
+
+def _confluence_and_waterbody(
+    db: Database, place: Place
+) -> tuple[ContextField, ContextField]:
+    """Structural flags from the Phase 3a feature matrix, when it is present."""
+    if not place.segment_ids or not _FEATURE_MATRIX_PATH.exists():
+        empty = ContextField.empty(
+            EmptyReason.NO_RECORDS_IN_RADIUS
+            if place.segment_ids
+            else EmptyReason.SOURCE_DOES_NOT_COVER_AREA
+        )
+        return empty, empty
+
+    try:
+        import pandas as pd
+
+        fm = pd.read_parquet(
+            _FEATURE_MATRIX_PATH,
+            columns=["ogf_id", "is_confluence_segment", "connected_to_waterbody"],
+        )
+        rows = fm[fm["ogf_id"].isin(place.segment_ids)]
+    except Exception:  # noqa: BLE001
+        logger.warning("structural flags unavailable", exc_info=True)
+        empty = ContextField.empty(EmptyReason.SOURCE_DOES_NOT_COVER_AREA)
+        return empty, empty
+
+    if rows.empty:
+        empty = ContextField.empty(EmptyReason.NO_RECORDS_IN_RADIUS)
+        return empty, empty
+
+    is_conf = bool(rows["is_confluence_segment"].fillna(False).any())
+    wb = bool(rows["connected_to_waterbody"].fillna(False).any())
+    return (
+        ContextField.recorded(
+            is_conf,
+            source="OHN confluence analysis",
+            meaning="streams meet here — fish congregate below the junction"
+            if is_conf
+            else None,
+        ),
+        ContextField.recorded(
+            wb,
+            source="OHN connectivity",
+            meaning="connects to a lake or pond — fish move in from it" if wb else None,
+        ),
+    )
 
 
 def _stream_order(db: Database, place: Place) -> int | None:
@@ -469,7 +575,26 @@ def build_access(db: Database, place: Place) -> AccessSlice:
         )
 
     out.crown_land = _crown_land(db, place)
+    out.access_note = _access_note(out)
     return out
+
+
+def _access_note(out: AccessSlice) -> ContextField:
+    """Plain-language read on getting to the water, from the fields above."""
+    if not out.crown_land.is_empty:
+        return ContextField.inferred(
+            "crown land nearby",
+            meaning="public access generally permitted — verify local restrictions",
+        )
+    if not out.parking.is_empty:
+        return ContextField.inferred(
+            "parking mapped nearby", meaning="reachable by road; verify right of way"
+        )
+    if not out.trails.is_empty:
+        return ContextField.inferred(
+            "trail access only", meaning="expect a walk in; no mapped parking"
+        )
+    return ContextField.empty(EmptyReason.NO_RECORDS_IN_RADIUS)
 
 
 def _crown_land(db: Database, place: Place) -> ContextField:

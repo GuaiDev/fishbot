@@ -45,12 +45,36 @@ class EmptyReason(StrEnum):
     WEB_SEARCH_EMPTY = "web_search_empty"
     SOURCE_DOES_NOT_COVER_AREA = "source_does_not_cover_area"
 
+    FIELD_NOT_POPULATED_BY_SOURCE = "field_not_populated_by_source"
+    """The record exists here, but this particular field was never filled in.
+
+    Distinct from having no data for the area: OHN covers this water and we
+    hold its segments, but our ingest captured no stream order for any of
+    them. That is a gap in our pipeline, not in the world, and it has a
+    different fix — so it must not render as "nothing recorded here".
+    """
+
+    RECORDED_BUT_NOT_DECISION_RELEVANT = "recorded_but_not_decision_relevant"
+    """A value exists but carries no "so what" for an angler.
+
+    A fifth case beyond the spec's four, and it earns its place: reporting a
+    measured mid-range pH as "nothing recorded" would be a false statement
+    about our own corpus. The data is there; it just does not change anyone's
+    decision, so the number is withheld while the fact of having it is not.
+    """
+
 
 _EMPTY_PHRASING: dict[EmptyReason, str] = {
     EmptyReason.NO_RECORDS_IN_RADIUS: "nothing recorded within the search radius",
     EmptyReason.USER_NEVER_FISHED_HERE: "you have not logged a trip here",
     EmptyReason.WEB_SEARCH_EMPTY: "a web search turned up nothing",
     EmptyReason.SOURCE_DOES_NOT_COVER_AREA: "this data source does not cover this area",
+    EmptyReason.FIELD_NOT_POPULATED_BY_SOURCE: (
+        "we hold records here, but this field is not populated in them"
+    ),
+    EmptyReason.RECORDED_BUT_NOT_DECISION_RELEVANT: (
+        "measured, but unremarkable enough that the number would not change your plan"
+    ),
 }
 
 

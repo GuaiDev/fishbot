@@ -25,6 +25,12 @@ _CACHE_DIR = Path("data/cache/inaturalist")
 _CACHE_TTL_SECONDS = 86400  # 24 hours
 _PER_PAGE = 200
 
+# iNaturalist refuses any request whose page × per_page exceeds 10,000 — it
+# returns 403, not an empty page. Dense areas over long windows blow through
+# this easily: 50km around Oakville over 10 years is well past 10k fish
+# records. The loop below stops here instead of walking into the 403.
+_MAX_PAGINATED_RESULTS = 10_000
+
 
 def fetch_observations(
     lat: float,
@@ -50,7 +56,16 @@ def fetch_observations(
 
     while True:
         params = {**base_params, "page": page}
-        raw = _cached_get(params)
+        try:
+            raw = _cached_get(params)
+        except httpx.HTTPStatusError as exc:
+            # Keep what we already have. Discarding thousands of successfully
+            # fetched records because page N+1 was refused helps nobody.
+            _log.warning(
+                "iNat: page %d refused (%s) — keeping the %d records fetched so far",
+                page, exc.response.status_code, len(all_results),
+            )
+            break
         results = raw.get("results", [])
         all_results.extend(results)
 
@@ -60,12 +75,16 @@ def fetch_observations(
         if len(all_results) >= total or not results:
             break
 
+        if (page + 1) * _PER_PAGE > _MAX_PAGINATED_RESULTS:
+            break
+
         page += 1
         time.sleep(1)
 
     if total is not None and len(all_results) < total:
         _log.warning(
-            "iNat: fetched %d of %d total — API pagination cap reached, %d records unreachable",
+            "iNat: fetched %d of %d total — API pagination cap reached, %d records "
+            "unreachable. Narrow --radius or --days to reach the remainder.",
             len(all_results), total, total - len(all_results),
         )
 

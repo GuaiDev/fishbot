@@ -426,3 +426,154 @@ def test_blank_rate_is_computed(db):
     _add_stop(db, productive=True)
     _add_stop(db, productive=False)
     assert build_user_layer(db, user_id=1).blank_rate == pytest.approx(0.5)
+
+
+# ── regressions found by running against real data ────────────────────────────
+#
+# Synthetic fixtures passed while all of these were broken. Each one is a bug
+# that only appeared once describe() ran over a real corpus.
+
+
+def test_empty_barriers_table_never_fabricates_free_passage(db):
+    """The severe one: an empty table must not become a confident claim.
+
+    ensure_schema() creates `barriers` whether or not it was ever ingested.
+    Counting 0 up / 0 down there produced a record-tagged "fish can move
+    through freely" — an assertion of fact built from no evidence at all.
+    """
+    assert "barriers" in db.table_names()
+    assert db["barriers"].count == 0
+
+    ctx = describe(db, lat=52.0, lng=-87.0, caller="map_tap")
+    up = ctx.structure.barriers_upstream
+    assert up.is_empty
+    assert up.empty_reason is EmptyReason.SOURCE_DOES_NOT_COVER_AREA
+    assert up.provenance is None, "an absent value must carry no provenance"
+    assert "freely" not in (up.meaning or "")
+
+
+def test_every_context_field_carries_a_reason_when_empty(db):
+    """No field may render the internal 'no value and no reason' fallback."""
+    ctx = describe(db, lat=52.0, lng=-87.0, caller="full")
+    for slice_name in ("water", "structure", "access"):
+        sl = getattr(ctx, slice_name)
+        for fname, f in sl.__dict__.items():
+            if f.is_empty:
+                assert f.empty_reason is not None, f"{slice_name}.{fname} has no empty_reason"
+                assert "this is a bug" not in f.explain(), f"{slice_name}.{fname}"
+
+
+def test_substrate_reads_the_real_geology_field(db):
+    """GeologyUnit exposes substrate_class; the code read substrate_category.
+
+    The mismatch meant real substrate was fetched, then silently discarded.
+    """
+    db["geology_units"].insert({
+        "unit_id": "G1", "tile_id": "T1", "unit_code": "coarse", "unit_name": "coarse",
+        "primary_material": "coarse", "substrate_class": "coarse", "jurisdiction": "CA-ON",
+        "centroid_lat": 43.40, "centroid_lng": -79.75,
+        "bbox_minx": -79.8, "bbox_miny": 43.3, "bbox_maxx": -79.7, "bbox_maxy": 43.5,
+    }, alter=True)
+    ctx = describe(db, lat=43.40, lng=-79.75, caller="map_tap")
+    assert ctx.water.substrate.value == "coarse"
+    assert "gravel" in (ctx.water.substrate.meaning or "")
+
+
+def test_measured_but_unremarkable_ph_is_not_reported_as_absent(db):
+    """A mid-range pH was measured. Calling that 'nothing recorded' is false."""
+    db["water_quality_readings"].insert({
+        "record_id": "W1", "station_id": "S1", "station_name": "t",
+        "lat": 43.40, "lng": -79.75, "jurisdiction": "CA-ON",
+        "sampled_at": "2024-06-01", "do_mgl": None, "ph": 7.2,
+        "temp_c": None, "conductivity_us_cm": None, "turbidity_fnu": None,
+    }, alter=True)
+    ph = describe(db, lat=43.40, lng=-79.75, caller="map_tap").water.ph
+    assert ph.is_empty
+    assert ph.empty_reason is EmptyReason.RECORDED_BUT_NOT_DECISION_RELEVANT
+    assert "nothing recorded" not in ph.explain()
+
+
+def test_stream_order_gap_is_a_radius_gap_not_a_coverage_gap(db):
+    """OHN covers Ontario. Holding segments but none nearby is NOT 'not covered'."""
+    _add_segment(db, 1, "Far Away Creek", 45.0, -80.0)
+    order = describe(db, lat=43.40, lng=-79.75, caller="map_tap").structure.stream_order
+    assert order.is_empty
+    assert order.empty_reason is EmptyReason.NO_RECORDS_IN_RADIUS
+
+
+def test_place_resolution_does_not_truncate_the_segment_scan(db):
+    """Resolution must not depend on row order.
+
+    segments_near() capped the SCAN at 5000 rows, so with a full Ontario table
+    a place could resolve to zero segments purely because its rows sat late in
+    the table — and then report itself as uncovered.
+    """
+    from src.services.context.place import segments_near
+
+    for i in range(60):
+        _add_segment(db, 9000 + i, f"Filler {i}", 46.0 + i * 0.001, -81.0)
+    _add_segment(db, 12345, "Target Creek", 43.40, -79.75)  # inserted last
+
+    found = segments_near(db, 43.40, -79.75, 5)
+    assert 12345 in found, "a late-inserted segment must still resolve"
+
+
+# ── regressions found on the full real corpus ─────────────────────────────────
+
+
+def _add_barrier(db, lat, lng, ogf_id=1):
+    db["barriers"].insert({
+        "ogf_id": ogf_id, "barrier_type": "dam",
+        "geom_wkt": f"POINT({lng} {lat})",
+        "nearest_segment_ogf_id": ogf_id, "snap_distance_m": 10.0,
+        "jurisdiction": "CA-ON",
+    }, alter=True, pk="ogf_id", replace=True)
+
+
+def test_barrier_absence_requires_local_coverage_not_just_a_nonempty_table(db):
+    """The fabrication bug's second form.
+
+    Checking only that `barriers` has rows is not enough: ingest is radius
+    limited, so a corpus covering just southern Ontario would let a query at
+    52N assert "fish can move through freely" from no local evidence.
+    """
+    _add_barrier(db, 43.40, -79.75)          # southern Ontario only
+    _add_segment(db, 1, "Far Creek", 52.0, -87.0)
+
+    far = describe(db, lat=52.0, lng=-87.0, caller="map_tap").structure.barriers_upstream
+    assert far.is_empty
+    assert far.empty_reason is EmptyReason.SOURCE_DOES_NOT_COVER_AREA
+    assert far.provenance is None
+    assert "freely" not in (far.meaning or "")
+
+
+def test_barrier_absence_is_a_real_claim_where_coverage_exists(db):
+    """Symmetry check: with local coverage, zero barriers IS a fact."""
+    _add_barrier(db, 43.40, -79.75)
+    near = describe(db, lat=43.42, lng=-79.76, caller="map_tap").structure.barriers_upstream
+    assert not near.is_empty
+    assert near.provenance.kind is ProvenanceKind.RECORD
+
+
+def test_unpopulated_column_is_not_reported_as_absent_data(db):
+    """OHN ingest populated 0 of 20,339 stream_order values on the real corpus.
+
+    Segments exist here, so "nothing recorded within the search radius" would
+    blame the world for a gap in our own pipeline.
+    """
+    db["stream_segments"].insert({
+        "ogf_id": 501, "name": "No Order Creek", "watercourse_type": "Stream",
+        "geom_wkt": "LINESTRING(-79.751 43.399, -79.749 43.401)",
+        "stream_order": None, "jurisdiction": "CA-ON",
+    }, alter=True)
+    order = describe(db, lat=43.40, lng=-79.75, caller="map_tap").structure.stream_order
+    assert order.is_empty
+    assert order.empty_reason is EmptyReason.FIELD_NOT_POPULATED_BY_SOURCE
+    assert "nothing recorded" not in order.explain()
+
+
+def test_no_segments_at_all_still_reads_as_a_radius_gap(db):
+    """Distinct from the above: segments exist in the corpus, just not here."""
+    _add_segment(db, 601, "Elsewhere Creek", 45.0, -80.0, stream_order=3)
+    order = describe(db, lat=43.40, lng=-79.75, caller="map_tap").structure.stream_order
+    assert order.empty_reason is EmptyReason.NO_RECORDS_IN_RADIUS

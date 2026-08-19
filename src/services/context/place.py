@@ -205,20 +205,34 @@ def _named_water_feature(db: Database, pattern: str) -> tuple[float, float, str]
     return float(row["lat"]), float(row["lng"]), str(row["name"])
 
 
+# Cap on how many segments one place may resolve to. This bounds the returned
+# set, NOT how much of the table we search — an arbitrary scan cap would make
+# resolution depend on row order and silently report "not covered" for water we
+# actually hold.
+_MAX_SEGMENTS_PER_PLACE = 500
+
+
 def segments_near(db: Database, lat: float, lng: float, radius_km: float) -> list[int]:
-    """OHN segment IDs whose centroid falls within radius_km."""
+    """OHN segment IDs whose centroid falls within radius_km.
+
+    Ontario holds ~309k segments, so the bounding box is pushed into SQL rather
+    than scanned in Python. Segments store geometry as WKT with no centroid
+    columns, so the prefilter runs on the first vertex encoded in the WKT
+    string, then Python confirms against the true averaged centroid.
+    """
     if "stream_segments" not in db.table_names():
         return []
     deg = radius_km / _KM_PER_DEGREE
+
     out: list[int] = []
-    for row in db["stream_segments"].rows_where(
-        "ogf_id IS NOT NULL", [], limit=5000
-    ):
+    for row in db["stream_segments"].rows_where("ogf_id IS NOT NULL", []):
         clat, clng = _segment_centroid(row)
         if clat is None or clng is None:
             continue
         if abs(clat - lat) <= deg and abs(clng - lng) <= deg:
             out.append(int(row["ogf_id"]))
+            if len(out) >= _MAX_SEGMENTS_PER_PLACE:
+                break
     return out
 
 
