@@ -549,6 +549,26 @@ def compute_access() -> None:
     )
 
 
+@app.command(name="ingest-fmz")
+def ingest_fmz() -> None:
+    """Download just the Ontario FMZ boundary polygons.
+
+    Separate from `ingest` so one flaky source does not force a full re-run:
+    zone resolution fails closed without this layer, so it is worth being able
+    to fetch on its own.
+    """
+    from src.services.regulations import ingest_fmz_boundaries
+
+    console.print("[dim]Downloading Ontario FMZ boundary polygons…[/dim]")
+    n = ingest_fmz_boundaries()
+    if n:
+        console.print(f"[green]FMZ boundaries stored: {n} zones[/green]")
+    else:
+        console.print(
+            "[red]No FMZ boundaries fetched — zone resolution stays closed.[/red]"
+        )
+
+
 @app.command(name="verify-species-status")
 def verify_species_status(
     file: str = typer.Option(..., "--file", help="Registry export (CSV or JSON)"),
