@@ -256,9 +256,12 @@ def ingest(
     console.print(
         "[dim]Downloading and parsing MNRF Fishing Regulations Summary (annual PDF)…[/dim]"
     )  # noqa: E501
-    from src.services.regulations import ingest_regulations
+    from src.services.regulations import ingest_fmz_boundaries, ingest_regulations
 
     reg_count = ingest_regulations()
+    console.print("[dim]Downloading Ontario FMZ boundary polygons…[/dim]")
+    fmz_count = ingest_fmz_boundaries()
+    console.print(f"[dim]FMZ boundaries: {fmz_count} zones[/dim]")
 
     console.print("[dim]Downloading PWQMN water quality field data (2021–present)…[/dim]")
     from src.services.water_quality import ingest_water_quality_data

@@ -430,6 +430,9 @@ def ensure_schema(db: Database) -> None:
         db["regulation_chunks"].create(
             {
                 "zone": int,
+                # "" for a zone chunk; the section name for province-wide rules,
+                # which use zone 0. Part of the key so several can coexist.
+                "section": str,
                 "jurisdiction": str,
                 "regulation_year": int,
                 "raw_text": str,
@@ -437,7 +440,7 @@ def ensure_schema(db: Database) -> None:
                 "source_url": str,
                 "ingested_at": str,
             },
-            pk=["zone", "jurisdiction", "regulation_year"],
+            pk=["zone", "section", "jurisdiction", "regulation_year"],
         )
 
     if "water_quality_readings" not in db.table_names():

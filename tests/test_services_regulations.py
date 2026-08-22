@@ -6,7 +6,6 @@ import pytest
 
 from src.models.regulation import RegulationChunk
 from src.services.regulations import (
-    _estimate_fmz,
     _extract_species_context,
     get_regulations_for_agent,
 )
@@ -49,23 +48,10 @@ def empty_db(tmp_path, monkeypatch):
 # --- FMZ coordinate estimation ---
 
 
-def test_estimate_fmz_toronto():
-    # Toronto is ~43.65, -79.38 → roughly Zone 6 or 5
-    zone = _estimate_fmz(43.65, -79.38)
-    assert zone is not None
-    assert 1 <= zone <= 20
-
-
-def test_estimate_fmz_outside_ontario_returns_none():
-    # New York City is outside Ontario bounding boxes
-    zone = _estimate_fmz(40.7, -74.0)
-    assert zone is None
-
-
-def test_estimate_fmz_thunder_bay():
-    # Thunder Bay ~48.4, -89.3 → Zone 17
-    zone = _estimate_fmz(48.4, -89.3)
-    assert zone is not None
+# The old _estimate_fmz tests asserted only `1 <= zone <= 20`, which is why the
+# bug survived: Toronto resolved to zone 5 (Rainy River, 1,500 km away) and the
+# assertion still passed. Zone resolution is now covered by
+# tests/test_fmz_resolution.py against real polygons.
 
 
 # --- service layer ---
@@ -74,7 +60,8 @@ def test_estimate_fmz_thunder_bay():
 def test_no_zone_no_coords_returns_error():
     result = json.loads(get_regulations_for_agent())
     assert "error" in result
-    assert "FMZ" in result["error"]
+    assert result["empty_reason"] == "no_location_given"
+    assert "Fisheries Management Zones" in result["error"]
 
 
 def test_empty_db_returns_error(empty_db):
@@ -108,12 +95,14 @@ def test_species_not_found_returns_note(populated_db):
     assert "not found" in result["text"].lower() or "muskellunge" in result["text"].lower()
 
 
-def test_latlon_triggers_zone_detection(populated_db):
-    # lat/lng near Thunder Bay should auto-detect a northern zone
+def test_latlon_without_boundaries_withholds_regulations(populated_db):
+    """Coordinates alone are not enough: without the polygon layer the zone
+    cannot be established, and a guess is what caused Oakville to return
+    Rainy River regulations. Refusing is the correct outcome."""
     result = json.loads(get_regulations_for_agent(lat=48.4, lng=-89.3))
-    # Should not return "provide zone" error — coordinates should resolve
-    # Zone may or may not be in our test DB; just check it tried
-    assert "zone" in result
+    assert result["regulations_withheld"] is True
+    assert result["empty_reason"] == "zone_boundaries_not_loaded"
+    assert "text" not in result
 
 
 # --- _extract_species_context ---

@@ -38,9 +38,16 @@ def test_char_count_explicit():
 
 def test_zone_out_of_range_raises():
     with pytest.raises(ValidationError):
-        RegulationChunk(**_valid_data(zone=0))
-    with pytest.raises(ValidationError):
         RegulationChunk(**_valid_data(zone=21))
+    with pytest.raises(ValidationError):
+        RegulationChunk(**_valid_data(zone=-1))
+
+
+def test_zone_zero_is_the_province_wide_sentinel():
+    """Bait and General Fishing Regulations apply everywhere, not to one FMZ."""
+    c = RegulationChunk(**_valid_data(zone=0), section="Bait")
+    assert c.zone == 0
+    assert c.section == "Bait"
 
 
 def test_zone_boundary_valid():

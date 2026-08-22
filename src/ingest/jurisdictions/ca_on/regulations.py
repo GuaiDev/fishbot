@@ -15,7 +15,7 @@ from pathlib import Path
 
 import httpx
 
-from src.models.regulation import RegulationChunk
+from src.models.regulation import PROVINCE_WIDE, RegulationChunk
 
 _REG_YEAR = 2026
 _PDF_URL = (
@@ -30,6 +30,29 @@ _USER_AGENT = "fishbot/1.0 (personal fishing exploration bot)"
 _ZONE_HEADER = re.compile(
     r"(?:FISHERIES MANAGEMENT ZONE|FMZ|ZONE)\s+(\d{1,2})\b",
     re.IGNORECASE,
+)
+
+# Province-wide sections. These sit between zone headings in the PDF, so a
+# splitter that runs from one zone header to the next swallows them into the
+# preceding zone — which is how the bait rules ended up filed as FMZ 12's.
+# They are cut out and stored under zone 0 so they can be retrieved whatever
+# zone the reader is in.
+_SECTION_HEADERS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("Bait", re.compile(r"^\s*Bait\s*$", re.IGNORECASE | re.MULTILINE)),
+    (
+        "General Fishing Regulations",
+        re.compile(r"^\s*General Fishing Regulations\s*$", re.IGNORECASE | re.MULTILINE),
+    ),
+    (
+        "Recreational Fishing Licences",
+        re.compile(
+            r"^\s*Recreational Fishing Licen[cs]es?\s*$", re.IGNORECASE | re.MULTILINE
+        ),
+    ),
+    (
+        "Fisheries Management Zones",
+        re.compile(r"^\s*Fisheries Management Zones\s*$", re.IGNORECASE | re.MULTILINE),
+    ),
 )
 
 logger = logging.getLogger(__name__)
@@ -93,28 +116,47 @@ def _split_by_zone(full_text: str) -> list[RegulationChunk]:
     Finds all occurrences of zone header patterns and uses them as boundaries.
     Returns chunks sorted by zone number; zones not found are omitted.
     """
-    matches = list(_ZONE_HEADER.finditer(full_text))
-    if not matches:
-        logger.warning("No zone headers found in regulations PDF text")
+    # Boundaries are BOTH zone headings and province-wide section headings, so a
+    # section terminates the zone before it instead of being absorbed by it.
+    boundaries: list[tuple[int, int | None, str | None]] = [
+        (m.start(), int(m.group(1)), None) for m in _ZONE_HEADER.finditer(full_text)
+    ]
+    for name, pattern in _SECTION_HEADERS:
+        boundaries += [(m.start(), None, name) for m in pattern.finditer(full_text)]
+
+    if not boundaries:
+        logger.warning("No zone or section headers found in regulations PDF text")
         return []
 
+    boundaries.sort(key=lambda b: b[0])
     now = datetime.now(UTC).isoformat()
+
     zones: dict[int, str] = {}
+    sections: dict[str, str] = {}
 
-    for i, m in enumerate(matches):
-        zone_num = int(m.group(1))
-        if zone_num < 1 or zone_num > 20:
+    for i, (start, zone_num, section) in enumerate(boundaries):
+        end = boundaries[i + 1][0] if i + 1 < len(boundaries) else len(full_text)
+        text = full_text[start:end].strip()
+        if not text:
             continue
-        start = m.start()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
-        chunk_text = full_text[start:end].strip()
-        # Keep the largest chunk if the same zone header appears multiple times
-        if zone_num not in zones or len(chunk_text) > len(zones[zone_num]):
-            zones[zone_num] = chunk_text
+        if section is not None:
+            # Longest wins: the PDF repeats section names in headers and the
+            # table of contents, and only one occurrence is the real body.
+            if len(text) > len(sections.get(section, "")):
+                sections[section] = text
+        elif zone_num is not None and 1 <= zone_num <= 20:
+            if len(text) > len(zones.get(zone_num, "")):
+                zones[zone_num] = text
 
-    return [
-        RegulationChunk(
-            zone=z,
+    logger.info(
+        "Split regulations into %d zone chunks and %d province-wide sections: %s",
+        len(zones), len(sections), ", ".join(sorted(sections)) or "none",
+    )
+
+    def _chunk(zone: int, text: str, section: str | None) -> RegulationChunk:
+        return RegulationChunk(
+            zone=zone,
+            section=section,
             jurisdiction="CA-ON",
             regulation_year=_REG_YEAR,
             raw_text=text,
@@ -122,5 +164,9 @@ def _split_by_zone(full_text: str) -> list[RegulationChunk]:
             source_url=_PDF_URL,
             ingested_at=now,
         )
-        for z, text in sorted(zones.items())
+
+    out = [_chunk(z, t, None) for z, t in sorted(zones.items())]
+    out += [
+        _chunk(PROVINCE_WIDE, t, name) for name, t in sorted(sections.items())
     ]
+    return out

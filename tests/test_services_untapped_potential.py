@@ -402,16 +402,6 @@ def test_connectivity_note_none_without_nearby_species():
     assert _build_connectivity_note(None, "Humber River (1.2km)", []) is None
 
 
-def test_regulation_zone_toronto():
-    """_estimate_fmz returns a valid FMZ integer for Toronto coordinates."""
-    from src.services.regulations import _estimate_fmz
-
-    fmz = _estimate_fmz(43.65, -79.38)
-    assert fmz is not None
-    assert isinstance(fmz, int)
-    assert 1 <= fmz <= 20
-
-
 def test_find_exploration_targets_no_cache(tmp_path: Path, monkeypatch):
     """Returns error JSON when untapped parquet not yet computed."""
     import src.services.untapped_potential as up_mod

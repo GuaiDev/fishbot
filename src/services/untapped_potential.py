@@ -491,7 +491,7 @@ def find_exploration_targets(
     load_dotenv()
     mapbox_token = os.getenv("MAPBOX_TOKEN")
 
-    from src.services.regulations import _estimate_fmz
+    from src.storage.fmz_boundaries import resolve_zone
 
     segments = []
     for row in candidates:
@@ -514,9 +514,13 @@ def find_exploration_targets(
         hab_feat = habitat_features.get(int(row["ogf_id"]), {})
         habitat_summary = _habitat_summary(hab_feat)
 
-        fmz = _estimate_fmz(seg_lat, seg_lng)
+        # Naming a zone we cannot actually resolve is worse than naming none:
+        # the reader would check the wrong zone's limits.
+        zr = resolve_zone(db, seg_lat, seg_lng)
         regulation_zone = (
-            f"FMZ {fmz} — check regulations before keeping fish." if fmz else None
+            f"FMZ {zr.zone} — check regulations before keeping fish."
+            if zr.resolved
+            else "Zone could not be resolved — verify regulations before keeping fish."
         )
         maps_urls = _build_maps_urls(seg_lat, seg_lng, mapbox_token)
         seg_type = str(row["watercourse_type"]) if row.get("watercourse_type") else None
