@@ -546,6 +546,39 @@ def compute_access() -> None:
     )
 
 
+@app.command(name="verify-species-status")
+def verify_species_status(
+    file: str = typer.Option(..., "--file", help="Registry export (CSV or JSON)"),
+    source: str = typer.Option(..., "--source", help='e.g. "COSEWIC assessments, Nov 2025"'),
+    url: str = typer.Option(..., "--url", help="Public URL the file came from"),
+) -> None:
+    """Apply conservation statuses from a downloaded COSEWIC/SARA registry export.
+
+    Species not present in the export stay unverified and keep failing closed.
+    """
+    from pathlib import Path as _P
+
+    from src.services.status_verification import apply_verified_statuses, load_registry_file
+
+    path = _P(file)
+    if not path.exists():
+        console.print(f"[red]No such file: {path}[/red]")
+        raise typer.Exit(1)
+
+    db = get_db()
+    registry = load_registry_file(path)
+    console.print(f"[dim]Registry entries read: {len(registry):,}[/dim]")
+    summary = apply_verified_statuses(db, registry, source=source, source_url=url)
+
+    console.print(f"[green]Verified:          {summary['verified']:,}[/green]")
+    console.print(f"[yellow]Left unverified:   {summary['left_unverified']:,}[/yellow]")
+    if summary["rejected_values"]:
+        console.print(f"[red]Rejected values ({len(summary['rejected_values'])}):[/red]")
+        for r in summary["rejected_values"][:10]:
+            console.print(f"   {r}")
+    console.print(summary["note"])
+
+
 @app.command(name="compute-untapped")
 def compute_untapped() -> None:
     """Compute untapped potential: (1 - pressure) × access × structure × remoteness.

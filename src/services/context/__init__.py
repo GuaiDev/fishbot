@@ -209,6 +209,13 @@ def _seen_segment_ids(db: Database, user_id: int) -> set[int]:
     return seen
 
 
+def describe_species(db: Database, name: str):
+    """Species facts with provenance on every claim. Fails closed on SAR status."""
+    from src.services.context.species import describe_species as _describe
+
+    return _describe(db, name)
+
+
 def user_layer(db: Database, user_id: int = 1):
     """Derived patterns, demonstrated expertise, and known gaps."""
     from src.services.context.user import build_user_layer
@@ -224,6 +231,7 @@ __all__ = [
     "Place",
     "PlaceContext",
     "describe",
+    "describe_species",
     "explore",
     "user_layer",
 ]

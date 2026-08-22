@@ -39,6 +39,7 @@ def _apply_migrations(db: Database) -> None:
     migrate_observations_source(db)
     migrate_observations_licensing(db)
     migrate_gbif_licensing(db)
+    migrate_species_status_provenance(db)
     migrate_regulation_chunks_zone_name(db)
     migrate_segment_synthesis_jurisdiction(db)
 
@@ -1163,6 +1164,25 @@ def migrate_observations_licensing(db: Database) -> None:
         if name not in cols:
             try:
                 db.execute(f"ALTER TABLE observations ADD COLUMN {name} {coltype}")
+            except Exception:
+                pass
+    db.conn.commit()
+
+
+def migrate_species_status_provenance(db: Database) -> None:
+    """Add status provenance to species_ranges. Idempotent.
+
+    Left NULL for every existing row on purpose: none of the statuses in the
+    committed species file were checked against a registry, so none may claim
+    to have been. NULL is what makes the SAR check fail closed.
+    """
+    if "species_ranges" not in db.table_names():
+        return
+    cols = {c.name for c in db["species_ranges"].columns}
+    for name in ("status_source", "status_source_url", "status_verified_at"):
+        if name not in cols:
+            try:
+                db.execute(f"ALTER TABLE species_ranges ADD COLUMN {name} TEXT")
             except Exception:
                 pass
     db.conn.commit()

@@ -167,6 +167,11 @@ def _to_row(r: SpeciesRange) -> dict[str, Any]:
         "cosewic_status": r.cosewic_status,
         "fishing_notes": r.fishing_notes,
         "last_updated": r.last_updated.isoformat(),
+        "status_source": r.status_source,
+        "status_source_url": r.status_source_url,
+        "status_verified_at": (
+            r.status_verified_at.isoformat() if r.status_verified_at else None
+        ),
     }
 
 

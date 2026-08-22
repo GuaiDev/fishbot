@@ -31,6 +31,22 @@ class SpeciesRange(BaseModel):
     fishing_notes: str | None = None
     last_updated: datetime = Field(default_factory=datetime.now)
 
+    # ── status provenance ─────────────────────────────────────────────────────
+    # The conservation statuses in this file were generated, not sourced. Until
+    # a species is checked against COSEWIC or the SARA registry these three
+    # fields stay empty, and `status_is_verified` stays False — which makes the
+    # SAR check fail closed rather than trusting an unattributed "Not at Risk".
+    status_source: str | None = None
+    """e.g. 'COSEWIC 2023 assessment', 'SARA Schedule 1'. None = unverified."""
+
+    status_source_url: str | None = None
+    status_verified_at: datetime | None = None
+
+    @property
+    def status_is_verified(self) -> bool:
+        """True only when a real registry has been cited for this species."""
+        return bool(self.status_source and self.status_verified_at)
+
 
 class SpeciesAtRisk(BaseModel):
     species: str

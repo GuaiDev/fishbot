@@ -19,6 +19,39 @@ _STATUS_SEVERITY = {
 }
 
 
+# Any SARA/COSEWIC schedule status warrants a conservation note. Threatened and
+# Endangered additionally carry legal prohibitions; Special Concern and
+# Extirpated do not, but still should never be handed targeting advice.
+_LISTED_STATUSES = frozenset(
+    {"Special Concern", "Threatened", "Endangered", "Extirpated"}
+)
+
+
+def _sar_assessment(sr) -> tuple[bool, str]:
+    """Decide whether to raise a conservation flag. Fails CLOSED.
+
+    An unverified status is not evidence of safety. Every status in the local
+    species file was generated rather than sourced, so trusting a bare
+    "Not at Risk" would suppress the conservation flag on the strength of text
+    nobody checked — the failure mode with the worst consequences in this
+    system, since it ends with someone targeting a protected fish.
+
+    Only a status carrying a real registry citation can clear the flag.
+    """
+    if not sr.status_is_verified:
+        return True, (
+            "Conservation status for this species has not been verified against "
+            "COSEWIC or the SARA registry. Treating it as potentially listed and "
+            "withholding targeting guidance until it is checked."
+        )
+
+    listed = {sr.sara_status, sr.ontario_status, sr.cosewic_status} & _LISTED_STATUSES
+    if listed:
+        return True, f"Listed: {', '.join(sorted(listed))} (source: {sr.status_source})."
+
+    return False, f"Verified not at risk (source: {sr.status_source})."
+
+
 def _in_ontario(lat: float, lng: float) -> bool:
     return _ON_LAT_MIN <= lat <= _ON_LAT_MAX and _ON_LNG_MIN <= lng <= _ON_LNG_MAX
 
@@ -41,10 +74,7 @@ def get_species_range_for_agent(
             }
         )
 
-    sar_alert = sr.sara_status in {"Threatened", "Endangered"} or sr.ontario_status in {
-        "Threatened",
-        "Endangered",
-    }
+    sar_alert, sar_reason = _sar_assessment(sr)
 
     is_plausible: bool | None = None
     if lat is not None and lng is not None:
@@ -66,8 +96,18 @@ def get_species_range_for_agent(
         "ontario_status": sr.ontario_status,
         "cosewic_status": sr.cosewic_status,
         "sar_alert": sar_alert,
+        "sar_reason": sar_reason,
+        "conservation_status_verified": sr.status_is_verified,
+        "conservation_status_source": sr.status_source,
+        "targeting_guidance_suppressed": sar_alert,
         "is_plausible_at_location": is_plausible,
-        "handling_guidance": sr.fishing_notes,
+        # Renamed from "handling_guidance": this text is unsourced and was
+        # generated, not gathered. The old name implied official guidance.
+        "unverified_habitat_note": sr.habitat_notes,
+        "unverified_note_caveat": (
+            "Generated during development, not drawn from a cited source. Treat as a "
+            "starting hypothesis, not as a record."
+        ),
     }
     return json.dumps(result)
 

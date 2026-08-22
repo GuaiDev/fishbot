@@ -285,6 +285,31 @@ class PlaceContext(BaseModel):
     bundle: str = "full"
 
 
+class SpeciesContext(BaseModel):
+    """What is known about a species, with each claim carrying its provenance.
+
+    The local species file was generated during development rather than drawn
+    from a registry, so its contents are INFERENCE, not RECORD. Routing them
+    through ContextField is the point: previously this text reached the model
+    as a bare tool result, indistinguishable from an ingested observation.
+    """
+
+    species: str
+    scientific_name: str | None = None
+    found: bool = True
+
+    conservation_status: ContextField = Field(default_factory=ContextField)
+    habitat_note: ContextField = Field(default_factory=ContextField)
+    angling_note: ContextField = Field(default_factory=ContextField)
+    native_to_ontario: ContextField = Field(default_factory=ContextField)
+
+    sar_alert: bool = True
+    """Defaults to True. Absence of evidence is not evidence of safety."""
+
+    sar_reason: str = "not yet assessed"
+    targeting_guidance_suppressed: bool = True
+
+
 # ── explore() ─────────────────────────────────────────────────────────────────
 
 
