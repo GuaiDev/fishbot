@@ -69,6 +69,11 @@ def _obs_to_row(obs: GBIFObservation) -> dict[str, Any]:
         "coordinate_uncertainty_m": obs.coordinate_uncertainty_m,
         "jurisdiction": obs.jurisdiction,
         "ingested_at": obs.ingested_at.isoformat(),
+        "license_code": obs.license_code,
+        "license_uri": obs.license_uri,
+        "dataset_key": obs.dataset_key,
+        "rights_holder": obs.rights_holder,
+        "recorded_by": obs.recorded_by,
     }
 
 

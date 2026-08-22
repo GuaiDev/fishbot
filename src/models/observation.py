@@ -26,3 +26,20 @@ class Observation(BaseModel):
     obscuration_radius_km: float | None = None
     # origin system: "iNaturalist", "FISS", etc.
     source: str = "iNaturalist"
+
+    # ── licensing and attribution ─────────────────────────────────────────────
+    # iNaturalist licenses the observation record and its photos SEPARATELY, so
+    # both are captured. A None license is not "unknown" — it is the platform's
+    # default of all-rights-reserved, i.e. the most restrictive case, and must
+    # not be conflated with a missing field.
+    license_code: str | None = None
+    """Observation record licence, e.g. 'cc0', 'cc-by', 'cc-by-nc'. None = ARR."""
+
+    photo_license_code: str | None = None
+    """Licence on the first photo. Often differs from the record licence."""
+
+    observer_id: int | None = None
+    """Stable numeric user id. Logins can be changed; this cannot."""
+
+    uri: str | None = None
+    """Canonical observation URL. Required to attribute a CC-BY work."""

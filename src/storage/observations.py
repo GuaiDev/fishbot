@@ -81,6 +81,10 @@ def _obs_to_row(obs: Observation) -> dict[str, Any]:
         "is_obscured": int(obs.is_obscured),
         "obscuration_radius_km": obs.obscuration_radius_km,
         "source": obs.source,
+        "license_code": obs.license_code,
+        "photo_license_code": obs.photo_license_code,
+        "observer_id": obs.observer_id,
+        "uri": obs.uri,
     }
 
 

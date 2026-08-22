@@ -119,6 +119,9 @@ def _parse_observation(result: dict) -> Observation:
     taxon = result.get("taxon") or {}
     photos = result.get("photos") or []
     photo_url = photos[0]["url"] if photos else None
+    # iNaturalist licenses the record and each photo separately — a CC0 record
+    # can carry an all-rights-reserved photo, and vice versa.
+    photo_license = photos[0].get("license_code") if photos else None
     user = result.get("user") or {}
 
     geoprivacy = result.get("geoprivacy") or "open"
@@ -140,4 +143,8 @@ def _parse_observation(result: dict) -> Observation:
         geoprivacy=geoprivacy,
         is_obscured=is_obscured,
         obscuration_radius_km=22.0 if is_obscured else None,
+        license_code=result.get("license_code"),
+        photo_license_code=photo_license,
+        observer_id=user.get("id"),
+        uri=result.get("uri"),
     )

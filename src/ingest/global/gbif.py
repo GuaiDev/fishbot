@@ -125,6 +125,37 @@ def _has_coords(result: dict) -> bool:
     return result.get("decimalLatitude") is not None and result.get("decimalLongitude") is not None
 
 
+# GBIF publishes occurrence licences as legalcode URIs and restricts them to
+# three choices. Normalised here into the same short vocabulary the iNaturalist
+# model stores, so a licence filter can be written once and applied to both
+# corpora instead of learning two dialects. Anything unrecognised maps to None
+# — treated as "no grant stated", the conservative reading, never guessed at.
+_LICENCE_CODES: tuple[tuple[str, str], ...] = (
+    ("publicdomain/zero", "cc0"),
+    ("licenses/by-nc-sa", "cc-by-nc-sa"),
+    ("licenses/by-nc-nd", "cc-by-nc-nd"),
+    ("licenses/by-nc", "cc-by-nc"),
+    ("licenses/by-sa", "cc-by-sa"),
+    ("licenses/by-nd", "cc-by-nd"),
+    ("licenses/by", "cc-by"),
+)
+
+
+def normalise_licence(uri: str | None) -> str | None:
+    """Map a GBIF legalcode URI to a short licence code, or None if unstated.
+
+    Order matters: 'licenses/by' is a prefix of 'licenses/by-nc', so the more
+    specific patterns are tested first.
+    """
+    if not uri:
+        return None
+    low = uri.lower()
+    for needle, code in _LICENCE_CODES:
+        if needle in low:
+            return code
+    return None
+
+
 def _parse_observation(result: dict) -> GBIFObservation:
     lat = result["decimalLatitude"]
     lng = result["decimalLongitude"]
@@ -143,6 +174,11 @@ def _parse_observation(result: dict) -> GBIFObservation:
         basis_of_record=result.get("basisOfRecord", "UNKNOWN"),
         coordinate_uncertainty_m=result.get("coordinateUncertaintyInMeters"),
         jurisdiction=jurisdiction_for_coords(lat, lng),
+        license_code=normalise_licence(result.get("license")),
+        license_uri=result.get("license"),
+        dataset_key=result.get("datasetKey"),
+        rights_holder=result.get("rightsHolder"),
+        recorded_by=result.get("recordedBy"),
     )
 
 

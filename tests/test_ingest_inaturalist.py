@@ -167,3 +167,46 @@ def test_stale_cache_triggers_refetch(tmp_path: Path):
         _cached_get(params)
 
     mock_http.assert_called_once()
+
+
+# ── licensing and attribution ─────────────────────────────────────────────────
+
+_parse_observation = _inat._parse_observation
+
+
+def _raw_observation(**overrides):
+    base = {
+        "id": 244537642,
+        "location": "43.5474,-80.1973",
+        "observed_on": "2022-05-23",
+        "quality_grade": "research",
+        "license_code": "cc-by-nc",
+        "uri": "https://www.inaturalist.org/observations/244537642",
+        "taxon": {"id": 121066, "name": "Etheostoma microperca"},
+        "user": {"login": "sgowing2", "id": 8592734},
+        "photos": [{"url": "https://x/photo.jpg", "license_code": "cc0"}],
+    }
+    base.update(overrides)
+    return base
+
+
+def test_parse_captures_record_and_photo_licence_separately():
+    """iNaturalist licenses the record and its photos independently."""
+    obs = _parse_observation(_raw_observation())
+    assert obs.license_code == "cc-by-nc"
+    assert obs.photo_license_code == "cc0"
+
+
+def test_parse_captures_stable_attribution():
+    obs = _parse_observation(_raw_observation())
+    assert obs.observer == "sgowing2"
+    assert obs.observer_id == 8592734
+    assert obs.uri.endswith("/observations/244537642")
+
+
+def test_absent_licence_stays_none_and_is_not_defaulted():
+    """A missing license_code means all-rights-reserved, the most restrictive
+    case. Defaulting it to anything permissive would invent a grant."""
+    obs = _parse_observation(_raw_observation(license_code=None, photos=[]))
+    assert obs.license_code is None
+    assert obs.photo_license_code is None

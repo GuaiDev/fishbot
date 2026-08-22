@@ -172,3 +172,36 @@ def test_stale_cache_triggers_refetch(tmp_path: Path):
         _cached_get(params)
 
     mock_http.assert_called_once()
+
+
+# ── licensing and attribution ─────────────────────────────────────────────────
+
+
+def test_licence_uri_normalises_to_the_shared_vocabulary():
+    """GBIF publishes legalcode URIs; iNaturalist publishes short codes. Both
+    corpora normalise to one vocabulary so a filter spans them."""
+    import importlib
+    normalise_licence = importlib.import_module("src.ingest.global.gbif").normalise_licence
+
+    assert normalise_licence("http://creativecommons.org/licenses/by/4.0/legalcode") == "cc-by"
+    assert normalise_licence("https://creativecommons.org/publicdomain/zero/1.0/legalcode") == "cc0"
+
+
+def test_by_nc_is_not_swallowed_by_the_by_prefix():
+    """'licenses/by' is a prefix of 'licenses/by-nc' — order matters, and
+    mistaking NC for BY would licence-launder a non-commercial record."""
+    import importlib
+    normalise_licence = importlib.import_module("src.ingest.global.gbif").normalise_licence
+
+    assert normalise_licence(
+        "http://creativecommons.org/licenses/by-nc/4.0/legalcode"
+    ) == "cc-by-nc"
+
+
+def test_unstated_or_unrecognised_licence_is_none_not_guessed():
+    import importlib
+    normalise_licence = importlib.import_module("src.ingest.global.gbif").normalise_licence
+
+    assert normalise_licence(None) is None
+    assert normalise_licence("") is None
+    assert normalise_licence("http://example.com/some-bespoke-terms") is None

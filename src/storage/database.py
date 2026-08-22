@@ -37,6 +37,8 @@ def _apply_migrations(db: Database) -> None:
     migrate_user_fields(db)
     migrate_stream_segments_multi_jurisdiction(db)
     migrate_observations_source(db)
+    migrate_observations_licensing(db)
+    migrate_gbif_licensing(db)
     migrate_regulation_chunks_zone_name(db)
     migrate_segment_synthesis_jurisdiction(db)
 
@@ -1140,6 +1142,54 @@ def migrate_observations_source(db: Database) -> None:
             db.conn.commit()
         except Exception:
             pass
+
+
+def migrate_observations_licensing(db: Database) -> None:
+    """Add licence and attribution columns to observations. Idempotent.
+
+    Existing rows are left NULL rather than defaulted: we genuinely do not know
+    what licence they carry until they are backfilled from the cached API
+    responses, and guessing would be worse than an honest gap.
+    """
+    if "observations" not in db.table_names():
+        return
+    cols = {c.name for c in db["observations"].columns}
+    for name, coltype in (
+        ("license_code", "TEXT"),
+        ("photo_license_code", "TEXT"),
+        ("observer_id", "INTEGER"),
+        ("uri", "TEXT"),
+    ):
+        if name not in cols:
+            try:
+                db.execute(f"ALTER TABLE observations ADD COLUMN {name} {coltype}")
+            except Exception:
+                pass
+    db.conn.commit()
+
+
+def migrate_gbif_licensing(db: Database) -> None:
+    """Add licence and attribution columns to gbif_observations. Idempotent.
+
+    Left NULL for existing rows rather than defaulted — the licence is a fact
+    about the publishing dataset, not something we may assume.
+    """
+    if "gbif_observations" not in db.table_names():
+        return
+    cols = {c.name for c in db["gbif_observations"].columns}
+    for name, coltype in (
+        ("license_code", "TEXT"),
+        ("license_uri", "TEXT"),
+        ("dataset_key", "TEXT"),
+        ("rights_holder", "TEXT"),
+        ("recorded_by", "TEXT"),
+    ):
+        if name not in cols:
+            try:
+                db.execute(f"ALTER TABLE gbif_observations ADD COLUMN {name} {coltype}")
+            except Exception:
+                pass
+    db.conn.commit()
 
 
 def migrate_regulation_chunks_zone_name(db: Database) -> None:
