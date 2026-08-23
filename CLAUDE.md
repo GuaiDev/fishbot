@@ -80,10 +80,26 @@ Access scores (`src/services/accessibility.py`) are only meaningful within the O
 
 `find_untapped_water` results are most reliable when filtered to the home-area radius. For exploration targets beyond 55km, the untapped score is dominated by habitat quality × observation pressure — access score adds no signal.
 
+**This is now a data field, not just a caveat.** `compute_access_scores` records `access_is_measured` per segment (derived from the road modifier, which already knew — it gives out-of-footprint segments a neutral value for exactly this reason and used to throw the distinction away). `ExploreResult.access_is_measured` and `ExploreResponse.results_on_placeholder_access` carry it to the surface, and the renderer prints "access not measured here" instead of a number. Nothing is filtered: pressure, structure and remoteness are real outside the footprint, so the results stand — only the access term does not.
+
+The field is **tri-state**, not boolean: `True` measured, `False` known to be outside the footprint, `None` unclassifiable because the cached scores predate coverage tracking. Those are three facts with three remedies, and the renderer prints each differently — collapsing `None` into `False` would invent a claim about remoteness out of a stale parquet. An access parquet written before this column returns `None` from `load_cached_coverage()`; `make compute-access` settles it.
+
 ## Known issues
 
 - **`stream_order` is unpopulated on all 20,339 OHN segments.** The adapter ingests the segments but captures no stream order, so `describe()` reports `FIELD_NOT_POPULATED_BY_SOURCE` for it — correctly, but the field is unusable until the adapter is fixed. `explore()` is unaffected: it reads `stream_order` from the feature-matrix parquet, which does have it.
 - **BC NuSEDS and QC species-ranges discovery filters use brittle label matching**, the same failure class as the PWQMN bug (matching an exact published label rather than structure). `ca_bc/nuseds.py` anchors on `name.startswith("all areas nuseds")`; `ca_qc/species_ranges.py` matches a fixed keyword set. Both are in frozen jurisdictions and not yet fixed; a rename upstream would silently yield zero records. `src/ingest/discovery.py::check_resource_discovery` exists to make that loud — neither adapter calls it yet.
+
+### Silent diagnostics — the recurring failure class
+
+The dominant bug shape in this codebase is a function that computes the number distinguishing success from silent failure, then discards it. Four instances were found and fixed (PWQMN discovery, CLI log configuration, the MNRF FMZ field-name parse, the `verify-species-status` name join). These remain, in rough priority order:
+
+- **`ebird.py:134,139,146` and `geology.py:109` skip rows silently.** eBird drops observations on unparseable dates and IDs; the geology KML parser drops malformed coordinate pairs, so a polygon can quietly lose vertices and still parse. Neither counts what it dropped.
+- **`sdm_features.py::coverage_fraction` is printed by `build-features` and never stored.** Coverage degrading run-over-run is invisible because nothing compares against the last value.
+- **`ca_ab/stocking.py:192` and `ca_bc/nuseds.py:195` log `n_skipped` at INFO**, so it is invisible without `-v`. `ca_on/water_quality.py:362` logs the same class of count at WARNING and is the pattern to copy. Both INFO cases are in frozen jurisdictions.
+- **`synthesis_cache.py:200,213,227` swallow cache-write failures.** A permanently failing cache is indistinguishable from a cold one; the only symptom is the API bill.
+- **`chat.py:150,542` swallow `tool_usage` insert failures.** Telemetry only, but a broken table reads as an agent that never calls tools.
+
+The rule when touching any of these: a count that separates "worked" from "silently did nothing" belongs at WARNING when the share is material, and in the return value always.
 
 ## Data quality principle: culverted urban streams
 

@@ -347,6 +347,32 @@ class ExploreResult(BaseModel):
     score: float
     observation_pressure: float
     access_score: float
+    access: ContextField = Field(default_factory=ContextField)
+    """The access figure as a first-class context value.
+
+    `access_score` and `access_is_measured` below are the structured data the
+    map and API read. This is the same fact wrapped the way every other value
+    in the layer is wrapped, so it renders through `explain()` and its empty
+    cases draw their wording from `_EMPTY_PHRASING` rather than from a string
+    the renderer invented for this one field."""
+
+    access_is_measured: bool | None = None
+    """Whether the access score is a reading or a placeholder.
+
+    Three states, because there are three facts and they have three different
+    remedies — the same discipline as EmptyReason:
+
+      True  — measured; the number means something.
+      False — the segment sits outside the OSM ingest footprint (~55 km of
+              home), so it has no access data at all and normalised to a
+              mid-range value indistinguishable from a real one.
+      None  — we cannot tell, because the cached access scores predate
+              coverage tracking. The remedy is `make compute-access`, not a
+              longer drive.
+
+    Defaults to None. Claiming a segment is outside the footprint when we
+    simply have not checked would be its own fabrication."""
+
     is_confluence: bool = False
     recorded_species_nearby: list[str] = Field(default_factory=list)
     note: str | None = None
@@ -367,6 +393,18 @@ class ExploreResponse(BaseModel):
     out of a thousand equally-ranked segments as "the best" would be a
     precision claim the score cannot support.
     """
+
+    results_on_placeholder_access: int = 0
+    """How many of `results` are known to sit outside the mapped access
+    footprint, so their access figure is a default rather than a reading.
+    Reported rather than filtered: pressure, structure and remoteness are all
+    still real out there — the access term is not, and the reader has to know
+    which part of the number they are trusting."""
+
+    results_with_unknown_access_coverage: int = 0
+    """How many of `results` we cannot classify either way, because the access
+    cache predates coverage tracking. A pipeline gap, not a coverage gap — it
+    is fixed by recomputing, and must not be reported as remoteness."""
 
     empty_reason: EmptyReason | None = None
     scoring_note: str = (

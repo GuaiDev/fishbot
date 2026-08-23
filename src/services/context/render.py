@@ -286,10 +286,32 @@ def render_explore(response: ExploreResponse) -> str:
         if r.stream_order is not None:
             bits.append(f"order {r.stream_order}")
         bits.append(f"pressure {r.observation_pressure:.2f}")
-        bits.append(f"access {r.access_score:.2f}")
+        # Same call every other value in the layer gets. The three access
+        # states are ordinary ContextField states, so their wording comes from
+        # _EMPTY_PHRASING rather than from three branches invented here.
+        bits.append(f"access {r.access.explain()}")
         if r.is_confluence:
             bits.append("confluence")
         lines.append(f"{i}. {name} ({r.lat:.4f}, {r.lng:.4f}) — {', '.join(bits)}")
+
+    total = len(response.results)
+    if response.results_on_placeholder_access:
+        lines.append(
+            f"\n_Access is unmapped for {response.results_on_placeholder_access} "
+            f"of these {total}: nobody has surveyed roads or parking that far "
+            f"out, so there is no figure to give. What ranked them — how little "
+            f"has been reported there, the structure, the remoteness — is real._"
+        )
+    if response.results_with_unknown_access_coverage:
+        # A gap in our pipeline, not in the world. Different remedy, so it gets
+        # different words; the shell command that fixes it belongs in the log,
+        # not in something an angler reads.
+        lines.append(
+            f"\n_For {response.results_with_unknown_access_coverage} of these "
+            f"{total}, the stored access figures predate the record of where "
+            f"access was actually surveyed, so it cannot be said whether they "
+            f"mean anything. Recomputing access scores would settle it._"
+        )
 
     if response.tied_at_top > len(response.results):
         # Without a habitat term the surviving signals are coarse, so ties are

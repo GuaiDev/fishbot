@@ -358,3 +358,101 @@ def test_place_context_renders_only_the_slices_the_bundle_populated():
     assert "Species recorded" in out
     assert "Conditions now" not in out
     assert "Your history here" not in out
+
+
+# -- access placeholders must not read as readings ------------------------------
+
+def _explore_result(ogf_id: int, measured: bool | None, score: float = 0.62):
+    """Built the way explore() builds them, so the mapping itself is under test."""
+    from src.services.context import _access_field
+
+    return ExploreResult(
+        ogf_id=ogf_id,
+        lat=43.5,
+        lng=-79.8,
+        score=0.4,
+        observation_pressure=0.02,
+        access_score=score,
+        access_is_measured=measured,
+        access=_access_field(score, measured),
+    )
+
+
+def test_placeholder_access_is_named_not_printed_as_a_number():
+    """A default is not a measurement, and 0.27 looks exactly like one.
+
+    Segments outside the ~55 km OSM footprint have no access data at all and
+    normalise to a mid-range value. Printing that as "access 0.27" is the
+    barrier-fabrication bug in the ranking function: a default presented as a
+    reading, except here it silently reorders results instead of stating a
+    false fact outright.
+    """
+    resp = ExploreResponse(
+        results=[_explore_result(1, False, score=0.27)],
+        results_on_placeholder_access=1,
+    )
+    out = render.render_explore(resp)
+    assert "0.27" not in out
+    assert "does not cover this area" in out, "wording comes from _EMPTY_PHRASING"
+    assert "Access is unmapped for 1 of these 1" in out
+
+
+def test_measured_access_prints_its_number_with_a_so_what():
+    resp = ExploreResponse(results=[_explore_result(1, True, score=0.62)])
+    out = render.render_explore(resp)
+    assert "access 0.62" in out
+    assert "OSM access points" in out, "a value never appears without its source"
+    assert "expect a walk in" in out, "and never without its meaning"
+
+
+def test_the_rest_of_the_ranking_is_not_disclaimed_away():
+    """Pressure, structure and remoteness are real outside the footprint."""
+    resp = ExploreResponse(
+        results=[_explore_result(1, False, score=0.27)],
+        results_on_placeholder_access=1,
+    )
+    out = render.render_explore(resp)
+    assert "pressure 0.02" in out
+    assert "What ranked them" in out
+
+
+def test_unknown_coverage_is_not_reported_as_remoteness():
+    """A stale cache is a pipeline gap. Saying "outside the footprint" invents
+    a fact about the water from a missing parquet column."""
+    resp = ExploreResponse(
+        results=[_explore_result(1, None, score=0.27)],
+        results_with_unknown_access_coverage=1,
+    )
+    out = render.render_explore(resp)
+    assert "this field is not populated in them" in out
+    assert "does not cover this area" not in out
+    assert "Recomputing access scores would settle it" in out
+
+
+def test_the_remedy_for_a_pipeline_gap_is_not_a_shell_command():
+    """An operator instruction in angler-facing prose is a debug line."""
+    resp = ExploreResponse(
+        results=[_explore_result(1, None)],
+        results_with_unknown_access_coverage=1,
+    )
+    out = render.render_explore(resp)
+    assert "make compute-access" not in out
+    assert "parquet" not in out
+
+
+def test_the_three_access_states_render_differently():
+    resp = ExploreResponse(
+        results=[
+            _explore_result(1, True),
+            _explore_result(2, False),
+            _explore_result(3, None),
+        ],
+        results_on_placeholder_access=1,
+        results_with_unknown_access_coverage=1,
+    )
+    out = render.render_explore(resp)
+    assert "access 0.62" in out
+    assert "does not cover this area" in out
+    assert "this field is not populated in them" in out
+    assert "Access is unmapped for 1 of these 3" in out
+    assert "For 1 of these 3" in out

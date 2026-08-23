@@ -20,6 +20,7 @@ from typing import Literal
 from sqlite_utils import Database
 
 from src.models.context import (
+    ContextField,
     EmptyReason,
     ExploreResponse,
     ExploreResult,
@@ -27,7 +28,7 @@ from src.models.context import (
     PlaceContext,
 )
 from src.services.context import place as place_mod
-from src.services.context import slices
+from src.services.context import slices, translate
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,11 @@ def explore(
             score=round(float(row[score_col]), 4),
             observation_pressure=round(float(row.get("observation_pressure", 0.0)), 3),
             access_score=round(float(row.get("access_score", 0.0)), 3),
+            access_is_measured=_tristate(row.get("access_is_measured")),
+            access=_access_field(
+                round(float(row.get("access_score", 0.0)), 3),
+                _tristate(row.get("access_is_measured")),
+            ),
             is_confluence=bool(row.get("is_confluence_segment", False)),
         )
         for _, row in near.head(limit).iterrows()
@@ -199,7 +205,49 @@ def explore(
         excluded_count=int(len(excluded)),
         excluded_examples=_gate_examples(excluded),
         tied_at_top=tied,
+        results_on_placeholder_access=sum(
+            1 for r in results if r.access_is_measured is False
+        ),
+        results_with_unknown_access_coverage=sum(
+            1 for r in results if r.access_is_measured is None
+        ),
     )
+
+
+def _access_field(score: float, measured: bool | None) -> ContextField:
+    """Wrap the access figure the same way every other value gets wrapped.
+
+    The three states map onto empty reasons that already exist, which is the
+    point of having them: a placeholder is a coverage gap in the world, and an
+    unclassifiable score is a gap in our own pipeline. Those already have
+    agreed wording, so this field does not need wording of its own.
+    """
+    if measured is True:
+        return ContextField.recorded(
+            score, source="OSM access points", meaning=translate.access_score(score)
+        )
+    if measured is False:
+        return ContextField.empty(EmptyReason.SOURCE_DOES_NOT_COVER_AREA)
+    return ContextField.empty(EmptyReason.FIELD_NOT_POPULATED_BY_SOURCE)
+
+
+def _tristate(value) -> bool | None:
+    """Pandas nullable booleans and a missing column both mean 'we don't know'.
+
+    Coercing either to False would claim a segment sits outside the mapped
+    access footprint on no evidence — inventing a fact about remoteness from a
+    stale parquet.
+    """
+    if value is None:
+        return None
+    try:
+        import pandas as pd
+
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return bool(value)
 
 
 def _gate_examples(excluded, limit: int = 3) -> list[str]:

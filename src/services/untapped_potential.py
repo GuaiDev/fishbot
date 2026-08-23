@@ -159,8 +159,40 @@ def compute_untapped_potential(
 
     base = base.set_index("ogf_id")
 
+    # A placeholder access score is not a low access score, and until now the
+    # ranking could not tell the difference: segments outside the ~55 km OSM
+    # footprint normalised to ~0.27 and were ranked on as though measured.
+    # Same failure as claiming fish move freely past a location whose barrier
+    # count was never ingested — a default presented as a reading — except here
+    # it silently reorders results instead of stating a false fact.
+    from src.services.accessibility import load_cached_coverage
+
+    measured = load_cached_coverage()
+    if measured is not None:
+        base["access_is_measured"] = measured.reindex(base.index).astype("boolean")
+    else:
+        # Cache predates the column. Unknown — which is not the same as
+        # "outside the footprint", and saying so would invent a fact about
+        # remoteness out of a stale parquet. `make compute-access` fixes it.
+        base["access_is_measured"] = pd.array([pd.NA] * len(base), dtype="boolean")
+        logger.warning(
+            "Access scores carry no coverage column — every access figure below "
+            "is unclassifiable as reading or placeholder. Run `make compute-access`."
+        )
+
     base["access_score"] = access_scores.reindex(base.index).fillna(0.5)
     base["observation_pressure"] = pressure.reindex(base.index).fillna(0.0)
+
+    _unmeasured = int((base["access_is_measured"] == False).sum())  # noqa: E712
+    if _unmeasured:
+        logger.info(
+            "Access placeholder on %d of %d segments (%.1f%%) — these lie "
+            "outside the ingest footprint, and the easy_access/adventure modes "
+            "rank on a default for them",
+            _unmeasured,
+            len(base),
+            100.0 * _unmeasured / len(base),
+        )
 
     # Plausibility gate — removes water we have affirmative evidence is not
     # fishable. Never ranks; only zeroes. See module docstring.

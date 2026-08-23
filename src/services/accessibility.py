@@ -72,7 +72,7 @@ def compute_access_scores(db: Any, feature_matrix: pd.DataFrame) -> pd.Series:
     crown_mod = np.where(crown_flags, 0.3, 0.0).astype(np.float32)
 
     logger.info("Computing proximity modifiers...")
-    road_mod = _road_proximity_modifier(access_by_type, coords)
+    road_mod, in_coverage = _road_proximity_modifier(access_by_type, coords)
     building_mod = _distance_modifier(access_by_type.get("building", []), coords, 0.5, 0.1)
     boat_mod = _distance_modifier(access_by_type.get("boat_launch", []), coords, 1.0, 0.2)
     fishing_mod = _distance_modifier(access_by_type.get("fishing_spot", []), coords, 0.5, 0.3)
@@ -108,12 +108,43 @@ def compute_access_scores(db: Any, feature_matrix: pd.DataFrame) -> pd.Series:
 
     scores = pd.Series(normalized.astype(np.float32), index=ogf_ids, name="access_score")
     flags = pd.Series(crown_flags, index=ogf_ids, name="is_crown_land")
+    measured = pd.Series(in_coverage, index=ogf_ids, name="access_is_measured")
 
     _PARQUET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame({"access_score": scores, "is_crown_land": flags}).to_parquet(_PARQUET_PATH)
-    logger.info("Access scores written to %s", _PARQUET_PATH)
+    pd.DataFrame(
+        {
+            "access_score": scores,
+            "is_crown_land": flags,
+            "access_is_measured": measured,
+        }
+    ).to_parquet(_PARQUET_PATH)
+
+    unmeasured = int((~measured).sum())
+    logger.info(
+        "Access scores written to %s — %d of %d segments (%.1f%%) fall outside "
+        "the OSM ingest footprint and carry a placeholder, not a reading",
+        _PARQUET_PATH,
+        unmeasured,
+        len(measured),
+        100.0 * unmeasured / len(measured) if len(measured) else 0.0,
+    )
 
     return scores
+
+
+def load_cached_coverage() -> pd.Series | None:
+    """Which segments have a real access reading rather than a placeholder.
+
+    None when the cache predates this column — which must render as "unknown",
+    never as "measured". Assuming coverage we cannot demonstrate is the same
+    move as assuming a species is not at risk because nobody checked.
+    """
+    if not _PARQUET_PATH.exists():
+        return None
+    df = pd.read_parquet(_PARQUET_PATH)
+    if "access_is_measured" not in df.columns:
+        return None
+    return df["access_is_measured"]
 
 
 def load_cached_scores() -> pd.Series | None:
@@ -268,16 +299,26 @@ def _load_access_points(db: Any) -> dict[str, list[tuple[float, float]]]:
 def _road_proximity_modifier(
     access_by_type: dict[str, list[tuple[float, float]]],
     coords: np.ndarray,
-) -> np.ndarray:
-    """Road proximity: use access_type='road' entries, fall back to 'parking' as proxy.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Road proximity, and whether the segment is inside the ingest footprint.
 
     +0.2 if within 200m, +0.1 if within 500m, -0.2 if nothing within 1km.
     Returns 0.0 for segments outside the ingest area (no data available).
+
+    The second return value is the part that used to be thrown away. This
+    function already knows which segments fall outside OSM coverage — it gives
+    them a neutral modifier for exactly that reason — but it discarded the
+    distinction, so a segment nobody has data for came out of normalisation at
+    ~0.27 and was indistinguishable from a segment measured and found remote.
+    Everything downstream then ranked on it as though it were a reading.
     """
     # Combine road entries and parking as proxy (parking requires road access)
     road_pts = access_by_type.get("road", []) + access_by_type.get("parking", [])
     if not road_pts:
-        return np.zeros(len(coords), dtype=np.float32)
+        return (
+            np.zeros(len(coords), dtype=np.float32),
+            np.zeros(len(coords), dtype=bool),
+        )
 
     road_arr = np.array(road_pts)
     tree = cKDTree(road_arr)
@@ -305,7 +346,8 @@ def _road_proximity_modifier(
             ),
         ),
     )
-    return mod.astype(np.float32)
+    in_coverage = dists_km <= 30.0
+    return mod.astype(np.float32), in_coverage
 
 
 def _distance_modifier(

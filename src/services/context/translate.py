@@ -128,6 +128,21 @@ def stream_order(order: int | None) -> str | None:
     return "a substantial river reach"
 
 
+def access_score(value: float | None) -> str | None:
+    """What a normalised access score means for getting to the water.
+
+    The number itself is a rank within Ontario, not a distance to a car park,
+    so it only travels with a plain reading of what it implies on the ground.
+    """
+    if value is None:
+        return None
+    if value >= 0.7:
+        return "roads and parking close by — easy to reach, and others reach it too"
+    if value >= 0.4:
+        return "reachable, but expect a walk in"
+    return "little mapped road or parking nearby — plan the approach before going"
+
+
 # Values we deliberately never surface: no honest "so what" exists for an
 # angler, so showing the number would be rigour theatre.
 def conductivity(_value: float | None) -> None:
