@@ -63,6 +63,16 @@ def describe_species(db: Database, name: str) -> SpeciesContext:
     verified = sr.status_is_verified
     status = sr.sara_status or sr.ontario_status or sr.cosewic_status
 
+    # An affirmative listing signal from any authority, verified or not. An
+    # unverified "Endangered" is still a reason to refuse targeting guidance;
+    # an unverified "Not at Risk" is not a reason to grant it, but it is also
+    # not evidence of a listing. Callers that need a hard refusal gate on this
+    # rather than on `sar_alert`, which is true for everything until the
+    # registry import runs.
+    known_listed = bool(
+        {sr.sara_status, sr.ontario_status, sr.cosewic_status} & _LISTED
+    )
+
     if verified:
         listed = {sr.sara_status, sr.ontario_status, sr.cosewic_status} & _LISTED
         alert = bool(listed)
@@ -108,4 +118,5 @@ def describe_species(db: Database, name: str) -> SpeciesContext:
         sar_alert=alert,
         sar_reason=reason,
         targeting_guidance_suppressed=alert,
+        status_known_listed=known_listed,
     )

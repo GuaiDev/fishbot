@@ -1,29 +1,75 @@
+"""On-demand coaching, built on the central context layer.
+
+Previously this service assembled its own prompt block from raw `stops` rows:
+its own formatting, its own idea of what an empty log meant, its own decision
+about which columns mattered. Two consequences followed from that, and both
+were bugs rather than style:
+
+  * Stored insights reached the model as anonymous sentences. An insight the
+    assistant synthesised and one drawn from a survey rendered identically.
+  * Nothing consulted the conservation layer. A coaching question about a
+    listed species produced targeting advice, because the SAR check lived in a
+    different code path that this one never called.
+
+Both are properties of bypassing the context layer, so the fix is to stop
+bypassing it. Retrieval and rendering happen there; what remains here is the
+coaching question itself and the rules the answer has to obey.
 """
-On-demand coaching service.
-Diagnoses why a user is struggling with a species, spot, or technique
-by cross-referencing trip logs, behavioral insights, habitat data,
-and community knowledge.
-"""
-import json
+
+import logging
 
 from sqlite_utils import Database
 
 from src.agent.client import get_client
+from src.services.context import describe, describe_species, species_history, user_layer
+from src.services.context.render import (
+    render_place_context,
+    render_species_context,
+    render_species_history,
+    render_user_layer,
+)
+
+logger = logging.getLogger(__name__)
 
 HAIKU = "claude-haiku-4-5-20251001"
 
-_STOP_COLS = [
-    "id", "location_name", "location_text", "species_caught",
-    "party_species_caught", "was_productive", "technique",
-    "gear", "water_level", "water_clarity", "weather_notes",
-    "notes", "date", "date_approx",
-]
+# The epistemic rule, stated once and shared by both coaching paths. General
+# ecological knowledge applied to observed conditions is legitimate at n=1;
+# claims about this angler's own tendencies need both arms of a comparison.
+_RULES = """Rules you must follow:
 
-_LOC_STOP_COLS = [
-    "id", "location_name", "location_text", "species_caught",
-    "was_productive", "technique", "gear", "water_level",
-    "water_clarity", "weather_notes", "notes", "date", "date_approx",
-]
+- Every fact below carries its source in square brackets. A claim marked
+  "reasoning, no source" or "web, unverified" is NOT a record — do not present
+  it as one, and say which kind of thing you are relying on.
+- General fishing and ecology principles applied to the conditions shown are
+  fine to state directly, even from a single trip.
+- Claims about THIS angler's own patterns ("you do better in X") require a
+  pattern marked claimable below. If it says NOT yet claimable, you may raise
+  it as a hypothesis to test, never as a finding.
+- Do not invent sessions, patterns or conditions that are not shown.
+- Where the data is empty, the reason is given. Say which gap it is; "no data"
+  on its own is not an acceptable answer.
+- Blanks are not failures. They are half the signal and worth analysing.
+- Match the register to the demonstrated expertise shown. Telling an
+  experienced angler something obvious destroys credibility."""
+
+_SAR_RULES = """
+CONSERVATION OVERRIDE — this species carries a conservation flag.
+Do not explain how to find, target, catch or handle-for-photos this species.
+Species at Risk law prohibits capture, not merely possession, so
+catch-and-release is not an exemption. Answer the question only insofar as it
+can be answered without targeting guidance, say plainly why you are declining
+the rest, and suggest the angler verify the current listing themselves."""
+
+
+def _ask(prompt: str, max_tokens: int) -> str:
+    client = get_client()
+    resp = client.messages.create(
+        model=HAIKU,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return resp.content[0].text.strip()
 
 
 def get_species_coaching(
@@ -32,114 +78,39 @@ def get_species_coaching(
     specific_question: str | None = None,
     user_id: int = 1,
 ) -> str:
-    """Analyze the user's logged history with a species and identify gaps,
-    patterns, and specific improvement opportunities."""
-    rows = db.execute("""
-        SELECT st.id, st.location_name, st.location_text, st.species_caught,
-               st.party_species_caught, st.was_productive, st.technique,
-               st.gear, st.water_level, st.water_clarity, st.weather_notes,
-               st.notes, s.date, s.date_approx
-        FROM stops st
-        JOIN sessions s ON st.session_id = s.id
-        WHERE st.user_id = ?
-    """, [user_id]).fetchall()
+    """Coach on one species, across everywhere the angler has fished it."""
+    history = species_history(db, species, user_id=user_id)
+    layer = user_layer(db, user_id=user_id)
+    species_ctx = describe_species(db, species)
 
-    all_stops = [dict(zip(_STOP_COLS, r)) for r in rows]
+    question = (
+        specific_question or f"What should I do differently to catch more {species}?"
+    )
 
-    species_lower = species.lower()
-    caught_stops = []
-    blank_stops = []
-
-    for stop in all_stops:
-        caught = json.loads(stop["species_caught"] or "[]")
-        party_caught = json.loads(stop["party_species_caught"] or "[]")
-        productive = bool(stop["was_productive"])
-
-        species_in_catch = any(species_lower in s.lower() for s in caught)
-        species_in_party = any(species_lower in s.lower() for s in party_caught)
-
-        if species_in_catch:
-            caught_stops.append(stop)
-        elif not productive and not species_in_party:
-            blank_stops.append(stop)
-
-    insights = db.execute("""
-        SELECT condition_type, condition_context, conclusion, confidence,
-               recommendation, condition_season, location_name
-        FROM behavioral_insights
-        WHERE LOWER(species) LIKE ? AND is_current = 1 AND user_id = ?
-        ORDER BY confidence DESC, created_at DESC
-    """, [f"%{species_lower}%", user_id]).fetchall()
-
-    context_parts = []
-
-    if caught_stops:
-        context_parts.append(f"SUCCESSFUL CATCHES ({len(caught_stops)} stops):")
-        for s in caught_stops:
-            loc = s["location_name"] or s["location_text"] or "unknown"
-            date = s["date"] or s["date_approx"] or "undated"
-            tech = s["technique"] or "unrecorded"
-            gear = s["gear"] or "unrecorded"
-            conditions = []
-            if s["water_level"]: conditions.append(s["water_level"] + " water")
-            if s["water_clarity"]: conditions.append(s["water_clarity"])
-            if s["weather_notes"]: conditions.append(s["weather_notes"])
-            cond_str = ", ".join(conditions) or "unrecorded"
-            context_parts.append(
-                f"  - {loc} ({date}): technique={tech}, gear={gear}, "
-                f"conditions={cond_str}"
-            )
-            if s["notes"]:
-                context_parts.append(f"    notes: {s['notes'][:200]}")
+    blocks = [
+        "You are a fishing coach working only from this angler's logged data "
+        "and the records below.",
+        f'The angler asked: "{question}"',
+        render_species_context(species_ctx),
+        render_species_history(history),
+        render_user_layer(layer),
+        _RULES,
+    ]
+    # Gated on an affirmative listing signal, not on `sar_alert`. Every species
+    # in the local file is unverified, so gating on the alert would refuse
+    # coaching for every fish in Ontario — a rule that fires on everything
+    # protects nothing and just trains the user to ignore it. The unverified
+    # caution still reaches the model through the species block above.
+    if species_ctx.status_known_listed:
+        blocks.append(_SAR_RULES)
     else:
-        context_parts.append(f"SUCCESSFUL CATCHES: None logged for {species}")
+        blocks.append(
+            "Structure your answer as: what the data shows, what is missing "
+            "from the log, what to try differently, and one concrete "
+            "experiment for the next trip. 150-250 words."
+        )
 
-    if insights:
-        context_parts.append(f"\nSTORED INSIGHTS ({len(insights)}):")
-        for ins in insights:
-            context_parts.append(f"  - [{ins[3]} confidence] {ins[2][:200]}")
-            if ins[4]:
-                context_parts.append(f"    recommendation: {ins[4]}")
-
-    context_parts.append(f"\nTOTAL BLANK STOPS IN LOG: {len(blank_stops)}")
-    context_parts.append(
-        "(Note: blank stops may or may not have been targeting this species "
-        "— species targeting is not always recorded)"
-    )
-
-    context = "\n".join(context_parts)
-    question = specific_question or f"What should I do differently to catch more {species}?"
-
-    prompt = f"""You are a personal fishing coach analyzing a user's logged fishing data.
-The user is asking: "{question}"
-
-Here is their complete logged history relevant to {species}:
-
-{context}
-
-Based ONLY on this logged data (do not invent sessions or patterns not shown above),
-provide a specific, actionable coaching response. Be honest about data limitations.
-
-Structure your response as:
-1. What the data shows (patterns in successful catches if any)
-2. What's missing or unclear from the log
-3. Specific things to try differently, grounded in the data
-4. One concrete experiment to run on the next trip
-
-If there are no logged catches, say so directly and focus on what the habitat
-data and stored insights suggest. Do not pretend there are patterns when the
-log is empty.
-
-Keep the response concise — 150-250 words. No generic fishing tips that aren't
-grounded in this specific user's data."""
-
-    client = get_client()
-    resp = client.messages.create(
-        model=HAIKU,
-        max_tokens=400,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return resp.content[0].text.strip()
+    return _ask("\n\n".join(blocks), max_tokens=500)
 
 
 def get_location_coaching(
@@ -148,71 +119,36 @@ def get_location_coaching(
     specific_question: str | None = None,
     user_id: int = 1,
 ) -> str:
-    """Analyze the user's history at a specific location and identify
-    what's working, what isn't, and what to try differently."""
-    rows = db.execute("""
-        SELECT st.id, st.location_name, st.location_text, st.species_caught,
-               st.was_productive, st.technique, st.gear, st.water_level,
-               st.water_clarity, st.weather_notes, st.notes,
-               s.date, s.date_approx
-        FROM stops st
-        JOIN sessions s ON st.session_id = s.id
-        WHERE st.user_id = ?
-          AND (LOWER(st.location_name) LIKE ?
-               OR LOWER(st.location_text) LIKE ?)
-    """, [user_id, f"%{location_query.lower()}%", f"%{location_query.lower()}%"]).fetchall()
+    """Coach on one place — the angler's history there plus what is recorded.
 
-    if not rows:
-        return f"No logged trips found at '{location_query}'. Log a session there first."
-
-    all_stops = [dict(zip(_LOC_STOP_COLS, r)) for r in rows]
-    productive = [s for s in all_stops if s["was_productive"]]
-    unproductive = [s for s in all_stops if not s["was_productive"]]
-
-    context_parts = [
-        f"LOCATION: {location_query}",
-        f"Total visits: {len(all_stops)} ({len(productive)} productive, "
-        f"{len(unproductive)} blank)",
-        "",
-    ]
-
-    for stop in all_stops:
-        date = stop["date"] or stop["date_approx"] or "undated"
-        caught = json.loads(stop["species_caught"] or "[]")
-        species_str = ", ".join(caught) if caught else "nothing"
-        tech = stop["technique"] or "unrecorded"
-        conditions = []
-        if stop["water_level"]: conditions.append(stop["water_level"] + " water")
-        if stop["water_clarity"]: conditions.append(stop["water_clarity"])
-        if stop["weather_notes"]: conditions.append(stop["weather_notes"])
-        cond_str = ", ".join(conditions) or "unrecorded"
-        context_parts.append(
-            f"  {date}: caught {species_str} | tech={tech} | {cond_str}"
+    The old version refused outright when the angler had never logged a trip
+    at the location. That threw away everything the corpus knows about the
+    water, which is the more useful half of the answer for somewhere they have
+    not been yet.
+    """
+    ctx = describe(db, query=location_query, caller="coach", user_id=user_id)
+    if ctx is None:
+        return (
+            f"I couldn't resolve '{location_query}' to a specific stretch of water. "
+            "Try a named creek or river, or give me coordinates."
         )
-        if stop["notes"]:
-            context_parts.append(f"    {stop['notes'][:150]}")
 
-    context = "\n".join(context_parts)
-    question = specific_question or f"What should I do differently at {location_query}?"
-
-    prompt = f"""You are a personal fishing coach analyzing a user's logged fishing data.
-The user is asking: "{question}"
-
-Their complete logged history at this location:
-{context}
-
-Based ONLY on this data, provide specific coaching. Be honest about what the
-data does and doesn't show. If patterns exist (conditions that correlated with
-success/failure, techniques that worked), highlight them. If the log is too
-sparse for patterns, say so.
-
-Structure: what worked, what didn't, one specific thing to try next visit.
-Keep it to 150-200 words. No generic tips not grounded in this data."""
-
-    client = get_client()
-    resp = client.messages.create(
-        model=HAIKU,
-        max_tokens=350,
-        messages=[{"role": "user", "content": prompt}],
+    layer = user_layer(db, user_id=user_id)
+    question = (
+        specific_question or f"What should I do differently at {location_query}?"
     )
-    return resp.content[0].text.strip()
+
+    prompt = "\n\n".join(
+        [
+            "You are a fishing coach working only from the records below.",
+            f'The angler asked: "{question}"',
+            render_place_context(ctx),
+            render_user_layer(layer),
+            _RULES,
+            "Structure your answer as: what worked here, what didn't, and one "
+            "specific thing to try next visit. If this angler has never fished "
+            "here, say so and work from what is recorded about the water "
+            "instead. 150-200 words.",
+        ]
+    )
+    return _ask(prompt, max_tokens=450)

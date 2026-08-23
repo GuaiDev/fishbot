@@ -119,7 +119,16 @@ def _from_name(db: Database, query: str, radius_km: float, user_id: int) -> Plac
 
     hit = _named_segment(db, pattern)
     if hit:
-        lat, lng, name, seg_id = hit
+        lat, lng, name, seg_id, others = hit
+        note = f"matched OHN watercourse {name}"
+        if others:
+            # Say it rather than let a confident answer stand for the wrong
+            # creek. The reader can correct us with coordinates.
+            note += (
+                f" — {others} other watercourse(s) match this name elsewhere in "
+                f"the province; this is the one nearest you. Give coordinates if "
+                f"you meant a different one."
+            )
         return Place(
             query=query,
             name=name,
@@ -129,7 +138,7 @@ def _from_name(db: Database, query: str, radius_km: float, user_id: int) -> Plac
             radius_km=radius_km,
             jurisdiction=_jurisdiction_at(db, lat, lng),
             resolved_by="name",
-            resolution_note=f"matched OHN watercourse {name}",
+            resolution_note=note,
         )
 
     hit = _named_water_feature(db, pattern)
@@ -174,19 +183,75 @@ def _user_logged_place(
     return float(lat), float(lng), str(name)
 
 
-def _named_segment(db: Database, pattern: str) -> tuple[float, float, str, int] | None:
+def _named_segment(
+    db: Database, pattern: str
+) -> tuple[float, float, str, int, int] | None:
+    """Nearest matching watercourse, plus how many others share the name.
+
+    Ontario has several Sixteen Mile Creeks. Taking the first row the database
+    happened to return sent a query about the Oakville one to a reach near
+    Jordan, 45 km away, and said nothing about having chosen. Same failure
+    class as the hand-drawn FMZ boxes, one notch less dangerous: a confident
+    answer about the wrong water.
+
+    So the match is biased toward the angler's home when there is one, and the
+    count of other matches travels back with it so the caller can say which
+    creek it picked.
+    """
     if "stream_segments" not in db.table_names():
         return None
     rows = list(
         db["stream_segments"].rows_where(
-            "LOWER(name) LIKE ? AND name IS NOT NULL", [pattern], limit=25
+            "LOWER(name) LIKE ? AND name IS NOT NULL", [pattern], limit=500
         )
     )
+
+    candidates: list[tuple[float, float, str, int]] = []
     for row in rows:
         lat, lng = _segment_centroid(row)
         if lat is not None and lng is not None:
-            return lat, lng, str(row["name"]), int(row["ogf_id"])
-    return None
+            candidates.append((lat, lng, str(row["name"]), int(row["ogf_id"])))
+    if not candidates:
+        return None
+
+    distinct_names = {c[2].lower() for c in candidates}
+
+    # An exact name match beats a substring one: "Sixteen Mile Creek" should
+    # not resolve to East Sixteen Mile Creek just because that tributary has a
+    # segment slightly closer to home.
+    wanted = pattern.strip("%").strip()
+    exact = [c for c in candidates if c[2].strip().lower() == wanted]
+    if exact:
+        candidates = exact
+
+    home = _home_point()
+    if home is not None:
+        candidates.sort(key=lambda c: (c[0] - home[0]) ** 2 + (c[1] - home[1]) ** 2)
+
+    # Rough proxy for "there is more than one creek by this name": segments
+    # more than a quarter-degree (~28 km) from the chosen one cannot be the
+    # same watercourse at the scale this app works at.
+    chosen = candidates[0]
+    others = sum(
+        1
+        for c in candidates
+        if abs(c[0] - chosen[0]) > 0.25 or abs(c[1] - chosen[1]) > 0.25
+    )
+    if others == 0 and len(distinct_names) > 1:
+        others = len(distinct_names) - 1
+    return (*chosen, others)
+
+
+def _home_point() -> tuple[float, float] | None:
+    try:
+        from src.storage.profile import load_profile
+
+        home = load_profile().home_location
+    except Exception:  # noqa: BLE001 - no profile is not an error here
+        return None
+    if home is None:
+        return None
+    return float(home.lat), float(home.lng)
 
 
 def _named_water_feature(db: Database, pattern: str) -> tuple[float, float, str] | None:

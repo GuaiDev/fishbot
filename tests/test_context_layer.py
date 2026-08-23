@@ -602,3 +602,78 @@ def test_conditions_assigns_every_field_even_when_the_live_source_fails(db, monk
     assert ctx.conditions.air_temp_c.empty_reason is EmptyReason.LIVE_LOOKUP_FAILED
     assert "try again" in ctx.conditions.air_temp_c.explain()
     assert slices  # module imported for the monkeypatch target
+
+
+# ── bugs the real corpus exposed that synthetic fixtures could not ────────────
+#
+# Both of these were found by running describe() against the full 20k-segment
+# database, not by any test in this file. A small fixture has one creek called
+# Sixteen Mile Creek and one record per species, so neither failure had
+# anywhere to occur.
+
+
+def test_ambiguous_name_resolves_nearest_home_and_says_so(db, monkeypatch):
+    """Ontario has 33 Sixteen Mile Creeks. Picking row one is picking at random."""
+    monkeypatch.setattr(place_mod, "_home_point", lambda: (43.4675, -79.6877))
+
+    _add_segment(db, 1, "Sixteen Mile Creek", 43.0779, -79.4465)  # near Jordan
+    _add_segment(db, 2, "Sixteen Mile Creek", 43.5140, -79.8844)  # near Oakville
+
+    p = place_mod.resolve(db, query="Sixteen Mile Creek")
+    assert p is not None
+    assert p.lat == pytest.approx(43.5140, abs=0.01)
+    assert "other watercourse(s) match this name" in (p.resolution_note or "")
+
+
+def test_exact_name_beats_a_nearer_substring_match(db, monkeypatch):
+    """'Sixteen Mile Creek' must not resolve to East Sixteen Mile Creek."""
+    monkeypatch.setattr(place_mod, "_home_point", lambda: (43.4675, -79.6877))
+
+    _add_segment(db, 1, "East Sixteen Mile Creek", 43.4700, -79.6900)  # closer
+    _add_segment(db, 2, "Sixteen Mile Creek", 43.5140, -79.8844)  # further
+
+    p = place_mod.resolve(db, query="Sixteen Mile Creek")
+    assert p.name == "Sixteen Mile Creek"
+
+
+def test_merged_record_keeps_date_source_and_precision_together(db):
+    """One record's date must not be shown under another record's source.
+
+    A 2025 obscured iNaturalist sighting and a 1979 precise museum specimen of
+    the same species merged into "most recent 2025-10-29 [GBIF, 1979-09-06]" —
+    the recent date wearing the old record's attribution, because precision and
+    recency were being resolved by two independent rules.
+    """
+    from src.models.context import SpeciesRecord
+    from src.services.context.slices import _merge
+
+    found: dict = {}
+    _merge(
+        found,
+        SpeciesRecord(
+            species="Semotilus atromaculatus",
+            most_recent="2025-10-29",
+            is_obscured=True,
+            provenance=Provenance(
+                kind=ProvenanceKind.RECORD, source="iNaturalist", date="2025-10-29"
+            ),
+        ),
+    )
+    _merge(
+        found,
+        SpeciesRecord(
+            species="Semotilus atromaculatus",
+            most_recent="1979-09-06",
+            is_obscured=False,
+            provenance=Provenance(
+                kind=ProvenanceKind.RECORD, source="GBIF/Fish", date="1979-09-06"
+            ),
+        ),
+    )
+
+    rec = found["semotilus atromaculatus"]
+    assert rec.count == 2, "both records still counted"
+    assert rec.most_recent == "2025-10-29"
+    assert rec.provenance.date == "2025-10-29"
+    assert rec.provenance.source == "iNaturalist"
+    assert rec.is_obscured is True, "precision describes the record being shown"

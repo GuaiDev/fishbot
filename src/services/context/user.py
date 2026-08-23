@@ -21,7 +21,15 @@ from datetime import UTC, datetime
 
 from sqlite_utils import Database
 
-from src.models.context import DerivedPattern, UserLayer
+from src.models.context import (
+    DerivedPattern,
+    EmptyReason,
+    Provenance,
+    ProvenanceKind,
+    RecordedInsight,
+    SpeciesHistory,
+    UserLayer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -217,3 +225,137 @@ def _known_gaps(rows: list) -> list[str]:
         if missing / total > 0.5:
             gaps.append(f"{label} unrecorded on {missing}/{total} stops — {consequence}")
     return gaps
+
+
+# -- one species, across every place -------------------------------------------
+
+# How the recorded source of an insight maps onto provenance. `agent_synthesis`
+# and `tactical_rules` are the assistant's own reasoning: legitimate, but they
+# must not render as peers of something drawn from a survey or the user's log.
+_INSIGHT_PROVENANCE: dict[str, ProvenanceKind] = {
+    "agent_synthesis": ProvenanceKind.INFERENCE,
+    "tactical_rules": ProvenanceKind.INFERENCE,
+    "inat_pattern": ProvenanceKind.RECORD,
+    "mnrf_survey": ProvenanceKind.RECORD,
+    "reddit_pattern": ProvenanceKind.WEB,
+    "trip_log": ProvenanceKind.RECORD,
+    "user_correction": ProvenanceKind.RECORD,
+}
+
+_SPECIES_STOP_SQL = """
+    SELECT st.location_name, st.location_text, st.species_caught,
+           st.party_species_caught, st.was_productive, st.technique,
+           st.gear, st.water_level, st.water_clarity, st.weather_notes,
+           st.notes, s.date, s.date_approx
+    FROM stops st JOIN sessions s ON st.session_id = s.id
+    WHERE st.user_id = ?
+"""
+
+_INSIGHT_SQL = """
+    SELECT conclusion, confidence, recommendation, source_type, source_detail,
+           created_at
+    FROM behavioral_insights
+    WHERE LOWER(species) LIKE ? AND is_current = 1 AND user_id = ?
+    ORDER BY confidence DESC, created_at DESC
+"""
+
+
+def build_species_history(
+    db: Database, species: str, user_id: int = 1
+) -> SpeciesHistory:
+    """What this angler has actually done with one species.
+
+    This used to live inline in the coaching service, which assembled its own
+    prompt block from raw rows. Nothing bypasses the context layer, so it lives
+    here — and the insights it returns now carry their source rather than
+    arriving as anonymous sentences.
+    """
+    if "stops" not in db.table_names():
+        return SpeciesHistory(
+            species=species, empty_reason=EmptyReason.USER_NEVER_FISHED_HERE
+        )
+
+    rows = list(db.execute(_SPECIES_STOP_SQL, [user_id]).fetchall())
+    target = species.lower()
+
+    caught, blanks = [], 0
+    for r in rows:
+        (
+            loc_name,
+            loc_text,
+            caught_json,
+            party_json,
+            productive,
+            _tech,
+            _gear,
+            _level,
+            _clarity,
+            _weather,
+            _notes,
+            _date,
+            _approx,
+        ) = r
+        mine = [s.lower() for s in _species_list(caught_json)]
+        party = [s.lower() for s in _species_list(party_json)]
+        if any(target in s for s in mine):
+            caught.append(r)
+        elif not productive and not any(target in s for s in party):
+            blanks += 1
+
+    history = SpeciesHistory(
+        species=species,
+        caught_stops=len(caught),
+        blank_stops=blanks,
+        locations=sorted({(r[0] or r[1] or "unknown") for r in caught}),
+        productive_setups=[_setup_line(r) for r in caught],
+        last_caught=max((r[11] for r in caught if r[11]), default=None),
+        insights=_recorded_insights(db, target, user_id),
+    )
+    if not caught and blanks == 0 and not history.insights:
+        history.empty_reason = EmptyReason.USER_NEVER_FISHED_HERE
+    return history
+
+
+def _setup_line(row) -> str:
+    loc = row[0] or row[1] or "unknown"
+    date = row[11] or row[12] or "undated"
+    tech = row[5] or "technique unrecorded"
+    gear = row[6] or "gear unrecorded"
+    conditions = [
+        c
+        for c in (
+            f"{row[7]} water" if row[7] else None,
+            row[8],
+            row[9],
+        )
+        if c
+    ]
+    cond = ", ".join(conditions) or "conditions unrecorded"
+    return f"{loc} ({date}): {tech}, {gear}, {cond}"
+
+
+def _recorded_insights(db: Database, target: str, user_id: int) -> list[RecordedInsight]:
+    if "behavioral_insights" not in db.table_names():
+        return []
+    try:
+        rows = list(db.execute(_INSIGHT_SQL, [f"%{target}%", user_id]).fetchall())
+    except Exception:  # noqa: BLE001 - a missing column must not kill coaching
+        logger.warning("behavioural insight lookup failed", exc_info=True)
+        return []
+
+    out = []
+    for conclusion, confidence, recommendation, source_type, source_detail, created in rows:
+        kind = _INSIGHT_PROVENANCE.get(source_type or "", ProvenanceKind.INFERENCE)
+        out.append(
+            RecordedInsight(
+                conclusion=conclusion or "",
+                confidence=confidence or "unverified",
+                recommendation=recommendation,
+                provenance=Provenance(
+                    kind=kind,
+                    source=source_detail or source_type or "stored insight",
+                    date=str(created)[:10] if created else None,
+                ),
+            )
+        )
+    return out

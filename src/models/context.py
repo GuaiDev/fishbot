@@ -204,6 +204,14 @@ class RecordsSlice(BaseModel):
     empty_reason: EmptyReason | None = None
     escalated_to_web: bool = False
 
+    piscivore_activity: ContextField = Field(default_factory=ContextField)
+    """Fish-eating birds recorded here — a biological proxy, not a sighting.
+
+    Osprey and mergansers hunt where there are fish to hunt, so their presence
+    is weak positive evidence about the water. It sits in this slice because
+    it is presence evidence, and it is a separate field because it is evidence
+    of a different kind: nobody saw a fish."""
+
 
 class WaterSlice(BaseModel):
     thermal_class: ContextField = Field(default_factory=ContextField)
@@ -308,6 +316,21 @@ class SpeciesContext(BaseModel):
 
     sar_reason: str = "not yet assessed"
     targeting_guidance_suppressed: bool = True
+    """Suppresses the *corpus's own* angling text. True whenever the status is
+    unverified, which is currently every species — the generated advice was
+    never sourced, so none of it is trustworthy."""
+
+    status_known_listed: bool = False
+    """An affirmative listing signal exists — some authority in our data says
+    this species is Special Concern or worse, verified or not.
+
+    Separate from `sar_alert` on purpose. `sar_alert` is true for all 69
+    species in the local file because none of their statuses are verified, so
+    a caller that treats it as "refuse to discuss this fish" refuses to
+    discuss every fish in Ontario. This field is the narrower question — is
+    there anything actually pointing at a listing — and it is what a caller
+    should gate a hard refusal on. The unverified caution still renders
+    either way; only the refusal is narrowed."""
 
 
 # ── explore() ─────────────────────────────────────────────────────────────────
@@ -400,3 +423,45 @@ class UserLayer(BaseModel):
     """Fields missing too often to support a given kind of claim."""
 
     computed_at: str | None = None
+
+
+# -- the user's record with one species ----------------------------------------
+
+
+class RecordedInsight(BaseModel):
+    """A stored behavioural insight, carrying where it came from.
+
+    These were previously handed to the coach as bare sentences with a
+    confidence word attached. An insight the assistant synthesised and one
+    drawn from the user's own logs are not the same kind of claim, and the
+    coach could not tell them apart — so the source travels with the text now.
+    """
+
+    conclusion: str
+    confidence: str = "unverified"
+    provenance: Provenance
+    recommendation: str | None = None
+
+
+class SpeciesHistory(BaseModel):
+    """The user's own record with one species — catches and blanks alike.
+
+    Distinct from `HistorySlice`, which is keyed to a place. This is keyed to a
+    species across every place, which is the question a coach is actually
+    being asked.
+    """
+
+    species: str
+    caught_stops: int = 0
+    blank_stops: int = 0
+    """Stops that produced nothing and where nobody in the party caught this
+    species. Targeting is not always recorded, so this is an upper bound on
+    'tried and failed', not a count of it."""
+
+    locations: list[str] = Field(default_factory=list)
+    productive_setups: list[str] = Field(default_factory=list)
+    """One line per successful stop: where, when, technique, gear, conditions."""
+
+    last_caught: str | None = None
+    insights: list[RecordedInsight] = Field(default_factory=list)
+    empty_reason: EmptyReason | None = None

@@ -31,17 +31,31 @@ from src.services.context import slices
 
 logger = logging.getLogger(__name__)
 
-CallerType = Literal["map_tap", "post_log", "coach", "trip_parse", "full"]
+CallerType = Literal[
+    "map_tap", "chat_place", "post_log", "coach", "trip_parse", "full"
+]
 
 # Which slices each caller gets. A map tap does not need live conditions —
 # that saves both tokens and a live API call, and a tap should feel free.
 _BUNDLES: dict[str, tuple[str, ...]] = {
     "map_tap": ("records", "water", "structure", "access"),
+    # The conversational agent's place bundle: everything static, including the
+    # user's own history, and nothing live. Conditions are a separate tool
+    # because they are the only thing here that cannot be cached, and a bundle
+    # that sometimes fires a live fetch is a bundle nobody can cache.
+    "chat_place": ("records", "water", "structure", "access", "history"),
     "post_log": ("records", "conditions", "history"),
     "coach": ("records", "history", "water", "conditions"),
     "trip_parse": ("records", "history"),
     "full": ("records", "water", "structure", "access", "conditions", "history"),
 }
+
+# Which callers may spend a live web search when the corpus comes back empty.
+# Escalation costs money and roughly two seconds, so it is opt-in by caller
+# rather than by question: a map tap fires on every pan and must stay free,
+# while someone who asked a question is owed the second rung before we tell
+# them we have nothing.
+_ESCALATING_CALLERS: frozenset[str] = frozenset({"coach", "full"})
 
 
 def describe(
@@ -54,6 +68,7 @@ def describe(
     caller: CallerType = "full",
     user_id: int = 1,
     species_filter: str | None = None,
+    escalate: bool | None = None,
 ) -> PlaceContext | None:
     """Everything known about one stretch of water, bundled by caller type.
 
@@ -77,8 +92,13 @@ def describe(
     ctx = PlaceContext(place=resolved, bundle=caller)
 
     if "records" in wanted:
+        may_escalate = caller in _ESCALATING_CALLERS if escalate is None else escalate
         ctx.records = slices.build_records(
-            db, resolved, species_filter=species_filter, user_id=user_id
+            db,
+            resolved,
+            species_filter=species_filter,
+            user_id=user_id,
+            escalate=may_escalate,
         )
     if "water" in wanted:
         ctx.water = slices.build_water(db, resolved)
@@ -223,6 +243,13 @@ def user_layer(db: Database, user_id: int = 1):
     return build_user_layer(db, user_id=user_id)
 
 
+def species_history(db: Database, species: str, user_id: int = 1):
+    """One angler's own record with one species — catches, blanks and insights."""
+    from src.services.context.user import build_species_history
+
+    return build_species_history(db, species, user_id=user_id)
+
+
 __all__ = [
     "CallerType",
     "EmptyReason",
@@ -233,5 +260,6 @@ __all__ = [
     "describe",
     "describe_species",
     "explore",
+    "species_history",
     "user_layer",
 ]

@@ -44,8 +44,14 @@ def build_records(
     species_filter: str | None = None,
     days_back: int = 3650,
     user_id: int = 1,
+    escalate: bool = False,
 ) -> RecordsSlice:
-    """Species recorded at this place, from every grounded source we hold."""
+    """Species recorded at this place, from every grounded source we hold.
+
+    The only slice that escalates. `escalate` is off by default and switched on
+    per caller bundle: a map tap must not fire a paid live search on every pan
+    of the map, while a coaching question is worth one.
+    """
     found: dict[str, SpeciesRecord] = {}
 
     for rec in _inat_records(db, place, species_filter, days_back):
@@ -56,16 +62,96 @@ def build_records(
         _merge(found, rec)
 
     if not found:
-        return RecordsSlice(
-            radius_km=place.radius_km,
-            empty_reason=_no_records_reason(db),
-        )
+        local_reason = _no_records_reason(db)
+        if escalate:
+            slice_ = _escalate(place, species_filter, local_reason)
+        else:
+            slice_ = RecordsSlice(radius_km=place.radius_km, empty_reason=local_reason)
+        slice_.piscivore_activity = _piscivore_field(db, place)
+        return slice_
 
     ordered = sorted(found.values(), key=lambda r: (-r.count, r.species))
     return RecordsSlice(
         species=ordered,
         total_count=sum(r.count for r in ordered),
         radius_km=place.radius_km,
+        piscivore_activity=_piscivore_field(db, place),
+    )
+
+
+def _piscivore_field(db: Database, place: Place) -> ContextField:
+    """Fish-eating birds as a weak presence proxy.
+
+    Reported with the confidence word the service derives and nothing more —
+    a heron count is not a fish count, and the "so what" is the only part of
+    it an angler can use.
+    """
+    if "bird_observations" not in db.table_names():
+        return ContextField.empty(EmptyReason.SOURCE_DOES_NOT_COVER_AREA)
+    try:
+        from src.services.ebird import get_piscivore_activity_for_agent
+
+        raw = json.loads(
+            get_piscivore_activity_for_agent(
+                lat=place.lat, lng=place.lng, radius_km=place.radius_km
+            )
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("piscivore slice failed", exc_info=True)
+        return ContextField.empty(EmptyReason.LIVE_LOOKUP_FAILED)
+
+    count = int(raw.get("combined_count") or 0)
+    if not count:
+        # Bird records are unusually prone to being read as absence, so the
+        # reason has to say which kind of empty this is: eBird coverage tracks
+        # birders, not birds.
+        return ContextField.empty(EmptyReason.NO_RECORDS_IN_RADIUS)
+
+    confidence = raw.get("fish_presence_confidence") or "unknown"
+    sources = ", ".join(raw.get("sources") or []) or "eBird"
+    return ContextField.recorded(
+        f"{count} piscivore bird record(s), fish-presence signal: {confidence}",
+        source=sources,
+        meaning=(
+            "birds that eat fish hunt where fish are — weak positive evidence, "
+            "and low counts track observer effort rather than fish absence"
+        ),
+    )
+
+
+def _escalate(
+    place: Place, species_filter: str | None, local_reason: EmptyReason
+) -> RecordsSlice:
+    """Second rung: nothing local, so try the web before giving an honest empty.
+
+    The local reason is kept when the search also comes up dry and the local
+    gap is the more informative of the two — "we don't cover this area" tells
+    the reader something a bare "the web had nothing" does not.
+    """
+    from src.services.context.escalation import escalate_records
+
+    records, web_reason = escalate_records(
+        place_name=place.name or place.query,
+        lat=place.lat,
+        lng=place.lng,
+        species_filter=species_filter,
+    )
+    if records:
+        return RecordsSlice(
+            species=records,
+            total_count=len(records),
+            radius_km=place.radius_km,
+            escalated_to_web=True,
+        )
+
+    reason = web_reason or local_reason
+    if (
+        reason is EmptyReason.WEB_SEARCH_EMPTY
+        and local_reason is EmptyReason.SOURCE_DOES_NOT_COVER_AREA
+    ):
+        reason = local_reason
+    return RecordsSlice(
+        radius_km=place.radius_km, empty_reason=reason, escalated_to_web=True
     )
 
 
@@ -84,14 +170,20 @@ def _merge(found: dict[str, SpeciesRecord], rec: SpeciesRecord) -> None:
         found[key] = rec
         return
     existing.count += rec.count
+
+    # Date, source and obscured flag are one coherent triple: they all describe
+    # the single most recent record we hold for this species here. Moving them
+    # independently produced lines like "most recent 2025-10-29 [GBIF, 1979]" —
+    # a 2025 iNaturalist sighting wearing a 1979 museum specimen's attribution,
+    # because a separate rule swapped in the precise record's provenance while
+    # leaving the recent record's date in place. Two dates for one record, and
+    # nothing to tell the reader which is real.
     if rec.most_recent and (
         existing.most_recent is None or rec.most_recent > existing.most_recent
     ):
         existing.most_recent = rec.most_recent
-    # A precise record beats an obscured one for the same species.
-    if existing.is_obscured and not rec.is_obscured:
-        existing.is_obscured = False
         existing.provenance = rec.provenance
+        existing.is_obscured = rec.is_obscured
 
 
 def _inat_records(
