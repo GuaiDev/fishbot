@@ -19,6 +19,48 @@ app = typer.Typer(name="fishbot", help="Personal fishing exploration bot.")
 console = Console()
 
 
+@app.callback()
+def _cli(
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show INFO-level detail from adapters."
+    ),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Errors only."
+    ),
+) -> None:
+    """Configure logging before any command runs.
+
+    Nothing here ever called logging.basicConfig, so the root logger kept its
+    default handler-less state and every logger.warning/error in the adapters
+    went nowhere. Three separate silent failures this session traced back to
+    it: PWQMN matching zero resources, the FMZ layer parsing every zone to
+    None, and the diagnostics added to catch those. Warnings are visible by
+    default now — a source that fails should say so without being asked.
+    """
+    import logging
+    import os
+
+    from rich.logging import RichHandler
+
+    if quiet:
+        level = logging.ERROR
+    elif verbose:
+        level = logging.INFO
+    else:
+        # LOG_LEVEL has been in .env.example all along; it was simply never read.
+        level = getattr(logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING)
+
+    logging.basicConfig(
+        level=level,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(console=console, rich_tracebacks=True, show_path=False)],
+        force=True,  # replace anything a library configured on import
+    )
+    # httpx logs every request at INFO; too noisy even in verbose mode.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
 @app.command()
 def run() -> None:
     """Start the fishing bot chat."""
@@ -179,6 +221,89 @@ def profile() -> None:
     console.print("[green]Profile saved.[/green]")
 
 
+
+# ── ingest source isolation ───────────────────────────────────────────────────
+
+
+class _SourceResult:
+    """Outcome of one ingest source. Failure is data, not an exception."""
+
+    __slots__ = ("name", "ok", "detail", "error")
+
+    def __init__(self, name: str, ok: bool, detail: str = "", error: str = "") -> None:
+        self.name = name
+        self.ok = ok
+        self.detail = detail
+        self.error = error
+
+
+def _run_source(results: list, name: str, announce: str, fn, *args, **kwargs) -> object:
+    """Run one ingest source in isolation.
+
+    A single flaky source used to abort the whole run: a GBIF timeout took out
+    thirteen unrelated sources, including the FMZ boundary layer the run was
+    started for. Each source now fails on its own and the rest continue.
+
+    Returns whatever the source returned, or None if it failed — callers must
+    tolerate None rather than assume success.
+    """
+    import logging
+
+    console.print(f"[dim]{announce}[/dim]")
+    try:
+        value = fn(*args, **kwargs)
+    except KeyboardInterrupt:
+        raise  # never swallow the user's Ctrl-C
+    except Exception as exc:  # noqa: BLE001 - isolation is the whole point
+        logging.getLogger(__name__).error(
+            "%s failed: %s: %s", name, type(exc).__name__, exc, exc_info=True
+        )
+        console.print(f"[red]  {name} FAILED — {type(exc).__name__}: {exc}[/red]")
+        console.print("[dim]  continuing with the remaining sources…[/dim]")
+        results.append(_SourceResult(name, False, error=f"{type(exc).__name__}: {exc}"))
+        return None
+
+    results.append(_SourceResult(name, True, detail=_describe_result(value)))
+    return value
+
+
+def _describe_result(value: object) -> str:
+    """Short human summary of whatever a source returned."""
+    if value is None:
+        return "done"
+    if isinstance(value, tuple):
+        return ", ".join(str(v) for v in value)
+    return str(value)
+
+
+def _print_ingest_summary(results: list) -> None:
+    """Show what landed and what did not. Never hide a failure in a wall of green."""
+    table = Table(title="Ingest summary")
+    table.add_column("Source", overflow="fold")
+    table.add_column("Result")
+    table.add_column("Detail", overflow="fold")
+    for r in results:
+        table.add_row(
+            r.name,
+            "[green]ok[/green]" if r.ok else "[red]FAILED[/red]",
+            r.detail if r.ok else r.error,
+        )
+    console.print(table)
+
+    failed = [r for r in results if not r.ok]
+    if failed:
+        console.print(
+            f"[red]{len(failed)} of {len(results)} sources failed: "
+            f"{', '.join(r.name for r in failed)}[/red]"
+        )
+        console.print(
+            "[dim]Re-run to retry them; sources that succeeded are cached and will "
+            "skip quickly.[/dim]"
+        )
+    else:
+        console.print(f"[green]All {len(results)} sources succeeded.[/green]")
+
+
 @app.command()
 def ingest(
     radius_km: float = typer.Option(300.0, "--radius", help="Search radius in km"),
@@ -208,140 +333,120 @@ def ingest(
         )
         raise typer.Exit(1)
 
-    console.print(
-        f"[dim]Fetching iNaturalist observations within {radius_km}km of {center_name}, "
-        f"last {days_back} days…[/dim]"
-    )
-    inat_count = inat_fetch_and_store(center_lat, center_lng, radius_km=radius_km, days_back=days_back)
-
-    console.print(
-        f"[dim]Fetching GBIF institutional records (museum specimens, surveys) "
-        f"within {radius_km}km of {center_name}…[/dim]"
-    )
-    gbif_count = gbif_fetch_and_store(center_lat, center_lng, radius_km=radius_km)
-
-    console.print(
-        f"[dim]Fetching WSC stream gauge readings within {radius_km:.0f}km of {center_name}…[/dim]"
-    )
-    wsc_count = wsc_fetch_and_store(center_lat, center_lng, radius_km=radius_km)
-
-    console.print(
-        f"[dim]Fetching OSM water features (50km) and access points (25km) near {center_name}…[/dim]"
-    )
-    osm_water_count, osm_access_count = osm_fetch_and_store(center_lat, center_lng)
-
-    console.print("[dim]Downloading MNRF fish stocking records (30-day cache)…[/dim]")
-    from src.services.stocking import ingest_stocking_data
-
-    stocking_count = ingest_stocking_data()
-
-    console.print("[dim]Loading Ontario species range database…[/dim]")
-    from src.services.species_ranges import load_and_store as species_load_and_store
-
-    species_count = species_load_and_store()
-
-    console.print("[dim]Fetching Reddit fishing community posts (r/OntarioFishing + others)…[/dim]")
-    from src.services.reddit import fetch_and_store as reddit_fetch_and_store
-
-    reddit_count = reddit_fetch_and_store()
-
-    console.print(
-        f"[dim]Fetching Ontario Hydro Network stream segments and barriers "
-        f"({radius_km:.0f}km bbox)…[/dim]"
-    )
-    from src.services.hydrology import ingest_hydro_network
-
-    ohn_seg_count, ohn_barrier_count = ingest_hydro_network(center_lat, center_lng, radius_km)
-
-    console.print(
-        "[dim]Downloading and parsing MNRF Fishing Regulations Summary (annual PDF)…[/dim]"
-    )  # noqa: E501
-    from src.services.regulations import ingest_fmz_boundaries, ingest_regulations
-
-    reg_count = ingest_regulations()
-    console.print("[dim]Downloading Ontario FMZ boundary polygons…[/dim]")
-    fmz_count = ingest_fmz_boundaries()
-    console.print(f"[dim]FMZ boundaries: {fmz_count} zones[/dim]")
-
-    console.print("[dim]Downloading PWQMN water quality field data (2021–present)…[/dim]")
-    from src.services.water_quality import ingest_water_quality_data
-
-    wq_count = ingest_water_quality_data()
-
-    console.print("[dim]Downloading CABIN benthic macroinvertebrate data (Ontario)…[/dim]")
-    from src.services.benthic import ingest_benthic_data
-
-    benthic_count = ingest_benthic_data()
-
-    console.print(
-        f"[dim]Fetching Ontario surficial geology tiles (MRD 128) within "
-        f"{radius_km:.0f}km of {center_name}…[/dim]"
-    )
-    from src.services.geology import ingest_geology_data
-
-    geology_count = ingest_geology_data(center_lat, center_lng, radius_km)
-
-    console.print(
-        f"[dim]Fetching eBird piscivore observations within {radius_km:.0f}km of {center_name}…[/dim]"
-    )
-    from src.services.ebird import fetch_and_store as ebird_fetch_and_store
-
-    ebird_count = ebird_fetch_and_store(center_lat, center_lng, radius_km)
-
-    console.print("[dim]Seeding waterfowl dispersal behavioral insights…[/dim]")
-    from src.services.insights import seed_dispersal_insights
-
-    seed_dispersal_insights()
-
-    console.print(f"[dim]Fetching Ontario Provincial Parks within 200km of {center_name}…[/dim]")
     import importlib as _importlib
 
-    _parks_mod = _importlib.import_module("src.ingest.global.provincial_parks")
-    parks_count = _parks_mod.fetch_and_store(get_db(), center_lat, center_lng, radius_km=200.0)
-
-    console.print(
-        f"[dim]Fetching Conservation Authority boundaries within 200km of {center_name}…[/dim]"
-    )
-    _ca_mod = _importlib.import_module("src.ingest.global.ca_boundaries")
-    ca_count = _ca_mod.fetch_and_store(get_db(), center_lat, center_lng, radius_km=200.0)
-
-    console.print(
-        f"[dim]Fetching Ontario Crown Land boundaries within 100km of {center_name}…[/dim]"
-    )
-    _crown_mod = _importlib.import_module("src.ingest.global.crown_land")
-    crown_count = _crown_mod.fetch_and_store(get_db(), center_lat, center_lng, radius_km=100.0)
-
-    from src.storage.database import get_db as _get_db
+    from src.services.benthic import ingest_benthic_data
+    from src.services.ebird import fetch_and_store as ebird_fetch_and_store
+    from src.services.geology import ingest_geology_data
+    from src.services.hydrology import ingest_hydro_network
+    from src.services.insights import seed_dispersal_insights
+    from src.services.reddit import fetch_and_store as reddit_fetch_and_store
+    from src.services.regulations import ingest_fmz_boundaries, ingest_regulations
+    from src.services.species_ranges import load_and_store as species_load_and_store
+    from src.services.stocking import ingest_stocking_data
+    from src.services.water_quality import ingest_water_quality_data
     from src.storage.stream_temperature import is_data_loaded as _temp_loaded
 
-    _db = _get_db()
-    if _temp_loaded(_db):
-        temp_count = _db.execute("SELECT COUNT(*) FROM stream_temperature_summaries").fetchone()[0]
-        temp_line = f"| Stream temp: {temp_count} stations "
-    else:
-        console.print(
-            "[dim]Stream temperature: not loaded — run make ingest-hydat once to enable[/dim]"
-        )
-        temp_line = ""
+    _parks = _importlib.import_module("src.ingest.global.provincial_parks")
+    _cas = _importlib.import_module("src.ingest.global.ca_boundaries")
+    _crown = _importlib.import_module("src.ingest.global.crown_land")
 
-    console.print(
-        f"[green]iNaturalist: {inat_count} observations | GBIF: {gbif_count} records "
-        f"| WSC gauges: {wsc_count} stations updated "
-        f"| OSM: {osm_water_count} water features, {osm_access_count} access points "
-        f"| MNRF stocking: {stocking_count} records "
-        f"| Species: {species_count} ranges loaded "
-        f"| Reddit: {reddit_count} posts indexed "
-        f"| OHN: {ohn_seg_count} stream segments, {ohn_barrier_count} barriers "
-        f"| Regulations: {reg_count} FMZ zones "
-        f"| Water quality: {wq_count} readings "
-        f"| Benthic samples: {benthic_count} "
-        f"| Geology units: {geology_count} "
-        f"| eBird: {ebird_count} piscivore observations "
-        f"| Provincial parks: {parks_count} "
-        f"| CA boundaries: {ca_count} "
-        f"| Crown land: {crown_count} parcels "
-        f"{temp_line}[/green]"
+    results: list = []
+    r = results  # every source below is isolated; one failure does not stop the rest
+
+    _run_source(
+        r, "iNaturalist",
+        f"Fetching iNaturalist observations within {radius_km}km of {center_name}, "
+        f"last {days_back} days…",
+        inat_fetch_and_store, center_lat, center_lng,
+        radius_km=radius_km, days_back=days_back,
     )
+    _run_source(
+        r, "GBIF",
+        f"Fetching GBIF institutional records within {radius_km}km of {center_name}…",
+        gbif_fetch_and_store, center_lat, center_lng, radius_km=radius_km,
+    )
+    _run_source(
+        r, "WSC gauges",
+        f"Fetching WSC stream gauge readings within {radius_km:.0f}km of {center_name}…",
+        wsc_fetch_and_store, center_lat, center_lng, radius_km=radius_km,
+    )
+    _run_source(
+        r, "OpenStreetMap",
+        f"Fetching OSM water features (50km) and access points (25km) near {center_name}…",
+        osm_fetch_and_store, center_lat, center_lng,
+    )
+    _run_source(
+        r, "MNRF stocking", "Downloading MNRF fish stocking records (30-day cache)…",
+        ingest_stocking_data,
+    )
+    _run_source(
+        r, "Species ranges", "Loading Ontario species range database…",
+        species_load_and_store,
+    )
+    _run_source(
+        r, "Reddit", "Fetching Reddit fishing community posts…",
+        reddit_fetch_and_store,
+    )
+    _run_source(
+        r, "Ontario Hydro Network",
+        f"Fetching OHN stream segments and barriers ({radius_km:.0f}km bbox)…",
+        ingest_hydro_network, center_lat, center_lng, radius_km,
+    )
+    _run_source(
+        r, "Regulations",
+        "Downloading and parsing the MNRF Fishing Regulations Summary…",
+        ingest_regulations,
+    )
+    _run_source(
+        r, "FMZ boundaries", "Downloading Ontario FMZ boundary polygons…",
+        ingest_fmz_boundaries,
+    )
+    _run_source(
+        r, "PWQMN water quality",
+        "Downloading PWQMN water quality field data (2021–present)…",
+        ingest_water_quality_data,
+    )
+    _run_source(
+        r, "CABIN benthic", "Downloading CABIN benthic macroinvertebrate data…",
+        ingest_benthic_data,
+    )
+    _run_source(
+        r, "Geology",
+        f"Fetching Ontario surficial geology within {radius_km:.0f}km of {center_name}…",
+        ingest_geology_data, center_lat, center_lng, radius_km,
+    )
+    _run_source(
+        r, "eBird",
+        f"Fetching eBird piscivore observations within {radius_km:.0f}km of {center_name}…",
+        ebird_fetch_and_store, center_lat, center_lng, radius_km,
+    )
+    _run_source(
+        r, "Dispersal insights", "Seeding waterfowl dispersal behavioral insights…",
+        seed_dispersal_insights,
+    )
+    _run_source(
+        r, "Provincial parks",
+        f"Fetching Ontario Provincial Parks within 200km of {center_name}…",
+        _parks.fetch_and_store, get_db(), center_lat, center_lng, radius_km=200.0,
+    )
+    _run_source(
+        r, "CA boundaries",
+        f"Fetching Conservation Authority boundaries within 200km of {center_name}…",
+        _cas.fetch_and_store, get_db(), center_lat, center_lng, radius_km=200.0,
+    )
+    _run_source(
+        r, "Crown land",
+        f"Fetching Ontario Crown Land boundaries within 100km of {center_name}…",
+        _crown.fetch_and_store, get_db(), center_lat, center_lng, radius_km=100.0,
+    )
+
+    if not _temp_loaded(get_db()):
+        console.print(
+            "[dim]Stream temperature: not loaded — run `make ingest-hydat` once to enable[/dim]"
+        )
+
+    _print_ingest_summary(results)
 
     # Check if SDM retraining is warranted based on new trip log data
     _check_sdm_retrain_needed(get_db())
