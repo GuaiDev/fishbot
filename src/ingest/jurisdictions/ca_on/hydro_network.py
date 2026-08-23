@@ -341,13 +341,37 @@ def _build_snap_index(
 
     geoms = []
     ogf_ids: list[int] = []
+    unparseable: list[int] = []
     for seg in segments:
         try:
             geoms.append(wkt_loads(seg.geom_wkt))
             ogf_ids.append(seg.ogf_id)
-        except Exception:
+        except Exception:  # noqa: BLE001 - one bad geometry must not kill the index
+            unparseable.append(seg.ogf_id)
             continue
+
+    if unparseable:
+        # A segment missing from this index is invisible to every snap that
+        # follows: barriers and observations near it silently attach to a
+        # different reach, or to nothing. That renders downstream as "no
+        # barriers here" — a claim about the water, from a parse failure.
+        share = len(unparseable) / len(segments)
+        log = logger.warning if share >= 0.01 else logger.info
+        log(
+            "Snap index: %d of %d segment geometries failed to parse (%.2f%%) "
+            "and are excluded from snapping; first few OGF_IDs: %s",
+            len(unparseable),
+            len(segments),
+            share * 100,
+            unparseable[:5],
+        )
+
     if not geoms:
+        logger.warning(
+            "Snap index: all %d segment geometries failed to parse — nothing "
+            "will snap, and every downstream lookup will read as 'nothing here'",
+            len(segments),
+        )
         return None
     return STRtree(geoms), ogf_ids
 

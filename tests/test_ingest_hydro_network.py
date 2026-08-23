@@ -315,3 +315,68 @@ def test_cache_miss_writes_file(cache_dir):
 
     cache_files = list(cache_dir.glob("*.json"))
     assert len(cache_files) == 1
+
+
+# --- A segment missing from the snap index is invisible downstream ---
+#
+# _build_snap_index used to `continue` past unparseable geometries silently.
+# A segment absent from the index is invisible to every snap that follows, so
+# barriers and observations near it attach to a different reach or to nothing.
+# That renders in describe() as "no barriers here" — a claim about the water,
+# produced by a parse failure.
+
+
+def _segment(ogf_id: int, wkt: str):
+    from src.models.hydrology import StreamSegment
+
+    return StreamSegment(
+        ogf_id=ogf_id,
+        watercourse_type="Stream",
+        flow_verified=True,
+        permanency="Permanent",
+        length_m=100.0,
+        geom_wkt=wkt,
+        start_node="-79.70000,43.40000",
+        end_node="-79.70100,43.40100",
+    )
+
+
+_GOOD = "LINESTRING(-79.7 43.4, -79.701 43.401)"
+_BAD = "NOT WKT AT ALL"
+
+
+def test_all_geometries_unparseable_is_loud_not_silent(caplog):
+    from src.ingest.jurisdictions.ca_on.hydro_network import _build_snap_index
+
+    with caplog.at_level("WARNING"):
+        index = _build_snap_index([_segment(1, _BAD), _segment(2, _BAD)])
+
+    assert index is None
+    warnings = " ".join(r.getMessage() for r in caplog.records)
+    assert "all 2 segment geometries failed to parse" in warnings
+    assert "read as 'nothing here'" in warnings
+
+
+def test_a_material_share_of_bad_geometries_warns(caplog):
+    from src.ingest.jurisdictions.ca_on.hydro_network import _build_snap_index
+
+    segments = [_segment(i, _GOOD) for i in range(50)] + [_segment(99, _BAD)]
+    with caplog.at_level("WARNING"):
+        index = _build_snap_index(segments)
+
+    assert index is not None
+    _tree, ogf_ids = index
+    assert 99 not in ogf_ids, "the bad geometry is genuinely excluded"
+    warnings = " ".join(r.getMessage() for r in caplog.records)
+    assert "1 of 51 segment geometries failed to parse" in warnings
+    assert "[99]" in warnings
+
+
+def test_a_clean_index_does_not_warn(caplog):
+    from src.ingest.jurisdictions.ca_on.hydro_network import _build_snap_index
+
+    with caplog.at_level("WARNING"):
+        index = _build_snap_index([_segment(1, _GOOD), _segment(2, _GOOD)])
+
+    assert index is not None
+    assert not [r for r in caplog.records if r.levelname == "WARNING"]
