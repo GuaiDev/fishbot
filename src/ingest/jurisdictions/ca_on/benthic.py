@@ -213,6 +213,9 @@ def load_study(path: Path) -> tuple[dict[str, dict], dict[str, str]]:
     study_meta: dict[str, dict] = {}
     visit_jurisdictions: dict[str, str] = {}
     enc = _detect_encoding(path)
+    rows_seen = 0
+    skipped_no_visit_id = 0
+    skipped_no_year = 0
     with path.open(newline="", encoding=enc) as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
@@ -220,9 +223,11 @@ def load_study(path: Path) -> tuple[dict[str, dict], dict[str, str]]:
             return study_meta, visit_jurisdictions
         norm = {raw: _normalize_col(raw) for raw in reader.fieldnames}
         for row in reader:
+            rows_seen += 1
             r = {norm[k]: v.strip() for k, v in row.items() if k}
             visit_id = r.get("SiteVisitID", "").strip()
             if not visit_id:
+                skipped_no_visit_id += 1
                 continue
             province = r.get("Province", "").strip().upper()
             jur = _PROVINCE_TO_JURISDICTION.get(province)
@@ -230,6 +235,7 @@ def load_study(path: Path) -> tuple[dict[str, dict], dict[str, str]]:
                 visit_jurisdictions[visit_id] = jur
             year = _parse_int(r.get("Year", ""))
             if year is None:
+                skipped_no_year += 1
                 continue
             study_meta[visit_id] = {
                 "site_code": r.get("Site", "").strip() or visit_id,
@@ -246,12 +252,50 @@ def load_study(path: Path) -> tuple[dict[str, dict], dict[str, str]]:
     for jur in visit_jurisdictions.values():
         by_jur[jur] = by_jur.get(jur, 0) + 1
     logger.info(
-        "Study file: %d total visits, %d Canadian visits by jurisdiction: %s",
+        "Study file: %d row(s) read, %d visits kept, %d Canadian visits "
+        "by jurisdiction: %s",
+        rows_seen,
         len(study_meta),
         len(visit_jurisdictions),
         by_jur,
     )
+    _warn_on_skips(
+        path,
+        rows_seen,
+        {"no SiteVisitID": skipped_no_visit_id, "unparseable Year": skipped_no_year},
+    )
     return study_meta, visit_jurisdictions
+
+
+# A parse that drops this share of its input is not a data quality quirk, it is
+# a column that moved. Below the threshold the counts stay at INFO; at or above
+# it they are a warning, because the alternative is a total parse failure
+# reporting a clean run.
+_SKIP_WARN_FRACTION = 0.10
+
+
+def _warn_on_skips(path: Path, rows_seen: int, skips: dict[str, int]) -> None:
+    """Log why rows were dropped, loudly when the share is material.
+
+    Every skip path here used to be a bare `continue`. A CABIN column rename
+    would have dropped every row and returned an empty dict, which the caller
+    reports as "0 samples ingested" — indistinguishable from a file that
+    genuinely held nothing for Ontario.
+    """
+    total_skipped = sum(skips.values())
+    if not total_skipped:
+        return
+    detail = ", ".join(f"{n} {label}" for label, n in skips.items() if n)
+    share = total_skipped / rows_seen if rows_seen else 1.0
+    log = logger.warning if share >= _SKIP_WARN_FRACTION else logger.info
+    log(
+        "CABIN %s: skipped %d of %d row(s) (%.1f%%) — %s",
+        path.name,
+        total_skipped,
+        rows_seen,
+        share * 100,
+        detail,
+    )
 
 
 def parse_benthic(path: Path, visit_jurisdictions: dict[str, str]) -> dict[str, dict]:
@@ -269,6 +313,11 @@ def parse_benthic(path: Path, visit_jurisdictions: dict[str, str]) -> dict[str, 
     agg: dict[str, dict] = {}
     enc = _detect_encoding(path)
     rows_processed = 0
+    rows_seen = 0
+    skipped_unknown_visit = 0
+    skipped_no_count = 0
+    skipped_bad_count = 0
+    skipped_nonpositive = 0
     with path.open(newline="", encoding=enc) as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
@@ -276,18 +325,23 @@ def parse_benthic(path: Path, visit_jurisdictions: dict[str, str]) -> dict[str, 
             return agg
         norm = {raw: _normalize_col(raw) for raw in reader.fieldnames}
         for raw_row in reader:
+            rows_seen += 1
             r = {norm[k]: v.strip() for k, v in raw_row.items() if k and v is not None}
             visit_id = r.get("SiteVisitID", "").strip()
             if visit_id not in visit_jurisdictions:
+                skipped_unknown_visit += 1
                 continue
             count_str = r.get("Count", "").strip()
             if not count_str:
+                skipped_no_count += 1
                 continue
             try:
                 count = float(count_str)
             except ValueError:
+                skipped_bad_count += 1
                 continue
             if count <= 0:
+                skipped_nonpositive += 1
                 continue
 
             order = r.get("Order", "").strip()
@@ -312,10 +366,37 @@ def parse_benthic(path: Path, visit_jurisdictions: dict[str, str]) -> dict[str, 
             rows_processed += 1
 
     logger.info(
-        "Benthic file: %d Canadian rows processed → %d site visits aggregated",
+        "Benthic file: %d row(s) read, %d Canadian rows processed → "
+        "%d site visits aggregated",
+        rows_seen,
         rows_processed,
         len(agg),
     )
+    # Rows for other provinces are the expected majority of this national file,
+    # so they are reported separately from the parse failures rather than
+    # inflating the skip share into a permanent false alarm.
+    if skipped_unknown_visit:
+        logger.info(
+            "CABIN %s: %d row(s) belong to visits outside the loaded study set",
+            path.name,
+            skipped_unknown_visit,
+        )
+    _warn_on_skips(
+        path,
+        rows_seen - skipped_unknown_visit,
+        {
+            "blank Count": skipped_no_count,
+            "unparseable Count": skipped_bad_count,
+            "Count <= 0": skipped_nonpositive,
+        },
+    )
+    if rows_seen and not rows_processed:
+        logger.warning(
+            "CABIN %s: read %d row(s) and aggregated none — the SiteVisitID or "
+            "Count column has probably moved",
+            path.name,
+            rows_seen,
+        )
     return agg
 
 

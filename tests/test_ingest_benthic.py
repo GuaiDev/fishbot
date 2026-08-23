@@ -306,3 +306,80 @@ def test_benthic_sample_optional_fields_default_none():
     assert s.stream_order is None
     assert s.local_basin is None
     assert s.sampled_julian_day is None
+
+
+# --- A total parse failure must not report a clean run ---
+#
+# Every skip path in this adapter was a bare `continue`. A CABIN column rename
+# would drop every row and return an empty dict, which the caller reports as
+# "0 samples ingested" — indistinguishable from a file holding nothing for
+# Ontario. That is the PWQMN failure in a different adapter.
+
+
+def _csv(tmp_path, name, header, *rows):
+    path = tmp_path / name
+    path.write_text("\n".join([header, *rows]) + "\n", encoding="utf-8")
+    return path
+
+
+def test_renamed_visit_column_warns_instead_of_reporting_zero(tmp_path, caplog):
+    path = _csv(
+        tmp_path,
+        "study.csv",
+        "VisitIdentifier,Province,Year,Site,Latitude,Longitude",
+        "SV001,ON,2019,S1,43.4,-79.7",
+        "SV002,ON,2020,S2,43.5,-79.8",
+    )
+    with caplog.at_level("WARNING"):
+        study_meta, _ = load_study(path)
+
+    assert study_meta == {}
+    warnings = " ".join(r.getMessage() for r in caplog.records)
+    assert "skipped 2 of 2" in warnings
+    assert "no SiteVisitID" in warnings
+
+
+def test_benthic_count_column_rename_is_loud(tmp_path, caplog):
+    path = _csv(
+        tmp_path,
+        "benthic.csv",
+        "SiteVisitID,Order,Family,Abundance",
+        "SV001,Ephemeroptera,Baetidae,12",
+        "SV001,Diptera,Chironomidae,30",
+    )
+    with caplog.at_level("WARNING"):
+        agg = parse_benthic(path, {"SV001": "CA-ON"})
+
+    assert agg == {}
+    warnings = " ".join(r.getMessage() for r in caplog.records)
+    assert "aggregated none" in warnings
+
+
+def test_rows_for_other_provinces_are_not_counted_as_parse_failures(tmp_path, caplog):
+    """The national file is mostly other provinces. That is not a failure."""
+    path = _csv(
+        tmp_path,
+        "benthic.csv",
+        "SiteVisitID,Order,Family,Count",
+        "SV001,Ephemeroptera,Baetidae,12",
+        "SV999,Diptera,Chironomidae,30",
+    )
+    with caplog.at_level("WARNING"):
+        agg = parse_benthic(path, {"SV001": "CA-ON"})
+
+    assert set(agg) == {"SV001"}
+    assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+
+def test_a_healthy_file_does_not_warn(tmp_path, caplog):
+    path = _csv(
+        tmp_path,
+        "study.csv",
+        "SiteVisitID,Province,Year,Site,Latitude,Longitude",
+        "SV001,ON,2019,S1,43.4,-79.7",
+    )
+    with caplog.at_level("WARNING"):
+        study_meta, _ = load_study(path)
+
+    assert set(study_meta) == {"SV001"}
+    assert not [r for r in caplog.records if r.levelname == "WARNING"]
