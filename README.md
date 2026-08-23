@@ -22,7 +22,7 @@ This project tested the alternative honestly. A species distribution model was b
 
 **You can check its work.** Every claim carries structured provenance — a record with its source and date, a web result marked unverified, or an inference with no source at all. These render differently, always. When the app says a species is in a creek, you can see it came from an iNaturalist observation dated last June. A score cannot do that, and the stakes are concrete: acting on a fabricated claim means a 45-minute drive to water that never held the fish.
 
-**It tells you what it does not know, and why.** "No data" is not an acceptable answer, so it is never given. Nothing recorded within the radius, you have never fished here, the web search came back empty, this source does not cover this area, we hold records here but this field is unpopulated — five different statements with five different remedies. Knowing *which* gap you are looking at is what makes a gap actionable.
+**It tells you what it does not know, and why.** "No data" is not an acceptable answer, so it is never given. Nothing recorded within the radius; you have never fished here; the web search came back empty; this source does not cover this area; we hold records here but this field is unpopulated; the live lookup failed just now; we measured it and the number would not change your plan — seven different statements with seven different remedies. Knowing *which* gap you are looking at is what makes a gap actionable.
 
 **It works for the species nobody else covers.** Because nothing depends on a per-species trained model, a darter, a madtom and a smallmouth are all first-class. The long tail is not a rounding error here; it is the point.
 
@@ -70,11 +70,15 @@ Water chemistry is used as a **constraint, never a confirmation**: readings can 
 
 **Phase 1 (data layer) is complete.** All ingestion adapters are built and verified — 19 sub-phases covering observations, hydrology, water chemistry, benthic health, substrate, thermal regime, regulations and access.
 
-**Phase 2 is in progress.** The SDM retirement described above landed here; what replaced it is the central context layer, which is built and tested but not yet wired to every call site:
+**Phase 2 is in progress.** The SDM retirement described above landed here; what replaced it is the central context layer:
 
 - `describe(place)` — everything known about one stretch of water, in slices (records, water, structure, access, conditions, personal history), each field carrying provenance and an empty-reason
 - `explore(area)` — ranks water you haven't fished by observation scarcity, structure, access and remoteness, with **no habitat-quality term**. A plausibility gate rules segments out on affirmative evidence — a mapped ditch, a measured hypoxic reading — but never ranks them up
 - `user_layer(user)` — patterns, demonstrated expertise and known gaps, derived from logged activity
+
+Everything that reaches the model now goes through it, and a single renderer turns context into text — so a source or an empty-reason cannot be dropped by one call site formatting its own prompt. The records lookup escalates in Python: local corpus, then a live web search tagged unverified, then an honest empty with a specific reason.
+
+The agent's tool surface shrank from 32 tools to 14 as a result. `describe_place` absorbed fourteen per-dataset lookups that each answered a fragment of the same question. Two tools were deleted rather than migrated: one generated gear advice with no source, and one returned corpus trivia.
 
 The model training code survives as a research tool, off the request path.
 
@@ -97,7 +101,7 @@ Documented honestly rather than papered over — see `CLAUDE.md` for the full li
 - **Pydantic v2** for all data models
 - **FastAPI** + **React/Vite** for the web app
 - **Typer** for the CLI
-- **pytest** + **ruff** — 992 tests
+- **pytest** + **ruff** — 1,018 tests
 
 ## How to run
 

@@ -23,6 +23,28 @@ Python 3.11+, uv, SQLite via sqlite-utils, Anthropic SDK (claude-sonnet-4-6 defa
 - Agent talks to services (`src/services/`), never directly to ingest modules
 - Every external API call goes through cache. No exceptions.
 - Pydantic models live in `src/models/` — never inline schemas
+- **Everything that reaches a model goes through the context layer** (`src/services/context/`). No service builds its own prompt block from raw rows. That is how `ontario_species_ranges.json` reached the agent as retrieved fact and how `coaching.py` ended up with no SAR check at all.
+- **`src/services/context/render.py` is the only place context becomes text.** Per-call-site formatting is the prompt-drift problem one layer down, in as many copies as there are call sites.
+
+## The context layer
+
+Three entry points in `src/services/context/__init__.py`:
+
+- `describe(place, caller=...)` — one stretch of water, sliced. Callers do not pick slices; `_BUNDLES` maps caller type to slices, and `_ESCALATING_CALLERS` decides who may spend a live web search when the corpus is empty.
+- `explore(area)` — ranks unvisited segments. No habitat term, no species prediction.
+- `user_layer(user)` / `species_history(db, species)` — derived, never raw rows.
+
+Every value is a `ContextField`: value + `Provenance` (RECORD / WEB / INFERENCE) + `EmptyReason`. `WEB` is forced `verified=False` by a model validator. There are seven empty reasons and they are not interchangeable — each one has a different remedy for the reader.
+
+**`sar_alert` vs `status_known_listed`.** All 69 species in the local file have unverified conservation status, so `sar_alert` is `True` for every one of them — correct for suppressing the corpus's own generated angling text, useless as a refusal gate. Gate hard refusals on `status_known_listed` (an affirmative listing signal from some authority, verified or not). A rule that fires on every fish in Ontario protects nothing.
+
+## Agent tool surface
+
+14 tools in `src/agent/tools.py`, down from 32. `chat.py` delegates; it holds the loop, not the tools.
+
+`describe_place` is the primary tool and absorbed fourteen per-dataset lookups. `get_conditions` stays separate because it is the only live call — the split is by cache policy, not by preference. `get_tactical_recommendation` and `src/services/tactical.py` were deleted: unsourced gear advice handed to the model as a tool result is indistinguishable from a record, which is the same defect as the #16-hook entry in the species corpus.
+
+When adding a dataset, wire it into a slice. Do not add a tool.
 
 ## Ethical rules (decided, do not relitigate)
 
