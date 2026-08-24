@@ -45,6 +45,19 @@ def _apply_migrations(db: Database) -> None:
     migrate_species_status_provenance(db)
     migrate_regulation_chunks_zone_name(db)
     migrate_segment_synthesis_jurisdiction(db)
+    migrate_user_patterns(db)
+
+
+def migrate_user_patterns(db: Database) -> None:
+    """Create the derived-user-layer cache. Idempotent.
+
+    Nothing is backfilled and nothing needs to be: a miss recomputes. The
+    table holds no facts of its own, only a cached derivation of the stops
+    table, so dropping it costs time and never answers.
+    """
+    from src.storage.user_patterns import ensure_table
+
+    ensure_table(db)
 
 
 def migrate_stops(db: Database) -> None:

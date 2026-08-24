@@ -513,6 +513,26 @@ def log_session(
         except Exception as e:
             conditions_result = {"error": str(e)}
 
+    # The derived layer is recomputed here, on the write, rather than on every
+    # question that needs it. Its inputs just changed and nothing else will
+    # tell it so. Failure is non-fatal — the read path detects a stale
+    # fingerprint and rebuilds — but it is logged, because a recompute that
+    # never succeeds looks exactly like one that was never needed.
+    patterns_recomputed = False
+    try:
+        from src.services.context import recompute_user_layer
+
+        recompute_user_layer(db_conn, user_id=user_id)
+        patterns_recomputed = True
+    except Exception:  # noqa: BLE001 - a logged trip must never fail over this
+        logger.warning(
+            "Could not recompute the derived layer for user %s after logging "
+            "session %s; it will be rebuilt on next read",
+            user_id,
+            session_id,
+            exc_info=True,
+        )
+
     return {
         "session_id": session_id,
         "stops_logged": stops_logged,
@@ -520,6 +540,7 @@ def log_session(
         "catches": catches_summary,
         "followup_questions": followup_questions,
         "proactive_coaching": proactive_coaching,
+        "patterns_recomputed": patterns_recomputed,
         "conditions_enriched": conditions_result is not None and
                                not conditions_result.get("timeout"),
         "conditions": conditions_result,

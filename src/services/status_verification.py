@@ -96,6 +96,34 @@ def load_registry_file(path: Path) -> dict[str, dict]:
     return out
 
 
+def registry_citation(registry: dict[str, dict]) -> tuple[str | None, str | None]:
+    """The citation the export carries for itself, if it carries one.
+
+    The exports written for this command already name their own source and
+    URL on every row, and re-typing them on the command line is how a run ends
+    up stamping the wrong citation onto a status. Reading them off the file
+    removes the chance to disagree with it.
+
+    Returns (None, None) when rows disagree — a file that cites two sources
+    cannot speak for either, and guessing which one the operator meant is the
+    kind of silent choice this whole path exists to avoid.
+    """
+    sources = {(r.get("source") or "").strip() for r in registry.values()}
+    urls = {(r.get("source_url") or "").strip() for r in registry.values()}
+    sources.discard("")
+    urls.discard("")
+
+    if len(sources) > 1 or len(urls) > 1:
+        logger.warning(
+            "Registry rows cite %d different sources and %d different URLs; "
+            "pass --source and --url explicitly",
+            len(sources),
+            len(urls),
+        )
+        return None, None
+    return (next(iter(sources), None), next(iter(urls), None))
+
+
 def registry_species_count(registry: dict[str, dict]) -> int:
     """How many distinct species the registry holds, not how many keys.
 

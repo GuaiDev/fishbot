@@ -284,11 +284,40 @@ def describe_species(db: Database, name: str):
     return _describe(db, name)
 
 
-def user_layer(db: Database, user_id: int = 1):
-    """Derived patterns, demonstrated expertise, and known gaps."""
-    from src.services.context.user import build_user_layer
+def user_layer(db: Database, user_id: int = 1, force: bool = False):
+    """Derived patterns, demonstrated expertise, and known gaps.
 
-    return build_user_layer(db, user_id=user_id)
+    Served from the stored layer when the inputs have not changed. Recomputed
+    when a session is logged, not when a question is asked — this used to
+    re-read every stop the angler had ever logged, several times per
+    conversation, to re-derive numbers whose inputs change a few times a
+    season.
+
+    `force` skips the read and recomputes. The write path uses it; nothing
+    else should need to.
+    """
+    from src.services.context.user import build_user_layer
+    from src.storage import user_patterns
+
+    fingerprint = user_patterns.input_fingerprint(db, user_id)
+    if not force:
+        cached = user_patterns.load(db, user_id, fingerprint)
+        if cached is not None:
+            return cached
+
+    layer = build_user_layer(db, user_id=user_id)
+    user_patterns.store(db, layer, fingerprint)
+    return layer
+
+
+def recompute_user_layer(db: Database, user_id: int = 1):
+    """Rebuild and store the derived layer. Call after writing a session.
+
+    Separate from `user_layer(force=True)` only in intent: this is the name a
+    write path should reach for, and it says at the call site that the write
+    is what triggered the work.
+    """
+    return user_layer(db, user_id=user_id, force=True)
 
 
 def species_history(db: Database, species: str, user_id: int = 1):
@@ -308,6 +337,7 @@ __all__ = [
     "describe",
     "describe_species",
     "explore",
+    "recompute_user_layer",
     "species_history",
     "user_layer",
 ]

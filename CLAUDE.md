@@ -34,6 +34,12 @@ Three entry points in `src/services/context/__init__.py`:
 - `explore(area)` — ranks unvisited segments. No habitat term, no species prediction.
 - `user_layer(user)` / `species_history(db, species)` — derived, never raw rows.
 
+**The derived layer is computed on write.** `log_session` calls `recompute_user_layer`; `user_layer()` serves the stored result whenever the inputs are unchanged. Freshness is a **fingerprint** of the inputs (row counts + max ids for stops, sessions and current insights), not an age — a stale row is caught by the data having moved, so a direct DB edit cannot serve a wrong answer forever. A miss recomputes: the cache is an optimisation and never a source of truth, and dropping `user_patterns` costs time, not answers.
+
+The freshness check is deliberately one query. The first version issued six and was *slower* than deriving for any log under ~300 stops — a cache whose freshness check costs more than a miss is not a cache. Measured after the fix: 1.2× at zero stops, 3.7× at 100, 19× at 1,200.
+
+Registry exports for `verify-species-status` live in `data/registry/`. The command defaults to `data/registry/cosewic_2024.csv` and reads its citation from the file's own `source`/`source_url` columns — retyping a citation on the command line is how a run stamps the wrong one onto a status.
+
 Every value is a `ContextField`: value + `Provenance` (RECORD / WEB / INFERENCE) + `EmptyReason`. `WEB` is forced `verified=False` by a model validator. There are eight empty reasons and they are not interchangeable — each one has a different remedy for the reader.
 
 **`sar_alert` vs `status_known_listed`.** All 69 species in the local file have unverified conservation status, so `sar_alert` is `True` for every one of them — correct for suppressing the corpus's own generated angling text, useless as a refusal gate. Gate hard refusals on `status_known_listed` (an affirmative listing signal from some authority, verified or not). A rule that fires on every fish in Ontario protects nothing.

@@ -674,27 +674,69 @@ def ingest_fmz() -> None:
         )
 
 
+_REGISTRY_DIR = "data/registry"
+_DEFAULT_REGISTRY = f"{_REGISTRY_DIR}/cosewic_2024.csv"
+
+
 @app.command(name="verify-species-status")
 def verify_species_status(
-    file: str = typer.Option(..., "--file", help="Registry export (CSV or JSON)"),
-    source: str = typer.Option(..., "--source", help='e.g. "COSEWIC assessments, Nov 2025"'),
-    url: str = typer.Option(..., "--url", help="Public URL the file came from"),
+    file: str = typer.Option(
+        _DEFAULT_REGISTRY,
+        "--file",
+        help=f"Registry export, CSV or JSON. Exports live in {_REGISTRY_DIR}/.",
+    ),
+    source: str = typer.Option(
+        "",
+        "--source",
+        help="Citation. Defaults to the export's own 'source' column.",
+    ),
+    url: str = typer.Option(
+        "",
+        "--url",
+        help="Public URL. Defaults to the export's own 'source_url' column.",
+    ),
 ) -> None:
     """Apply conservation statuses from a downloaded COSEWIC/SARA registry export.
 
     Species not present in the export stay unverified and keep failing closed.
+
+    The citation is read off the file unless overridden. The exports written
+    for this command name their own source and URL on every row, and retyping
+    them is how a run stamps the wrong citation onto a status.
     """
     from pathlib import Path as _P
 
-    from src.services.status_verification import apply_verified_statuses, load_registry_file
+    from src.services.status_verification import (
+        apply_verified_statuses,
+        load_registry_file,
+        registry_citation,
+    )
 
     path = _P(file)
     if not path.exists():
         console.print(f"[red]No such file: {path}[/red]")
+        if file == _DEFAULT_REGISTRY:
+            console.print(
+                f"[dim]Put a registry export in {_REGISTRY_DIR}/, or pass --file.[/dim]"
+            )
         raise typer.Exit(1)
 
     db = get_db()
     registry = load_registry_file(path)
+
+    file_source, file_url = registry_citation(registry)
+    source = source or file_source or ""
+    url = url or file_url or ""
+    if not source or not url:
+        # apply_verified_statuses refuses without both, but failing here says
+        # which half is missing and where it was looked for.
+        console.print(
+            "[red]No citation. The export carries no consistent source/source_url "
+            "column, so pass --source and --url explicitly.[/red]"
+        )
+        raise typer.Exit(1)
+    console.print(f"[dim]Citation:               {source}[/dim]")
+
     summary = apply_verified_statuses(db, registry, source=source, source_url=url)
 
     # Every count prints every run. "Verified: 0" is a legitimate outcome here,
