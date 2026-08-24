@@ -695,11 +695,47 @@ def verify_species_status(
 
     db = get_db()
     registry = load_registry_file(path)
-    console.print(f"[dim]Registry entries read: {len(registry):,}[/dim]")
     summary = apply_verified_statuses(db, registry, source=source, source_url=url)
 
-    console.print(f"[green]Verified:          {summary['verified']:,}[/green]")
-    console.print(f"[yellow]Left unverified:   {summary['left_unverified']:,}[/yellow]")
+    # Every count prints every run. "Verified: 0" is a legitimate outcome here,
+    # so without the skip counts beside it there is nothing to distinguish a
+    # narrow export from a join that matched nothing — which is exactly how a
+    # name-column mismatch went unnoticed until someone read the source.
+    console.print(f"[dim]Registry entries read:  {summary['registry_entries']:,}[/dim]")
+    console.print(f"[green]Verified:               {summary['verified']:,}[/green]")
+    console.print(f"[yellow]Left unverified:        {summary['left_unverified']:,}[/yellow]")
+    console.print(
+        f"[dim]Not in registry:        {summary['skipped_not_in_registry']:,}[/dim]"
+    )
+    console.print(
+        f"[dim]Matched, no status:     {summary['matched_no_usable_status']:,}[/dim]"
+    )
+
+    unmatched = summary["unmatched_registry_entries"]
+    if unmatched:
+        console.print(
+            f"[yellow]Registry entries that matched no species "
+            f"({len(unmatched)}):[/yellow]"
+        )
+        for name in unmatched[:15]:
+            console.print(f"   {name}")
+
+    if summary["registry_entries"] and summary["verified"] == 0:
+        console.print(
+            "[red]Nothing matched. The registry and species_ranges do not share "
+            "a name column — check the header of your export.[/red]"
+        )
+
+    cleared = summary["cleared_generated_statuses"]
+    if cleared:
+        console.print(
+            f"[dim]Cleared generated statuses the registry did not cover "
+            f"({len(cleared)}) — they would otherwise sit under the new "
+            f"citation:[/dim]"
+        )
+        for c in cleared[:10]:
+            console.print(f"   {c}")
+
     if summary["rejected_values"]:
         console.print(f"[red]Rejected values ({len(summary['rejected_values'])}):[/red]")
         for r in summary["rejected_values"][:10]:

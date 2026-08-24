@@ -123,3 +123,179 @@ def test_species_absent_from_the_registry_stays_unverified(db):
     )
     assert summary["verified"] == 0
     assert describe_species(db, "Least Darter").sar_alert is True
+
+
+# ── the join between a registry export and the corpus ─────────────────────────
+#
+# All twelve rows of a real COSEWIC export verified nothing, every run, and the
+# summary said "left unverified: 69" — indistinguishable from an export that
+# simply did not cover those species. Nothing in this file could catch it: every
+# test above builds its registry dict by hand, so the key-construction code that
+# actually failed was never exercised.
+
+
+def _write_csv(tmp_path, header: str, *rows: str):
+    path = tmp_path / "registry.csv"
+    path.write_text("\n".join([header, *rows]) + "\n", encoding="utf-8")
+    return path
+
+
+def test_common_name_export_matches_a_corpus_keyed_by_latin(db, tmp_path):
+    """The actual failure: 12 rows, 69 rows, zero possible matches.
+
+    Both sides used `scientific_name or species`, which looks symmetrical. It is
+    not — the fallback fires only where the column is missing, so an export
+    carrying common names alone keyed 'least darter' while the corpus row keyed
+    'etheostoma microperca'.
+    """
+    from src.services.status_verification import (
+        apply_verified_statuses,
+        load_registry_file,
+    )
+
+    upsert_species_ranges(db, [_species()])
+    path = _write_csv(
+        tmp_path,
+        "species,cosewic_status",
+        "Least Darter,Not at Risk",
+    )
+
+    summary = apply_verified_statuses(
+        db, load_registry_file(path), source="COSEWIC 2024", source_url="https://x"
+    )
+    assert summary["verified"] == 1
+    assert summary["skipped_not_in_registry"] == 0
+
+
+def test_latin_only_export_matches_too(db, tmp_path):
+    """The join must not depend on which column either side happens to have."""
+    from src.services.status_verification import (
+        apply_verified_statuses,
+        load_registry_file,
+    )
+
+    upsert_species_ranges(db, [_species()])
+    path = _write_csv(
+        tmp_path,
+        "scientific_name,cosewic_status",
+        "Etheostoma microperca,Not at Risk",
+    )
+
+    summary = apply_verified_statuses(
+        db, load_registry_file(path), source="COSEWIC 2024", source_url="https://x"
+    )
+    assert summary["verified"] == 1
+
+
+def test_registry_entry_count_is_species_not_keys(db, tmp_path):
+    """One row indexed under both its names is one species, not two."""
+    from src.services.status_verification import (
+        load_registry_file,
+        registry_species_count,
+    )
+
+    path = _write_csv(
+        tmp_path,
+        "species,scientific_name,cosewic_status",
+        "Least Darter,Etheostoma microperca,Not at Risk",
+    )
+    registry = load_registry_file(path)
+    assert len(registry) == 2, "indexed under both names"
+    assert registry_species_count(registry) == 1
+
+
+def test_registry_rows_that_matched_nothing_are_named(db, tmp_path):
+    """Silence about an unmatched export entry is how a typo survives."""
+    from src.services.status_verification import (
+        apply_verified_statuses,
+        load_registry_file,
+    )
+
+    upsert_species_ranges(db, [_species()])
+    path = _write_csv(
+        tmp_path,
+        "species,cosewic_status",
+        "Least Darter,Not at Risk",
+        "Leest Darter,Endangered",
+    )
+
+    summary = apply_verified_statuses(
+        db, load_registry_file(path), source="COSEWIC 2024", source_url="https://x"
+    )
+    assert summary["verified"] == 1
+    assert summary["unmatched_registry_entries"] == ["Leest Darter"]
+
+
+def test_a_total_join_failure_is_distinguishable_from_a_narrow_export(db, tmp_path):
+    """Zero verified is legitimate here, so the counts have to say which zero."""
+    from src.services.status_verification import (
+        apply_verified_statuses,
+        load_registry_file,
+    )
+
+    upsert_species_ranges(db, [_species()])
+    path = _write_csv(
+        tmp_path,
+        "species,cosewic_status",
+        "Northern Pike,Not at Risk",
+    )
+
+    summary = apply_verified_statuses(
+        db, load_registry_file(path), source="COSEWIC 2024", source_url="https://x"
+    )
+    assert summary["verified"] == 0
+    assert summary["registry_entries"] == 1
+    assert summary["skipped_not_in_registry"] == 1
+    assert summary["unmatched_registry_entries"] == ["Northern Pike"]
+
+
+# ── the citation must not cover statuses the registry never supplied ──────────
+
+
+def test_statuses_the_registry_is_silent_on_are_cleared_not_inherited(db, tmp_path):
+    """Otherwise a generated status ends up sitting under a real citation.
+
+    Redside Dace would have rendered "Listed: Endangered, Threatened (source:
+    COSEWIC)" from a COSEWIC export that only ever said Endangered — the
+    Threatened came from the model. Generated content wearing a record's
+    authority is the exact defect this path exists to remove.
+    """
+    from src.services.status_verification import (
+        apply_verified_statuses,
+        load_registry_file,
+    )
+
+    upsert_species_ranges(
+        db,
+        [
+            _species(
+                species="Redside Dace",
+                scientific_name="Clinostomus elongatus",
+                sara_status="Threatened",
+                ontario_status="Endangered",
+                cosewic_status="Endangered",
+            )
+        ],
+    )
+    path = _write_csv(
+        tmp_path,
+        "species,cosewic_status",
+        "Redside Dace,Endangered",
+    )
+
+    summary = apply_verified_statuses(
+        db, load_registry_file(path), source="COSEWIC 2024", source_url="https://x"
+    )
+    assert summary["verified"] == 1
+    assert summary["cleared_generated_statuses"] == [
+        "Redside Dace: sara_status, ontario_status"
+    ]
+
+    row = db["species_ranges"].get("Redside Dace")
+    assert row["cosewic_status"] == "Endangered"
+    assert row["sara_status"] is None
+    assert row["ontario_status"] is None
+
+    c = describe_species(db, "Redside Dace")
+    assert c.status_known_listed is True
+    assert "Threatened" not in c.sar_reason, "the model's status must not be cited"

@@ -35,11 +35,37 @@ VALID_STATUSES = frozenset({
 })
 
 
-def load_registry_file(path: Path) -> dict[str, dict]:
-    """Read a registry export keyed by scientific name.
+_NAME_FIELDS = ("scientific_name", "species", "common_name")
 
-    Accepts CSV or JSON with, per row: scientific_name (or species), and any of
-    sara_status / ontario_status / cosewic_status.
+
+def _names(row: dict) -> list[str]:
+    """Every name a row supplies, normalised for comparison.
+
+    Both sides of this join index under all of them. The previous version used
+    `scientific_name or species` on the registry AND on the database, which
+    reads like symmetry and is not: the fallback fires only where the column is
+    missing, so a registry export carrying common names alone was keyed
+    'american eel' while the database row for the same fish — which does have a
+    scientific_name — was keyed 'anguilla rostrata'. Twelve rows, sixty-nine
+    rows, zero possible matches, reported as a clean run.
+
+    The lesson is not "pick the other column". It is that a key whose namespace
+    depends on which columns happen to exist cannot be relied on to mean the
+    same thing on both sides of a comparison.
+    """
+    out = []
+    for field in _NAME_FIELDS:
+        value = (row.get(field) or "").strip().lower()
+        if value and value not in out:
+            out.append(value)
+    return out
+
+
+def load_registry_file(path: Path) -> dict[str, dict]:
+    """Read a registry export, indexed under every name each row supplies.
+
+    Accepts CSV or JSON with, per row: any of scientific_name / species /
+    common_name, and any of sara_status / ontario_status / cosewic_status.
     """
     if path.suffix.lower() == ".json":
         rows = json.loads(path.read_text(encoding="utf-8"))
@@ -49,10 +75,25 @@ def load_registry_file(path: Path) -> dict[str, dict]:
 
     out: dict[str, dict] = {}
     for row in rows:
-        key = (row.get("scientific_name") or row.get("species") or "").strip().lower()
-        if key:
+        for key in _names(row):
+            if key in out and out[key] is not row:
+                # Two registry rows claiming the same name is a problem with the
+                # export, and silently keeping the last one is how a wrong status
+                # gets stamped 'verified'.
+                logger.warning(
+                    "Registry contains two entries for %r; keeping the first", key
+                )
+                continue
             out[key] = row
     return out
+
+
+def registry_species_count(registry: dict[str, dict]) -> int:
+    """How many distinct species the registry holds, not how many keys.
+
+    One row indexed under both its names must not read as two species.
+    """
+    return len({id(row) for row in registry.values()})
 
 
 def apply_verified_statuses(
@@ -74,26 +115,53 @@ def apply_verified_statuses(
 
     now = datetime.now(UTC).isoformat()
     verified, skipped, rejected = 0, 0, []
+    matched_no_usable_status = 0
+    dropped: list[str] = []
+    matched_keys: set[str] = set()
 
     for row in db["species_ranges"].rows:
-        key = (row.get("scientific_name") or row.get("species") or "").strip().lower()
-        entry = registry.get(key)
+        entry = None
+        for key in _names(row):
+            entry = registry.get(key)
+            if entry is not None:
+                matched_keys.update(_names(entry))
+                break
         if entry is None:
             skipped += 1
             continue
 
         updates: dict = {}
+        supplied, cleared = [], []
         for field in ("sara_status", "ontario_status", "cosewic_status"):
             value = (entry.get(field) or "").strip()
             if not value:
+                # The registry is silent on this authority. Leaving the old
+                # value in place would park a generated status on a row now
+                # stamped with a real citation — Redside Dace would render
+                # "Listed: Endangered, Threatened (source: COSEWIC)" when
+                # COSEWIC never said Threatened; the model did. Generated
+                # content wearing a record's authority is the defect this
+                # whole verification path exists to remove, so an unsupplied
+                # field is cleared rather than inherited.
+                if row.get(field):
+                    cleared.append(field)
+                updates[field] = None
                 continue
             if value not in VALID_STATUSES:
                 rejected.append(f"{row['species']}: {field}={value!r}")
                 continue
             updates[field] = value
+            supplied.append(field)
+
+        if not supplied:
+            updates = {}
 
         if not updates:
-            skipped += 1
+            # Matched the registry but carried nothing usable — a different
+            # fact from "not in the registry", and it must not be counted with
+            # it. Merging the two is what made a total join failure look like
+            # an export that simply did not cover these species.
+            matched_no_usable_status += 1
             continue
 
         updates.update({
@@ -103,14 +171,29 @@ def apply_verified_statuses(
         })
         db["species_ranges"].update(row["species"], updates)
         verified += 1
+        if cleared:
+            dropped.append(f"{row['species']}: {', '.join(cleared)}")
 
     db.conn.commit()
     total = db["species_ranges"].count
-    return {
+    registry_total = registry_species_count(registry)
+    unmatched_registry = sorted(
+        {
+            (r.get("species") or r.get("scientific_name") or "?")
+            for k, r in registry.items()
+            if k not in matched_keys
+        }
+    )
+
+    summary = {
         "verified": verified,
         "left_unverified": total - verified,
         "skipped_not_in_registry": skipped,
+        "matched_no_usable_status": matched_no_usable_status,
+        "registry_entries": registry_total,
+        "unmatched_registry_entries": unmatched_registry,
         "rejected_values": rejected,
+        "cleared_generated_statuses": dropped,
         "source": source,
         "source_url": source_url,
         "note": (
@@ -118,3 +201,16 @@ def apply_verified_statuses(
             "closed: flagged as potentially listed, targeting guidance withheld."
         ),
     }
+
+    # A registry that matched nothing at all is a broken join, not a narrow
+    # export. Zero verified is a legitimate outcome of this design — the whole
+    # point is failing closed — so the honest state and the broken state look
+    # identical unless something says which one this was.
+    if registry_total and verified == 0:
+        logger.warning(
+            "Registry held %d species and none matched any of the %d rows in "
+            "species_ranges — check that the name columns line up",
+            registry_total,
+            total,
+        )
+    return summary
