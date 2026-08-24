@@ -59,7 +59,7 @@ def test_verified_not_at_risk_clears_the_flag_and_cites_its_source(db):
     upsert_species_ranges(db, [_species(
         status_source="COSEWIC assessments, Nov 2025",
         status_source_url="https://cosewic.ca/",
-        status_verified_at=datetime.now(UTC),
+        status_last_checked_at=datetime.now(UTC),
     )])
     c = describe_species(db, "Least Darter")
     assert c.sar_alert is False
@@ -72,7 +72,7 @@ def test_verified_listed_species_still_flags(db):
         species="Redside Dace", scientific_name="Clinostomus elongatus",
         sara_status="Endangered", ontario_status="Endangered", cosewic_status="Endangered",
         status_source="SARA Schedule 1", status_source_url="https://x/",
-        status_verified_at=datetime.now(UTC),
+        status_last_checked_at=datetime.now(UTC),
     )])
     c = describe_species(db, "Redside Dace")
     assert c.sar_alert is True
@@ -299,3 +299,217 @@ def test_statuses_the_registry_is_silent_on_are_cleared_not_inherited(db, tmp_pa
     c = describe_species(db, "Redside Dace")
     assert c.status_known_listed is True
     assert "Threatened" not in c.sar_reason, "the model's status must not be cited"
+
+
+# ── status_last_checked_at means what it says ─────────────────────────────────
+
+
+def test_reapplying_the_same_export_moves_the_checked_date_not_the_status(db, tmp_path):
+    """Checking again is a real event, even when nothing changes.
+
+    The column used to be `status_verified_at`, which claimed the value had
+    been confirmed anew — but the date moved on runs that confirmed nothing.
+    The behaviour was right; the name was not.
+    """
+    from src.services.status_verification import (
+        apply_verified_statuses,
+        load_registry_file,
+    )
+
+    upsert_species_ranges(db, [_species(sara_status="Threatened")])
+    path = tmp_path / "reg.csv"
+    path.write_text("species,cosewic_status\nLeast Darter,Not at Risk\n", encoding="utf-8")
+    registry = load_registry_file(path)
+
+    apply_verified_statuses(db, registry, source="COSEWIC 2024", source_url="https://x")
+    first = db["species_ranges"].get("Least Darter")
+
+    summary = apply_verified_statuses(
+        db, registry, source="COSEWIC 2024", source_url="https://x"
+    )
+    second = db["species_ranges"].get("Least Darter")
+
+    assert second["status_last_checked_at"] > first["status_last_checked_at"]
+    assert second["cosewic_status"] == first["cosewic_status"] == "Not at Risk"
+    # Second pass has nothing left to clear, so it reports nothing cleared.
+    assert summary["cleared_generated_statuses"] == []
+    assert summary["verified"] == 1
+
+
+def test_the_rendered_date_says_it_is_a_check_not_an_assessment(db):
+    from src.services.context.render import render_species_context
+
+    upsert_species_ranges(
+        db,
+        [
+            _species(
+                status_source="COSEWIC 2024",
+                status_source_url="https://x",
+                status_last_checked_at=datetime.now(UTC),
+            )
+        ],
+    )
+    out = render_species_context(describe_species(db, "Least Darter"))
+    assert "we last read it" in out, "the date must not read as an assessment date"
+
+
+def test_migration_renames_the_column_and_keeps_the_citations(tmp_path):
+    """An existing database must not lose its 12 citations to a rename."""
+    from sqlite_utils import Database
+
+    from src.storage.database import ensure_schema
+
+    path = tmp_path / "legacy.db"
+    legacy = Database(path)
+    legacy["species_ranges"].create(
+        {
+            "species": str,
+            "scientific_name": str,
+            "cosewic_status": str,
+            "status_source": str,
+            "status_source_url": str,
+            "status_verified_at": str,
+        },
+        pk="species",
+    )
+    legacy["species_ranges"].insert(
+        {
+            "species": "Redside Dace",
+            "scientific_name": "Clinostomus elongatus",
+            "cosewic_status": "Endangered",
+            "status_source": "COSEWIC 2024",
+            "status_source_url": "https://x",
+            "status_verified_at": "2026-08-24T01:01:24+00:00",
+        }
+    )
+
+    ensure_schema(legacy)
+
+    cols = {c.name for c in legacy["species_ranges"].columns}
+    assert "status_last_checked_at" in cols
+    assert "status_verified_at" not in cols
+
+    row = legacy["species_ranges"].get("Redside Dace")
+    assert row["status_last_checked_at"] == "2026-08-24T01:01:24+00:00"
+    assert row["status_source"] == "COSEWIC 2024"
+
+    # Idempotent: a second pass must not add an empty duplicate column.
+    ensure_schema(legacy)
+    assert {c.name for c in legacy["species_ranges"].columns} == cols
+    assert (
+        legacy["species_ranges"].get("Redside Dace")["status_last_checked_at"]
+        == "2026-08-24T01:01:24+00:00"
+    )
+
+
+# ── the assessment date is not the date we read the file ──────────────────────
+
+
+def test_assessment_date_is_read_from_the_registry_and_rendered(db, tmp_path):
+    """Least Darter's "Not at Risk" is from 1989. The angler should see that."""
+    from src.services.context.render import render_species_context
+    from src.services.status_verification import (
+        apply_verified_statuses,
+        load_registry_file,
+    )
+
+    upsert_species_ranges(db, [_species()])
+    path = tmp_path / "reg.csv"
+    path.write_text(
+        "species,cosewic_status,assessment_date\nLeast Darter,Not at Risk,1989-04\n",
+        encoding="utf-8",
+    )
+
+    apply_verified_statuses(
+        db, load_registry_file(path), source="COSEWIC 2024", source_url="https://x"
+    )
+
+    row = db["species_ranges"].get("Least Darter")
+    assert row["status_assessed_on"] == "1989-04"
+    assert row["status_last_checked_at"][:4] != "1989", "two distinct dates"
+
+    out = render_species_context(describe_species(db, "Least Darter"))
+    assert "assessed 1989-04" in out
+    assert "we last read the registry" in out
+
+
+def test_a_registry_without_assessment_dates_says_so(db, tmp_path):
+    from src.services.context.render import render_species_context
+    from src.services.status_verification import (
+        apply_verified_statuses,
+        load_registry_file,
+    )
+
+    upsert_species_ranges(db, [_species()])
+    path = tmp_path / "reg.csv"
+    path.write_text("species,cosewic_status\nLeast Darter,Not at Risk\n", encoding="utf-8")
+
+    apply_verified_statuses(
+        db, load_registry_file(path), source="COSEWIC 2024", source_url="https://x"
+    )
+    out = render_species_context(describe_species(db, "Least Darter"))
+    assert "did not publish an assessment date" in out
+
+
+def test_a_stale_assessment_date_is_not_inherited(db, tmp_path):
+    """Same rule as the statuses: no stale value under a fresh citation."""
+    from src.services.status_verification import (
+        apply_verified_statuses,
+        load_registry_file,
+    )
+
+    upsert_species_ranges(db, [_species()])
+    dated = tmp_path / "dated.csv"
+    dated.write_text(
+        "species,cosewic_status,assessment_date\nLeast Darter,Not at Risk,1989-04\n",
+        encoding="utf-8",
+    )
+    apply_verified_statuses(
+        db, load_registry_file(dated), source="COSEWIC 2024", source_url="https://x"
+    )
+    assert db["species_ranges"].get("Least Darter")["status_assessed_on"] == "1989-04"
+
+    undated = tmp_path / "undated.csv"
+    undated.write_text(
+        "species,cosewic_status\nLeast Darter,Not at Risk\n", encoding="utf-8"
+    )
+    apply_verified_statuses(
+        db, load_registry_file(undated), source="SARO 2025", source_url="https://y"
+    )
+    assert db["species_ranges"].get("Least Darter")["status_assessed_on"] is None
+
+
+# ── suppression is a decision, not a coverage gap ─────────────────────────────
+
+
+def test_withheld_angling_note_is_not_reported_as_missing_coverage(db):
+    """The source covers it and the note exists. We are choosing not to show it."""
+    from src.models.context import EmptyReason
+    from src.services.context.render import render_species_context
+
+    upsert_species_ranges(db, [_species(fishing_notes="Rare microfishing target.")])
+    ctx = describe_species(db, "Least Darter")
+
+    assert ctx.angling_note.empty_reason is (
+        EmptyReason.SUPPRESSED_ON_CONSERVATION_GROUNDS
+    )
+    out = render_species_context(ctx)
+    assert "deliberately not shown" in out
+    assert "does not cover this area" not in out
+
+
+def test_a_verified_unlisted_species_gets_its_angling_note_back(db):
+    upsert_species_ranges(
+        db,
+        [
+            _species(
+                fishing_notes="Rare microfishing target.",
+                status_source="COSEWIC 2024",
+                status_source_url="https://x",
+                status_last_checked_at=datetime.now(UTC),
+            )
+        ],
+    )
+    ctx = describe_species(db, "Least Darter")
+    assert ctx.angling_note.value == "Rare microfishing target."
+    assert ctx.angling_note.empty_reason is None

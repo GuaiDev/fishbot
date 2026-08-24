@@ -63,6 +63,16 @@ class EmptyReason(StrEnum):
     different fix — so it must not render as "nothing recorded here".
     """
 
+    SUPPRESSED_ON_CONSERVATION_GROUNDS = "suppressed_on_conservation_grounds"
+    """We hold this, and we are deliberately not showing it.
+
+    Targeting guidance for a species that may be listed. The value exists and
+    the source covers the area — withholding it is a policy decision, and
+    rendering that as a coverage gap misreports a choice we made as a hole in
+    the data. The two have opposite remedies: a coverage gap is fixed by
+    ingesting more, and this is not fixed at all until the status is checked.
+    """
+
     RECORDED_BUT_NOT_DECISION_RELEVANT = "recorded_but_not_decision_relevant"
     """A value exists but carries no "so what" for an angler.
 
@@ -86,6 +96,10 @@ _EMPTY_PHRASING: dict[EmptyReason, str] = {
     ),
     EmptyReason.RECORDED_BUT_NOT_DECISION_RELEVANT: (
         "measured, but unremarkable enough that the number would not change your plan"
+    ),
+    EmptyReason.SUPPRESSED_ON_CONSERVATION_GROUNDS: (
+        "withheld while this species may be listed — not missing, deliberately "
+        "not shown"
     ),
 }
 

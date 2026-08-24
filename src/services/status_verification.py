@@ -12,8 +12,16 @@ with a recorded URL is both sufficient and more auditable than an API call
 nobody can replay.
 
 A species is only ever marked verified together with its source and the date
-it was checked. There is no code path that sets `status_verified_at` without
-also setting `status_source`.
+it was checked. There is no code path that sets `status_last_checked_at`
+without also setting `status_source`.
+
+That column is named for what it actually records. It is stamped on every run,
+including a no-op re-application of the same export, because re-checking a
+status against the registry is a real event worth dating even when the value
+is unchanged. Calling it `status_verified_at` made the date claim something
+else — that the value had been confirmed anew — and it moved on runs where
+nothing was confirmed at all. When the value last *changed* is a different
+question, and this field has never answered it.
 """
 
 import csv
@@ -164,10 +172,16 @@ def apply_verified_statuses(
             matched_no_usable_status += 1
             continue
 
+        # When the registry decided, as published. Distinct from when we last
+        # read the file, and the one an angler actually weighs: a 1998 "Not at
+        # Risk" and a 2023 one are not the same reassurance. Cleared when the
+        # export is silent, for the same reason the statuses are — a stale
+        # assessment date under a fresh citation is a false attribution.
         updates.update({
             "status_source": source,
             "status_source_url": source_url,
-            "status_verified_at": now,
+            "status_last_checked_at": now,
+            "status_assessed_on": (entry.get("assessment_date") or "").strip() or None,
         })
         db["species_ranges"].update(row["species"], updates)
         verified += 1

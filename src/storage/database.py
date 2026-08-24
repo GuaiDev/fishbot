@@ -1,5 +1,6 @@
 """SQLite database setup for trips and future tables."""
 
+import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,6 +9,8 @@ from sqlite_utils import Database
 
 # Respect DATA_DIR env var for Railway persistent volumes; default to local data/
 DB_PATH = Path(os.environ.get("DATA_DIR", "data")) / "fishing.db"
+
+logger = logging.getLogger(__name__)
 
 
 def get_db(path: Path | None = None) -> Database:
@@ -1181,8 +1184,35 @@ def migrate_species_status_provenance(db: Database) -> None:
     """
     if "species_ranges" not in db.table_names():
         return
+
+    # `status_verified_at` was stamped on every run of verify-species-status,
+    # including a no-op re-application of the same export. That is honest as
+    # "when did we last check" and dishonest as "when was this verified" — the
+    # date moved on runs where nothing was confirmed anew. Renaming the column
+    # is the fix; the behaviour was right and the name was not. Rename first so
+    # the add-missing loop below does not create an empty second column beside
+    # the populated one and silently orphan every existing citation.
     cols = {c.name for c in db["species_ranges"].columns}
-    for name in ("status_source", "status_source_url", "status_verified_at"):
+    if "status_verified_at" in cols and "status_last_checked_at" not in cols:
+        try:
+            db.execute(
+                "ALTER TABLE species_ranges "
+                "RENAME COLUMN status_verified_at TO status_last_checked_at"
+            )
+            db.conn.commit()
+            cols = {c.name for c in db["species_ranges"].columns}
+        except Exception:  # noqa: BLE001 - older SQLite lacks RENAME COLUMN
+            logger.warning(
+                "Could not rename status_verified_at; leaving it in place",
+                exc_info=True,
+            )
+
+    for name in (
+        "status_source",
+        "status_source_url",
+        "status_last_checked_at",
+        "status_assessed_on",
+    ):
         if name not in cols:
             try:
                 db.execute(f"ALTER TABLE species_ranges ADD COLUMN {name} TEXT")

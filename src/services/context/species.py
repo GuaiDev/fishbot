@@ -81,10 +81,35 @@ def describe_species(db: Database, name: str) -> SpeciesContext:
             if listed
             else f"Verified not at risk (source: {sr.status_source})."
         )
+        # Two dates, and they are years apart. The assessment date is when the
+        # registry decided; the checked date is when we last read the file.
+        # Only the first tells an angler anything about the fish, so it is the
+        # one that goes in the provenance slot — the second travels as the
+        # "so what" and is labelled, because a bare date next to a source reads
+        # as the source's date.
+        checked = (
+            sr.status_last_checked_at.date().isoformat()
+            if sr.status_last_checked_at
+            else None
+        )
+        assessed = sr.status_assessed_on
+        if assessed:
+            meaning = f"assessed {assessed}"
+            if checked:
+                meaning += f"; we last read the registry {checked}"
+        elif checked:
+            meaning = (
+                f"the registry did not publish an assessment date; we last "
+                f"read it {checked}"
+            )
+        else:
+            meaning = None
+
         status_field = ContextField.recorded(
             status,
             source=sr.status_source or "registry",
-            date=sr.status_verified_at.date().isoformat() if sr.status_verified_at else None,
+            date=assessed or checked,
+            meaning=meaning,
         )
     else:
         alert = True
@@ -106,7 +131,11 @@ def describe_species(db: Database, name: str) -> SpeciesContext:
         angling_note=(
             # Suppressed entirely while the species may be listed — the whole
             # point of failing closed is to not hand out targeting advice.
-            ContextField.empty(EmptyReason.SOURCE_DOES_NOT_COVER_AREA)
+            # This used to report SOURCE_DOES_NOT_COVER_AREA, which described a
+            # deliberate policy decision as a hole in the data. The source
+            # covers it fine and the note exists; we are choosing not to show
+            # it, and the two have opposite remedies.
+            ContextField.empty(EmptyReason.SUPPRESSED_ON_CONSERVATION_GROUNDS)
             if alert
             else ContextField.inferred(sr.fishing_notes, meaning=_UNVERIFIED)
             if sr.fishing_notes

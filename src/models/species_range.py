@@ -40,12 +40,29 @@ class SpeciesRange(BaseModel):
     """e.g. 'COSEWIC 2023 assessment', 'SARA Schedule 1'. None = unverified."""
 
     status_source_url: str | None = None
-    status_verified_at: datetime | None = None
+
+    status_assessed_on: str | None = None
+    """When the registry made the assessment, as published.
+
+    Kept as a string, not a date: COSEWIC publishes month precision
+    ("2012-05"), and coercing that to a day would invent precision the source
+    did not offer. This is the date an angler actually cares about — a 1998
+    "Not at Risk" and a 2023 one are not the same reassurance — and it is
+    years away from `status_last_checked_at` below."""
+
+    status_last_checked_at: datetime | None = None
+    """When we last read this status out of a registry export.
+
+    Not when the registry made its assessment, and not when the value last
+    changed — re-applying the same export moves this date and leaves the
+    status alone, which is correct: checking again is a real event. It was
+    called `status_verified_at`, which claimed the second of those three
+    things while recording the first."""
 
     @property
     def status_is_verified(self) -> bool:
         """True only when a real registry has been cited for this species."""
-        return bool(self.status_source and self.status_verified_at)
+        return bool(self.status_source and self.status_last_checked_at)
 
 
 class SpeciesAtRisk(BaseModel):
