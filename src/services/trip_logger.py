@@ -26,6 +26,7 @@ def _photo_species_candidates(db_conn: Database, photo_path: str) -> dict | None
         from PIL import Image
 
         from src.services.species_vision import (
+            annotate_conservation,
             get_region_candidate_species,
             suggest_species_from_photo,
         )
@@ -38,7 +39,12 @@ def _photo_species_candidates(db_conn: Database, photo_path: str) -> dict | None
         img = Image.open(photo_path).convert("RGB")
         buf = io.BytesIO()
         img.save(buf, format="JPEG")
-        return suggest_species_from_photo(buf.getvalue(), candidates, media_type="image/jpeg")
+        suggestion = suggest_species_from_photo(
+            buf.getvalue(), candidates, media_type="image/jpeg"
+        )
+        # After the identification, never before it — a conservation status in
+        # the prompt would bias what the model reports seeing.
+        return annotate_conservation(db_conn, suggestion)
     except Exception as e:
         logger.warning("Photo species suggestion failed for %s: %s", photo_path, e)
         return None

@@ -28,6 +28,7 @@ from src.models.context import (
     HistorySlice,
     Place,
     PlaceContext,
+    RecordedInsight,
     RecordsSlice,
     SpeciesContext,
     SpeciesHistory,
@@ -412,3 +413,71 @@ def render_species_history(history: SpeciesHistory) -> str:
             if ins.recommendation:
                 lines.append(f"    recommendation: {ins.recommendation}")
     return "\n".join(lines)
+
+
+# -- one stop from the user's own log ------------------------------------------
+
+# Fields worth showing an angler about their own stop. Everything else on the
+# row — user_id, session_id, row ids, photo paths and EXIF coordinates — is
+# plumbing, and there is no reason for any of it to reach a prompt.
+_STOP_FIELDS: tuple[tuple[str, str], ...] = (
+    ("technique", "technique"),
+    ("gear", "gear"),
+    ("water_level", "water level"),
+    ("water_clarity", "clarity"),
+    ("weather_notes", "weather"),
+    ("time_of_day", "time of day"),
+)
+
+
+def render_logged_stop(stop) -> str:
+    """One logged stop, as a sentence rather than a database row.
+
+    `json.dumps(stop)` used to go straight into a prompt here. That put the
+    whole row in front of the model — internal ids, photo paths, the EXIF
+    coordinates of a catch photo — and gave it no idea which parts were the
+    angler's observations and which were bookkeeping. Unrecorded fields are
+    named as unrecorded rather than omitted, because "we did not write it
+    down" and "it was not the case" are different facts.
+    """
+    get = stop.get if hasattr(stop, "get") else lambda k, d=None: getattr(stop, k, d)
+
+    where = get("location_name") or get("location_text") or "an unnamed spot"
+    when = get("date") or get("date_approx") or "an undated trip"
+
+    caught = get("species_caught")
+    if isinstance(caught, str):
+        import json as _json
+
+        try:
+            caught = _json.loads(caught)
+        except (TypeError, ValueError):
+            caught = []
+    caught = [str(c) for c in (caught or [])]
+
+    head = f"{where} ({when}): "
+    head += f"caught {', '.join(caught)}" if caught else "caught nothing"
+
+    details = [
+        f"{label} {get(field)}" if get(field) else f"{label} unrecorded"
+        for field, label in _STOP_FIELDS
+    ]
+    line = head + " — " + ", ".join(details)
+
+    notes = get("notes")
+    if notes:
+        line += f'\n  their note: "{str(notes)[:200]}"'
+    return line
+
+
+def render_recorded_insight(insight: RecordedInsight) -> str:
+    """A stored insight with the source it came from attached.
+
+    An insight the assistant concluded in an earlier session and one drawn
+    from a survey are not the same kind of claim, and anything reasoning over
+    one needs to be able to tell which it has.
+    """
+    line = f"[{insight.confidence}] {insight.conclusion} [{insight.provenance.describe()}]"
+    if insight.recommendation:
+        line += f"\n  recommendation: {insight.recommendation}"
+    return line

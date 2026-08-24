@@ -359,3 +359,27 @@ def _recorded_insights(db: Database, target: str, user_id: int) -> list[Recorded
             )
         )
     return out
+
+
+def as_recorded_insight(insight) -> RecordedInsight:
+    """Wrap a stored BehavioralInsight so its source travels with its text.
+
+    Same provenance mapping the coaching path uses. Exposed because
+    trip_enrichment rewrites insight conclusions, and rewriting a survey
+    finding is not the same act as rewriting something the assistant
+    concluded last week.
+    """
+    kind = _INSIGHT_PROVENANCE.get(
+        getattr(insight, "source_type", "") or "", ProvenanceKind.INFERENCE
+    )
+    return RecordedInsight(
+        conclusion=getattr(insight, "conclusion", "") or "",
+        confidence=getattr(insight, "confidence", None) or "unverified",
+        recommendation=getattr(insight, "recommendation", None),
+        provenance=Provenance(
+            kind=kind,
+            source=getattr(insight, "source_detail", None)
+            or getattr(insight, "source_type", None)
+            or "stored insight",
+        ),
+    )

@@ -247,16 +247,34 @@ def _synthesize_nuanced_conclusion(
     contradicting_stop: dict,
     client,
 ) -> str:
-    """Use Haiku to synthesize a more nuanced conclusion after contradictions."""
+    """Use Haiku to synthesize a more nuanced conclusion after contradictions.
+
+    The contradicting stop used to arrive here as `json.dumps(stop)` — the
+    whole database row, internal ids and photo EXIF coordinates included, with
+    nothing to tell the model which fields were the angler's observations and
+    which were bookkeeping. It goes through the renderer now, like everything
+    else that reaches a model.
+
+    The insight's own provenance travels with it too. This function rewrites a
+    conclusion and stores the result as `agent_synthesis`; the thing being
+    rewritten may itself have been agent_synthesis, or may have come from a
+    survey, and those are not the same claim to be revising.
+    """
     if client is None:
         return insight.conclusion + " (contradicted — conditions may matter)"
+
+    from src.services.context.render import render_logged_stop, render_recorded_insight
+    from src.services.context.user import as_recorded_insight
 
     prompt = (
         f"A fishing insight has been contradicted by a recent trip. "
         f"Write a more nuanced 2-3 sentence conclusion that acknowledges both "
         f"the original finding and the contradiction.\n\n"
-        f"Original insight: {insight.conclusion}\n"
-        f"Contradicting trip: {json.dumps(contradicting_stop, default=str)}\n\n"
+        f"Original insight: {render_recorded_insight(as_recorded_insight(insight))}\n\n"
+        f"The trip that contradicted it:\n"
+        f"{render_logged_stop(contradicting_stop)}\n\n"
+        f"A field marked unrecorded was not written down — do not treat it as "
+        f"evidence that the condition was absent.\n\n"
         f"Write ONLY the revised conclusion, no preamble."
     )
     response = client.messages.create(
