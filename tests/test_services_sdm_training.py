@@ -342,16 +342,79 @@ def test_predict_all_segments_values_in_0_1(tmp_path: Path):
     assert preds.between(0.0, 1.0).all(), "Some probabilities outside [0, 1]"
 
 
-def test_calibrated_probabilities_not_all_extremes(tmp_path: Path):
-    """Calibrated model should not cluster predictions at exactly 0.0 or 1.0."""
+def test_calibration_improves_the_brier_score(tmp_path: Path):
+    """Calibration is worth having only if the probabilities get better.
+
+    This replaces an assertion that fewer than 5% of predictions sat at
+    exactly 0.0 or 1.0. That test had the property backwards: isotonic
+    regression is a step function fitted to the empirical rate, so producing
+    exact 0.0 and 1.0 at the tails is what it is *supposed* to do. Exact zeros
+    were evidence the calibrator was working, and the test read them as
+    evidence it was not.
+
+    It also failed by a single row — 76 of 80 interior against a `> 0.95`
+    threshold — and it started failing when phase 3a added four features to
+    the synthetic fixture, not when anything about the model changed. A
+    knife-edge threshold on a property nobody wants is not coverage.
+
+    What calibration actually promises is a probability you can read as a
+    frequency, and the Brier score is the direct measure of that.
+    """
+    from sklearn.metrics import brier_score_loss
+
+    from src.services.sdm_training import _build_base_pipeline, generate_pseudo_absences
+
+    species = "Etheostoma caeruleum"
     df = _make_features()
-    db = _setup_smoke_db(tmp_path, df, "Etheostoma caeruleum")
+    db = _setup_smoke_db(tmp_path, df, species)
 
-    result = train_species_model("Etheostoma caeruleum", db, df)
-    preds = predict_all_segments(result, df)
+    X_pres, _ = prepare_species_data(species, db, df)
+    absence_ids = generate_pseudo_absences(X_pres.index.tolist(), df, db, ratio=2)
+    X_abs = df.set_index("ogf_id").loc[absence_ids, _ALL_FEATURES]
+    X_all = pd.concat([X_pres[_ALL_FEATURES], X_abs])
+    y_all = np.concatenate([np.ones(len(X_pres)), np.zeros(len(X_abs))])
 
-    # More than 95% of predictions should be strictly between 0 and 1
-    interior = preds[(preds > 0.0) & (preds < 1.0)]
-    assert len(interior) / len(preds) > 0.95, (
-        "Too many predictions at 0.0 or 1.0 — calibration may not be working"
+    uncalibrated = _build_base_pipeline()
+    uncalibrated.fit(X_all, y_all)
+    raw = uncalibrated.predict_proba(X_all)[:, 1]
+
+    result = train_species_model(species, db, df)
+    calibrated = result["model"].predict_proba(X_all)[:, 1]
+
+    assert brier_score_loss(y_all, calibrated) <= brier_score_loss(y_all, raw), (
+        "Calibration made the probabilities worse, which is the only thing "
+        "it must not do"
     )
+
+
+def test_calibrated_probabilities_are_monotonic_in_the_raw_score(tmp_path: Path):
+    """Calibration may rescale the ranking, never reverse it.
+
+    Isotonic regression is monotonic by construction, so a violation here
+    means the calibrator was swapped for something that is not — which would
+    silently change which segments rank highest while every range check in
+    this file still passed.
+    """
+    from scipy.stats import spearmanr
+
+    from src.services.sdm_training import _build_base_pipeline, generate_pseudo_absences
+
+    species = "Etheostoma caeruleum"
+    df = _make_features()
+    db = _setup_smoke_db(tmp_path, df, species)
+
+    X_pres, _ = prepare_species_data(species, db, df)
+    absence_ids = generate_pseudo_absences(X_pres.index.tolist(), df, db, ratio=2)
+    X_abs = df.set_index("ogf_id").loc[absence_ids, _ALL_FEATURES]
+    X_all = pd.concat([X_pres[_ALL_FEATURES], X_abs])
+    y_all = np.concatenate([np.ones(len(X_pres)), np.zeros(len(X_abs))])
+
+    uncalibrated = _build_base_pipeline()
+    uncalibrated.fit(X_all, y_all)
+    raw = uncalibrated.predict_proba(X_all)[:, 1]
+
+    result = train_species_model(species, db, df)
+    calibrated = result["model"].predict_proba(X_all)[:, 1]
+
+    rho, _ = spearmanr(raw, calibrated)
+    assert rho > 0.0, f"Calibration inverted the ranking (Spearman {rho:.3f})"
