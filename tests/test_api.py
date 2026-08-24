@@ -137,6 +137,7 @@ def test_log_trip_photo_rejects_unsupported_content_type(monkeypatch):
 
 def test_log_trip_photo_requires_text_field(monkeypatch):
     import io
+
     from PIL import Image
 
     headers = _apikey_headers(monkeypatch)

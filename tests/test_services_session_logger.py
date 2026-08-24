@@ -47,9 +47,12 @@ def _session_payload(**overrides) -> dict:
 
 def _noop_resolve() -> dict:
     return {
-        "lat": None, "lng": None,
-        "method": "text_only", "confidence": None,
-        "ohn_segment_id": None, "candidates": [],
+        "lat": None,
+        "lng": None,
+        "method": "text_only",
+        "confidence": None,
+        "ohn_segment_id": None,
+        "candidates": [],
     }
 
 
@@ -123,7 +126,10 @@ def test_session_multi_stop(mock_get_client, mock_get_model, mock_resolve, db_co
     mock_get_client.return_value = _mock_session_client(payload)
     mock_resolve.return_value = _noop_resolve()
 
-    text = "May 10. Started at a Milton stormwater pond, caught one carp. Then went to Osprey Marsh, caught nothing."
+    text = (
+        "May 10. Started at a Milton stormwater pond, caught one carp. "
+        "Then went to Osprey Marsh, caught nothing."
+    )
     parsed = parse_session_from_text(text, db_conn)
     assert len(parsed["stops"]) == 2
     assert parsed["stops"][0]["was_productive"] is True

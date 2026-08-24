@@ -36,12 +36,11 @@ def _photo_species_candidates(db_conn: Database, photo_path: str) -> dict | None
             return None
 
         import io
+
         img = Image.open(photo_path).convert("RGB")
         buf = io.BytesIO()
         img.save(buf, format="JPEG")
-        suggestion = suggest_species_from_photo(
-            buf.getvalue(), candidates, media_type="image/jpeg"
-        )
+        suggestion = suggest_species_from_photo(buf.getvalue(), candidates, media_type="image/jpeg")
         # After the identification, never before it — a conservation status in
         # the prompt would bias what the model reports seeing.
         return annotate_conservation(db_conn, suggestion)
@@ -91,12 +90,14 @@ def _build_suggested_species(text_species: str, vision_result: dict | None) -> l
     ranked.sort(key=lambda r: _CONFIDENCE_RANK.get(r["confidence"], 0), reverse=True)
 
     if is_unspecified:
-        ranked.append({
-            "species": text_clean,
-            "source": "text",
-            "confidence": None,
-            "note": "not specified in your notes",
-        })
+        ranked.append(
+            {
+                "species": text_clean,
+                "source": "text",
+                "confidence": None,
+                "note": "not specified in your notes",
+            }
+        )
 
     return ranked
 
@@ -208,31 +209,37 @@ def log_session(
     Returns {"session_id": int, "stops_logged": int, ...}
     """
     if not parsed_session.get("stops") and structured_catches:
-        parsed_session["stops"] = [{
-            "location_text": "",
-            "location_name": None,
-            "species_caught": [],
-            "party_species_caught": [],
-            "was_productive": True,
-            "lat": fallback_lat,
-            "lng": fallback_lng,
-            "location_method": "device_geolocation" if fallback_lat is not None else "unknown",
-            "location_confidence": 0.95 if fallback_lat is not None else None,
-            "photo_lat": fallback_lat,
-            "photo_lng": fallback_lng,
-            "photo_taken_at": fallback_photo_taken_at,
-            "photo_url": fallback_photo_url,
-            "photo_path": fallback_photo_path,
-        }]
+        parsed_session["stops"] = [
+            {
+                "location_text": "",
+                "location_name": None,
+                "species_caught": [],
+                "party_species_caught": [],
+                "was_productive": True,
+                "lat": fallback_lat,
+                "lng": fallback_lng,
+                "location_method": "device_geolocation" if fallback_lat is not None else "unknown",
+                "location_confidence": 0.95 if fallback_lat is not None else None,
+                "photo_lat": fallback_lat,
+                "photo_lng": fallback_lng,
+                "photo_taken_at": fallback_photo_taken_at,
+                "photo_url": fallback_photo_url,
+                "photo_path": fallback_photo_path,
+            }
+        ]
 
-    session_id = db_conn["sessions"].insert(
-        {
-            "date": parsed_session.get("date"),
-            "date_approx": parsed_session.get("date_approx"),
-            "overall_notes": parsed_session.get("overall_notes"),
-            "user_id": user_id,
-        }
-    ).last_pk
+    session_id = (
+        db_conn["sessions"]
+        .insert(
+            {
+                "date": parsed_session.get("date"),
+                "date_approx": parsed_session.get("date_approx"),
+                "overall_notes": parsed_session.get("overall_notes"),
+                "user_id": user_id,
+            }
+        )
+        .last_pk
+    )
 
     stops_logged = 0
     pending_catches: list[dict] = []
@@ -243,35 +250,39 @@ def log_session(
     # this call's response.
     catches_summary: list[dict] = []
     for stop_index, stop in enumerate(parsed_session.get("stops", [])):
-        stop_id = db_conn["stops"].insert(
-            {
-                "session_id": session_id,
-                "user_id": user_id,
-                "location_text": stop.get("location_text") or "",
-                "location_name": stop.get("location_name"),
-                "lat": stop.get("lat"),
-                "lng": stop.get("lng"),
-                "ohn_segment_id": stop.get("ohn_segment_id"),
-                "location_method": stop.get("location_method", "text_only"),
-                "location_confidence": stop.get("location_confidence"),
-                "species_caught": json.dumps(stop.get("species_caught") or []),
-                "party_species_caught": json.dumps(stop.get("party_species_caught") or []),
-                "was_productive": 1 if stop.get("was_productive") else 0,
-                "technique": stop.get("technique"),
-                "gear": stop.get("gear"),
-                "water_level": stop.get("water_level"),
-                "water_clarity": stop.get("water_clarity"),
-                "water_temp_c": stop.get("water_temp_c"),
-                "weather_notes": stop.get("weather_notes"),
-                "notes": stop.get("notes"),
-                "time_of_day": stop.get("time_of_day"),
-                "hour_of_day": stop.get("hour_of_day"),
-                "photo_lat": stop.get("photo_lat"),
-                "photo_lng": stop.get("photo_lng"),
-                "photo_taken_at": stop.get("photo_taken_at"),
-                "photo_url": stop.get("photo_url"),
-            }
-        ).last_pk
+        stop_id = (
+            db_conn["stops"]
+            .insert(
+                {
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "location_text": stop.get("location_text") or "",
+                    "location_name": stop.get("location_name"),
+                    "lat": stop.get("lat"),
+                    "lng": stop.get("lng"),
+                    "ohn_segment_id": stop.get("ohn_segment_id"),
+                    "location_method": stop.get("location_method", "text_only"),
+                    "location_confidence": stop.get("location_confidence"),
+                    "species_caught": json.dumps(stop.get("species_caught") or []),
+                    "party_species_caught": json.dumps(stop.get("party_species_caught") or []),
+                    "was_productive": 1 if stop.get("was_productive") else 0,
+                    "technique": stop.get("technique"),
+                    "gear": stop.get("gear"),
+                    "water_level": stop.get("water_level"),
+                    "water_clarity": stop.get("water_clarity"),
+                    "water_temp_c": stop.get("water_temp_c"),
+                    "weather_notes": stop.get("weather_notes"),
+                    "notes": stop.get("notes"),
+                    "time_of_day": stop.get("time_of_day"),
+                    "hour_of_day": stop.get("hour_of_day"),
+                    "photo_lat": stop.get("photo_lat"),
+                    "photo_lng": stop.get("photo_lng"),
+                    "photo_taken_at": stop.get("photo_taken_at"),
+                    "photo_url": stop.get("photo_url"),
+                }
+            )
+            .last_pk
+        )
         stops_logged += 1
 
         # One catches row per species caught at this stop — gives each species its
@@ -399,23 +410,27 @@ def log_session(
                 suggested_species=suggestions,
             )
             if not confirmed:
-                pending_catches.append({
-                    "catch_id": catch_id,
-                    "suggested_species": suggestions,
-                    "photo_url": catch_photo_url,
-                })
+                pending_catches.append(
+                    {
+                        "catch_id": catch_id,
+                        "suggested_species": suggestions,
+                        "photo_url": catch_photo_url,
+                    }
+                )
             is_new_pb = _maybe_update_personal_best(
                 db_conn, user_id, final_species, size_cm, catch_id
             )
-            catches_summary.append({
-                "catch_id": catch_id,
-                "species": final_species,
-                "species_confirmed": confirmed,
-                "count": sc.get("count"),
-                "biggest_size_cm": size_cm,
-                "photo_url": catch_photo_url,
-                "is_new_pb": is_new_pb,
-            })
+            catches_summary.append(
+                {
+                    "catch_id": catch_id,
+                    "species": final_species,
+                    "species_confirmed": confirmed,
+                    "count": sc.get("count"),
+                    "biggest_size_cm": size_cm,
+                    "photo_url": catch_photo_url,
+                    "is_new_pb": is_new_pb,
+                }
+            )
 
         # Pass 2 — any NL-parsed species no structured entry covered. This is
         # the *only* pass that runs when structured_catches is empty/absent,
@@ -438,20 +453,24 @@ def log_session(
                 species_confirmed=False,
                 suggested_species=suggestions,
             )
-            pending_catches.append({
-                "catch_id": catch_id,
-                "suggested_species": suggestions,
-                "photo_url": stop.get("photo_url"),
-            })
-            catches_summary.append({
-                "catch_id": catch_id,
-                "species": species,
-                "species_confirmed": False,
-                "count": None,
-                "biggest_size_cm": None,
-                "photo_url": stop.get("photo_url"),
-                "is_new_pb": False,  # NL-only rows never carry a size, so never a PB
-            })
+            pending_catches.append(
+                {
+                    "catch_id": catch_id,
+                    "suggested_species": suggestions,
+                    "photo_url": stop.get("photo_url"),
+                }
+            )
+            catches_summary.append(
+                {
+                    "catch_id": catch_id,
+                    "species": species,
+                    "species_confirmed": False,
+                    "count": None,
+                    "biggest_size_cm": None,
+                    "photo_url": stop.get("photo_url"),
+                    "is_new_pb": False,  # NL-only rows never carry a size, so never a PB
+                }
+            )
 
         if not stop.get("was_productive") and stop.get("ohn_segment_id"):
             try:
@@ -464,6 +483,7 @@ def log_session(
     try:
         from src.agent.client import get_client
         from src.services.trip_enrichment import enrich_session
+
         client = get_client()
         enrichment = enrich_session(db_conn, session_id, client, user_id=user_id)
         followup_questions = enrichment.get("followup_questions", [])
@@ -489,9 +509,7 @@ def log_session(
 
     if photo_taken_at:
         try:
-            enrich_dt = datetime.fromisoformat(
-                photo_taken_at.replace("Z", "+00:00")
-            )
+            enrich_dt = datetime.fromisoformat(photo_taken_at.replace("Z", "+00:00"))
         except Exception:
             pass
     elif session_date:
@@ -506,10 +524,15 @@ def log_session(
             import concurrent.futures
 
             from src.services.trip_enrichment_conditions import enrich_session_conditions
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(
                     enrich_session_conditions,
-                    db_conn, session_id, enrich_lat, enrich_lng, enrich_dt,
+                    db_conn,
+                    session_id,
+                    enrich_lat,
+                    enrich_lng,
+                    enrich_dt,
                     timeout_seconds=3.0,
                 )
                 try:
@@ -547,8 +570,8 @@ def log_session(
         "followup_questions": followup_questions,
         "proactive_coaching": proactive_coaching,
         "patterns_recomputed": patterns_recomputed,
-        "conditions_enriched": conditions_result is not None and
-                               not conditions_result.get("timeout"),
+        "conditions_enriched": conditions_result is not None
+        and not conditions_result.get("timeout"),
         "conditions": conditions_result,
     }
 
@@ -633,10 +656,12 @@ def get_trip_summary(db: Database, user_id: int = 1) -> str:
             if loc:
                 location_counter[loc[:50]] += 1
 
-        session_dates = list(db.execute(
-            "SELECT date FROM sessions WHERE date IS NOT NULL AND user_id = ?",
-            [user_id],
-        ).fetchall())
+        session_dates = list(
+            db.execute(
+                "SELECT date FROM sessions WHERE date IS NOT NULL AND user_id = ?",
+                [user_id],
+            ).fetchall()
+        )
         dates = [r[0] for r in session_dates]
 
     elif has_parsed:
@@ -704,8 +729,10 @@ def get_trips_at_location(
         R = 6371
         dlat = math.radians(la2 - la1)
         dlng = math.radians(ln2 - ln1)
-        a = (math.sin(dlat / 2) ** 2 + math.cos(math.radians(la1)) *
-             math.cos(math.radians(la2)) * math.sin(dlng / 2) ** 2)
+        a = (
+            math.sin(dlat / 2) ** 2
+            + math.cos(math.radians(la1)) * math.cos(math.radians(la2)) * math.sin(dlng / 2) ** 2
+        )
         return R * 2 * math.asin(math.sqrt(a))
 
     matched = []
@@ -762,7 +789,8 @@ def get_trips_at_location(
         matched[0].get("location_name") or matched[0].get("location_text") or location_query
     )
     visit_count = len(matched)
-    header = f"Your logged trips at {location_label} ({visit_count} visit{'s' if visit_count != 1 else ''}):"
+    plural = "s" if visit_count != 1 else ""
+    header = f"Your logged trips at {location_label} ({visit_count} visit{plural}):"
     return header + "\n" + "\n".join(f"- {line}" for line in lines)
 
 

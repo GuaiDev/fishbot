@@ -27,14 +27,14 @@ HOME_LNG = -79.6877
 HOME_RADIUS_KM = 150.0
 GRID_ROWS = 25
 GRID_COLS = 25
-GRID_PER_CELL = 200        # 100 top-scoring + 100 random for coverage
-GRID_MIN_CELL = 20         # always keep at least this many from any populated cell
+GRID_PER_CELL = 200  # 100 top-scoring + 100 random for coverage
+GRID_MIN_CELL = 20  # always keep at least this many from any populated cell
 
 # (name, lat_min, lat_max, lng_min, lng_max, min_segments)
 ANCHOR_REGIONS: list[tuple[str, float, float, float, float, int]] = [
-    ("Hamilton",   43.1,  43.5,  -80.1,  -79.7,  100),
-    ("Niagara",    42.8,  43.3,  -80.0,  -78.8,  200),
-    ("Kawartha",   44.3,  44.8,  -78.8,  -78.0,  200),
+    ("Hamilton", 43.1, 43.5, -80.1, -79.7, 100),
+    ("Niagara", 42.8, 43.3, -80.0, -78.8, 200),
+    ("Kawartha", 44.3, 44.8, -78.8, -78.0, 200),
     ("Burlington", 43.25, 43.55, -79.95, -79.60, 200),
 ]
 
@@ -135,7 +135,10 @@ def anchor_topup(
         ].nlargest(need, sort_col)
         logger.info(
             "Anchor %s: %d/%d — topping up with %d segments",
-            name, count, min_segs, len(candidates),
+            name,
+            count,
+            min_segs,
+            len(candidates),
         )
         extra.append(candidates)
         already_exported.update(candidates["ogf_id"])
@@ -148,19 +151,18 @@ def anchor_topup(
 # ── regional coverage helpers ─────────────────────────────────────────────────
 
 _REGIONS = {
-    "Niagara":        {"lat": (42.8, 43.3), "lng": (-80.0, -78.8)},
-    "Hamilton":       {"lat": (43.1, 43.5), "lng": (-80.1, -79.7)},
+    "Niagara": {"lat": (42.8, 43.3), "lng": (-80.0, -78.8)},
+    "Hamilton": {"lat": (43.1, 43.5), "lng": (-80.1, -79.7)},
     "Toronto-Barrie": {"lat": (43.8, 44.2), "lng": (-79.8, -79.2)},
-    "Kawartha":       {"lat": (44.0, 45.5), "lng": (-79.5, -77.5)},
+    "Kawartha": {"lat": (44.0, 45.5), "lng": (-79.5, -77.5)},
 }
 
 
 def _region_counts(df: pd.DataFrame) -> dict[str, int]:
     counts = {}
     for name, bounds in _REGIONS.items():
-        mask = (
-            df["centroid_lat"].between(*bounds["lat"])
-            & df["centroid_lng"].between(*bounds["lng"])
+        mask = df["centroid_lat"].between(*bounds["lat"]) & df["centroid_lng"].between(
+            *bounds["lng"]
         )
         counts[name] = int(mask.sum())
     return counts
@@ -211,8 +213,7 @@ def export_map_data(
     )
     # 5. Likely-culverted urban order-1 streams (only very dense urban core)
     culverted = (
-        (untapped["stream_order"] == 1)
-        & (untapped["observation_density_25km"] > 500)
+        (untapped["stream_order"] == 1) & (untapped["observation_density_25km"] > 500)
         if "observation_density_25km" in untapped.columns
         else pd.Series(False, index=untapped.index)
     )
@@ -220,7 +221,8 @@ def export_map_data(
     non_fishable = lake_ontario | lake_erie_and_us | north_of_coverage | virtual_flow | culverted
     n_removed = int(non_fishable.sum())
     logger.info(
-        "Removed %d non-fishable segments (lake=%d, erie/us=%d, coverage=%d, virtual=%d, culverted=%d)",
+        "Removed %d non-fishable segments "
+        "(lake=%d, erie/us=%d, coverage=%d, virtual=%d, culverted=%d)",
         n_removed,
         int(lake_ontario.sum()),
         int(lake_erie_and_us.sum()),
@@ -236,10 +238,22 @@ def export_map_data(
     # ── geographic grid sampling for regional coverage ─────────────────────────
     n_before_grid = len(untapped)
     pre_grid = untapped  # kept for anchor topup (segments not yet selected by grid)
-    untapped = grid_sample(untapped, sort_col, rows=GRID_ROWS, cols=GRID_COLS, per_cell=GRID_PER_CELL, min_per_cell=GRID_MIN_CELL)
+    untapped = grid_sample(
+        untapped,
+        sort_col,
+        rows=GRID_ROWS,
+        cols=GRID_COLS,
+        per_cell=GRID_PER_CELL,
+        min_per_cell=GRID_MIN_CELL,
+    )
     logger.info(
         "After grid sample (%dx%d, max %d/cell, min %d/cell): %d segments (from %d)",
-        GRID_ROWS, GRID_COLS, GRID_PER_CELL, GRID_MIN_CELL, len(untapped), n_before_grid,
+        GRID_ROWS,
+        GRID_COLS,
+        GRID_PER_CELL,
+        GRID_MIN_CELL,
+        len(untapped),
+        n_before_grid,
     )
 
     # ── anchor region top-up ──────────────────────────────────────────────────
@@ -274,7 +288,6 @@ def export_map_data(
         "Score thresholds (balanced) — p95: %.4f  p80: %.4f  p60: %.4f  p40: %.4f",
         *thresholds_by_mode["balanced"].values(),
     )
-
 
     # Build GeoJSON features
     geojson_features = []
@@ -382,7 +395,10 @@ if __name__ == "__main__":
     print(f"\nExported {stats['segments']:,} segments -> {stats['path']} ({stats['json_mb']} MB)")
     print(f"Non-fishable removed: {stats['non_fishable_removed']:,}")
     t = stats["score_thresholds"]["balanced"]
-    print(f"Balanced thresholds - p95: {t['p95']:.5f}  p80: {t['p80']:.5f}  p60: {t['p60']:.5f}  p40: {t['p40']:.5f}")
+    print(
+        f"Balanced thresholds - p95: {t['p95']:.5f}  p80: {t['p80']:.5f}  "
+        f"p60: {t['p60']:.5f}  p40: {t['p40']:.5f}"
+    )
     if stats.get("regional"):
         print("Regional coverage:", "  ".join(f"{k}: {v}" for k, v in stats["regional"].items()))
     if stats.get("html"):

@@ -33,7 +33,9 @@ def query_for_agent(
     species_filter: str | None = None,
 ) -> str:
     db = get_db()
-    observations, total_count = query_observations(db, lat, lng, radius_km, days_back, species_filter)
+    observations, total_count = query_observations(
+        db, lat, lng, radius_km, days_back, species_filter
+    )
 
     if not observations:
         return json.dumps(

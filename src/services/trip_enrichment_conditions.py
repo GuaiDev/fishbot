@@ -8,6 +8,7 @@ Two data layers:
 
 Plus anomaly detection vs PWQMN historical baseline.
 """
+
 import json
 import math
 import urllib.request
@@ -86,35 +87,41 @@ def enrich_session_conditions(
         }
 
         if weather:
-            row.update({
-                "air_temp_c": weather.get("air_temp_c"),
-                "feels_like_c": weather.get("feels_like_c"),
-                "pressure_hpa": weather.get("pressure_hpa"),
-                "precip_mm": weather.get("precip_mm"),
-                "cloud_cover_pct": weather.get("cloud_cover_pct"),
-                "wind_speed_kmh": weather.get("wind_speed_kmh"),
-                "wind_direction_deg": weather.get("wind_direction_deg"),
-                "weather_code": weather.get("weather_code"),
-            })
+            row.update(
+                {
+                    "air_temp_c": weather.get("air_temp_c"),
+                    "feels_like_c": weather.get("feels_like_c"),
+                    "pressure_hpa": weather.get("pressure_hpa"),
+                    "precip_mm": weather.get("precip_mm"),
+                    "cloud_cover_pct": weather.get("cloud_cover_pct"),
+                    "wind_speed_kmh": weather.get("wind_speed_kmh"),
+                    "wind_direction_deg": weather.get("wind_direction_deg"),
+                    "weather_code": weather.get("weather_code"),
+                }
+            )
 
         if pwqmn:
-            row.update({
-                "water_temp_c": pwqmn.get("temp_c"),
-                "do_mgl": pwqmn.get("do_mgl"),
-                "ph": pwqmn.get("ph"),
-                "conductivity_us_cm": pwqmn.get("conductivity_us_cm"),
-                "turbidity_fnu": pwqmn.get("turbidity_fnu"),
-                "pwqmn_station_name": pwqmn.get("station_name"),
-                "pwqmn_station_dist_km": pwqmn.get("dist_km"),
-                "pwqmn_sampled_at": pwqmn.get("sampled_at"),
-            })
+            row.update(
+                {
+                    "water_temp_c": pwqmn.get("temp_c"),
+                    "do_mgl": pwqmn.get("do_mgl"),
+                    "ph": pwqmn.get("ph"),
+                    "conductivity_us_cm": pwqmn.get("conductivity_us_cm"),
+                    "turbidity_fnu": pwqmn.get("turbidity_fnu"),
+                    "pwqmn_station_name": pwqmn.get("station_name"),
+                    "pwqmn_station_dist_km": pwqmn.get("dist_km"),
+                    "pwqmn_sampled_at": pwqmn.get("sampled_at"),
+                }
+            )
 
         if anomalies:
-            row.update({
-                "water_temp_anomaly_c": anomalies.get("water_temp_anomaly_c"),
-                "air_temp_anomaly_c": anomalies.get("air_temp_anomaly_c"),
-                "anomaly_flag": anomalies.get("anomaly_flag"),
-            })
+            row.update(
+                {
+                    "water_temp_anomaly_c": anomalies.get("water_temp_anomaly_c"),
+                    "air_temp_anomaly_c": anomalies.get("air_temp_anomaly_c"),
+                    "anomaly_flag": anomalies.get("anomaly_flag"),
+                }
+            )
 
         db["session_conditions"].upsert(row, pk="session_id")
         result["stored"] = True
@@ -124,9 +131,7 @@ def enrich_session_conditions(
     return result
 
 
-def _fetch_open_meteo(
-    lat: float, lng: float, dt: datetime, timeout: float
-) -> dict | None:
+def _fetch_open_meteo(lat: float, lng: float, dt: datetime, timeout: float) -> dict | None:
     """
     Fetch hourly weather from Open-Meteo archive API for the session datetime.
     Also fetches 7 days prior for days_since_rain calculation.
@@ -135,16 +140,18 @@ def _fetch_open_meteo(
     date_str = dt.strftime("%Y-%m-%d")
     start_date = (dt - timedelta(days=7)).strftime("%Y-%m-%d")
 
-    variables = ",".join([
-        "temperature_2m",
-        "apparent_temperature",
-        "surface_pressure",
-        "precipitation",
-        "cloud_cover",
-        "wind_speed_10m",
-        "wind_direction_10m",
-        "weather_code",
-    ])
+    variables = ",".join(
+        [
+            "temperature_2m",
+            "apparent_temperature",
+            "surface_pressure",
+            "precipitation",
+            "cloud_cover",
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "weather_code",
+        ]
+    )
 
     url = (
         f"https://archive-api.open-meteo.com/v1/archive"
@@ -172,8 +179,9 @@ def _fetch_open_meteo(
         idx = times.index(target)
     except ValueError:
         target_dt = datetime.fromisoformat(target)
-        idx = min(range(len(times)),
-                  key=lambda i: abs(datetime.fromisoformat(times[i]) - target_dt))
+        idx = min(
+            range(len(times)), key=lambda i: abs(datetime.fromisoformat(times[i]) - target_dt)
+        )
 
     def val(key):
         arr = hourly.get(key, [])
@@ -195,24 +203,32 @@ def _fetch_open_meteo(
 
 
 def _fetch_pwqmn_nearest(
-    db: Database, lat: float, lng: float, dt: datetime,
-    radius_km: float = 50.0, days_tolerance: int = 45,
+    db: Database,
+    lat: float,
+    lng: float,
+    dt: datetime,
+    radius_km: float = 50.0,
+    days_tolerance: int = 45,
 ) -> dict | None:
     """
     Find the nearest PWQMN water quality reading to this location and datetime.
     Searches within radius_km and days_tolerance days of the session date.
     """
-    date_str = dt.strftime("%Y-%m-%d")
     start = (dt - timedelta(days=days_tolerance)).strftime("%Y-%m-%d")
     end = (dt + timedelta(days=days_tolerance)).strftime("%Y-%m-%d")
 
-    rows = list(db.execute("""
+    rows = list(
+        db.execute(
+            """
         SELECT station_name, lat, lng, sampled_at,
                temp_c, do_mgl, ph, conductivity_us_cm, turbidity_fnu
         FROM water_quality_readings
         WHERE sampled_at BETWEEN ? AND ?
           AND lat IS NOT NULL AND lng IS NOT NULL
-    """, [start, end]).fetchall())
+    """,
+            [start, end],
+        ).fetchall()
+    )
 
     if not rows:
         return None
@@ -225,8 +241,7 @@ def _fetch_pwqmn_nearest(
         if dist > radius_km:
             continue
         try:
-            days_diff = abs((dt.date() -
-                            datetime.fromisoformat(r[3]).date()).days)
+            days_diff = abs((dt.date() - datetime.fromisoformat(r[3]).date()).days)
         except Exception:
             days_diff = 999
         score = dist + days_diff * 0.1
@@ -251,8 +266,12 @@ def _fetch_pwqmn_nearest(
 
 
 def _compute_anomalies(
-    db: Database, lat: float, lng: float,
-    dt: datetime, weather: dict | None, pwqmn: dict | None,
+    db: Database,
+    lat: float,
+    lng: float,
+    dt: datetime,
+    weather: dict | None,
+    pwqmn: dict | None,
 ) -> dict:
     """
     Compare current conditions vs historical PWQMN baseline for same month.
@@ -262,18 +281,25 @@ def _compute_anomalies(
     anomalies = {}
 
     # Historical water temp baseline: PWQMN average for this month within ~50km
-    baseline_rows = list(db.execute("""
+    baseline_rows = list(
+        db.execute(
+            """
         SELECT AVG(temp_c), COUNT(*)
         FROM water_quality_readings
         WHERE strftime('%m', sampled_at) = ?
           AND temp_c IS NOT NULL
           AND lat BETWEEN ? AND ?
           AND lng BETWEEN ? AND ?
-    """, [
-        f"{month:02d}",
-        lat - 0.45, lat + 0.45,
-        lng - 0.45, lng + 0.45,
-    ]).fetchall())
+    """,
+            [
+                f"{month:02d}",
+                lat - 0.45,
+                lat + 0.45,
+                lng - 0.45,
+                lng + 0.45,
+            ],
+        ).fetchall()
+    )
 
     if baseline_rows and baseline_rows[0][0] is not None:
         hist_water_temp = baseline_rows[0][0]
@@ -307,8 +333,7 @@ def _compute_anomalies(
     elif water_anom is not None and water_anom > 2.0:
         anomalies["anomaly_flag"] = "warm_conditions"
         anomalies["anomaly_note"] = (
-            f"Water temp {water_anom:.1f}°C above historical average "
-            f"for {dt.strftime('%B')}"
+            f"Water temp {water_anom:.1f}°C above historical average for {dt.strftime('%B')}"
         )
     elif air_anom is not None and air_anom < -3.0:
         anomalies["anomaly_flag"] = "cold_air"
@@ -322,7 +347,10 @@ def _compute_anomalies(
 
 
 def _fetch_historical_air_temp_baseline(
-    lat: float, lng: float, dt: datetime, timeout: float = 2.0,
+    lat: float,
+    lng: float,
+    dt: datetime,
+    timeout: float = 2.0,
 ) -> float | None:
     """
     Fetch average air temp for the same week across the prior 3 years.
@@ -357,7 +385,7 @@ def _compute_days_since_rain(precip_history: list, threshold_mm: float = 5.0) ->
     """Count days since last rain event > threshold from hourly precip array."""
     daily = []
     for i in range(0, len(precip_history), 24):
-        chunk = [p for p in precip_history[i:i+24] if p is not None]
+        chunk = [p for p in precip_history[i : i + 24] if p is not None]
         daily.append(sum(chunk))
 
     for i, total in enumerate(reversed(daily[:-1])):  # exclude current day
@@ -379,19 +407,28 @@ def _compute_moon_phase(dt: datetime) -> float:
 
 
 def _get_season(month: int) -> str:
-    if month in (12, 1, 2): return "winter"
-    if month in (3, 4, 5): return "spring"
-    if month in (6, 7, 8): return "summer"
+    if month in (12, 1, 2):
+        return "winter"
+    if month in (3, 4, 5):
+        return "spring"
+    if month in (6, 7, 8):
+        return "summer"
     return "fall"
 
 
 def _get_time_of_day(hour: int) -> str:
-    if hour < 6: return "night"
-    if hour < 9: return "dawn"
-    if hour < 12: return "morning"
-    if hour < 14: return "midday"
-    if hour < 17: return "afternoon"
-    if hour < 20: return "evening"
+    if hour < 6:
+        return "night"
+    if hour < 9:
+        return "dawn"
+    if hour < 12:
+        return "morning"
+    if hour < 14:
+        return "midday"
+    if hour < 17:
+        return "afternoon"
+    if hour < 20:
+        return "evening"
     return "night"
 
 
@@ -399,6 +436,8 @@ def _haversine_km(lat1, lng1, lat2, lng2):
     R = 6371
     dlat = math.radians(lat2 - lat1)
     dlng = math.radians(lng2 - lng1)
-    a = (math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) *
-         math.cos(math.radians(lat2)) * math.sin(dlng/2)**2)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2
+    )
     return R * 2 * math.asin(math.sqrt(a))

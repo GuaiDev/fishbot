@@ -15,6 +15,7 @@ Modes:
 On uncertainty, ERR TOWARD SYNTHESIS — a too-cheap flat answer is worse than
 spending slightly more. A flat generic answer is the main failure mode to avoid.
 """
+
 import json
 
 from src.agent.client import get_client
@@ -101,6 +102,27 @@ def classify_message(message: str, conversation_context: str = "") -> dict:
         }
 
 
+# Hoisted to module level alongside ROUTER_SYSTEM and REFLEX_SYSTEM, where the
+# other two prompts already live. Implicit concatenation keeps the example
+# lines inside the column limit without putting a newline in the middle of one.
+_LOCATION_SYSTEM = (
+    "Extract location from a fishing question. Return ONLY JSON, no other text.\n"
+    "If the message mentions coordinates, a named place, or a specific water "
+    "body: extract it.\n"
+    "If no specific location: return nulls.\n"
+    'Output: {"lat": number or null, "lng": number or null, '
+    '"location_name": "string or null"}\n'
+    "Examples:\n"
+    '"Why does Willoway Park hold catfish?" '
+    '→ {"lat": null, "lng": null, "location_name": "Willoway Park"}\n'
+    '"What\'s at 42.917, -79.774?" '
+    '→ {"lat": 42.917, "lng": -79.774, "location_name": null}\n'
+    '"What bait for bass?" → {"lat": null, "lng": null, "location_name": null}\n'
+    '"Credit River near Streetsville" '
+    '→ {"lat": null, "lng": null, "location_name": "Credit River Streetsville"}'
+)
+
+
 def extract_location_from_message(message: str) -> dict:
     """
     Extract location information from a synthesis-mode message.
@@ -113,15 +135,7 @@ def extract_location_from_message(message: str) -> dict:
         resp = client.messages.create(
             model=HAIKU,
             max_tokens=100,
-            system="""Extract location from a fishing question. Return ONLY JSON, no other text.
-If the message mentions coordinates, a named place, or a specific water body: extract it.
-If no specific location: return nulls.
-Output: {"lat": number or null, "lng": number or null, "location_name": "string or null"}
-Examples:
-"Why does Willoway Park hold catfish?" → {"lat": null, "lng": null, "location_name": "Willoway Park"}
-"What's at 42.917, -79.774?" → {"lat": 42.917, "lng": -79.774, "location_name": null}
-"What bait for bass?" → {"lat": null, "lng": null, "location_name": null}
-"Credit River near Streetsville" → {"lat": null, "lng": null, "location_name": "Credit River Streetsville"}""",
+            system=_LOCATION_SYSTEM,
             messages=[{"role": "user", "content": message}],
         )
         text = "".join(b.text for b in resp.content if b.type == "text").strip()

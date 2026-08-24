@@ -1,4 +1,5 @@
 """Tests for trip_logger service functions."""
+
 import json
 
 import pytest
@@ -11,33 +12,40 @@ def db_conn(tmp_path):
     return get_db(path=tmp_path / "test.db")
 
 
-def _insert_stop(db, location_name, location_text, species, date="2025-05-15",
-                 lat=None, lng=None):
+def _insert_stop(db, location_name, location_text, species, date="2025-05-15", lat=None, lng=None):
     """Insert a session + stop directly, bypassing log_session enrichment."""
-    session_id = db["sessions"].insert({
-        "date": date,
-        "date_approx": None,
-        "overall_notes": None,
-    }).last_pk
-    db["stops"].insert({
-        "session_id": session_id,
-        "location_text": location_text,
-        "location_name": location_name,
-        "lat": lat,
-        "lng": lng,
-        "ohn_segment_id": None,
-        "location_method": "text_only",
-        "location_confidence": None,
-        "species_caught": json.dumps(species),
-        "was_productive": 1 if species else 0,
-        "technique": None,
-        "gear": None,
-        "water_level": None,
-        "water_clarity": None,
-        "water_temp_c": None,
-        "weather_notes": None,
-        "notes": None,
-    })
+    session_id = (
+        db["sessions"]
+        .insert(
+            {
+                "date": date,
+                "date_approx": None,
+                "overall_notes": None,
+            }
+        )
+        .last_pk
+    )
+    db["stops"].insert(
+        {
+            "session_id": session_id,
+            "location_text": location_text,
+            "location_name": location_name,
+            "lat": lat,
+            "lng": lng,
+            "ohn_segment_id": None,
+            "location_method": "text_only",
+            "location_confidence": None,
+            "species_caught": json.dumps(species),
+            "was_productive": 1 if species else 0,
+            "technique": None,
+            "gear": None,
+            "water_level": None,
+            "water_clarity": None,
+            "water_temp_c": None,
+            "weather_notes": None,
+            "notes": None,
+        }
+    )
     return session_id
 
 
@@ -68,7 +76,9 @@ def test_get_trips_at_location_multiple_visits(db_conn):
     from src.services.trip_logger import get_trips_at_location
 
     _insert_stop(db_conn, "Byng Island", "Byng Island", ["channel catfish"], date="2025-05-10")
-    _insert_stop(db_conn, "Byng Island", "Byng Island", ["bowfin", "channel catfish"], date="2025-06-01")
+    _insert_stop(
+        db_conn, "Byng Island", "Byng Island", ["bowfin", "channel catfish"], date="2025-06-01"
+    )
 
     result = get_trips_at_location(db_conn, location_query="Byng Island")
     assert "2 visits" in result
@@ -110,14 +120,16 @@ def test_log_session_inserts_one_catch_row_per_species(db_conn):
 
     parsed = {
         "date": "2026-06-01",
-        "stops": [{
-            "location_text": "Bronte Creek",
-            "species_caught": ["creek chub", "rock bass"],
-            "photo_url": "/photos/abc123.jpg",
-            "photo_lat": 43.4,
-            "photo_lng": -79.7,
-            "photo_taken_at": "2026-06-01T14:00:00",
-        }],
+        "stops": [
+            {
+                "location_text": "Bronte Creek",
+                "species_caught": ["creek chub", "rock bass"],
+                "photo_url": "/photos/abc123.jpg",
+                "photo_lat": 43.4,
+                "photo_lng": -79.7,
+                "photo_taken_at": "2026-06-01T14:00:00",
+            }
+        ],
     }
 
     result = log_session(parsed, db_conn, user_id=1)
@@ -186,10 +198,16 @@ def test_structured_catch_merges_onto_matching_nl_species(db_conn):
         "date": "2026-06-01",
         "stops": [{"location_text": "Bronte Creek", "species_caught": ["smallmouth bass"]}],
     }
-    structured = [{
-        "species": "smallmouth bass", "count": 2, "biggest_size_cm": 35.0,
-        "bait": "spinnerbait", "photo_path": None, "photo_url": None,
-    }]
+    structured = [
+        {
+            "species": "smallmouth bass",
+            "count": 2,
+            "biggest_size_cm": 35.0,
+            "bait": "spinnerbait",
+            "photo_path": None,
+            "photo_url": None,
+        }
+    ]
 
     result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
 
@@ -214,10 +232,16 @@ def test_structured_catch_with_no_nl_match_becomes_own_row(db_conn):
         "date": "2026-06-01",
         "stops": [{"location_text": "Bronte Creek", "species_caught": ["creek chub"]}],
     }
-    structured = [{
-        "species": "rock bass", "count": 1, "biggest_size_cm": 20.0,
-        "bait": "worm", "photo_path": None, "photo_url": None,
-    }]
+    structured = [
+        {
+            "species": "rock bass",
+            "count": 1,
+            "biggest_size_cm": 20.0,
+            "bait": "worm",
+            "photo_path": None,
+            "photo_url": None,
+        }
+    ]
 
     result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
 
@@ -243,10 +267,22 @@ def test_duplicate_species_structured_catches_get_separate_rows(db_conn):
         "stops": [{"location_text": "Bronte Creek", "species_caught": ["smallmouth bass"]}],
     }
     structured = [
-        {"species": "smallmouth bass", "count": 1, "biggest_size_cm": 35.0,
-         "bait": "spinnerbait", "photo_path": None, "photo_url": None},
-        {"species": "smallmouth bass", "count": 1, "biggest_size_cm": 25.0,
-         "bait": "worm", "photo_path": None, "photo_url": None},
+        {
+            "species": "smallmouth bass",
+            "count": 1,
+            "biggest_size_cm": 35.0,
+            "bait": "spinnerbait",
+            "photo_path": None,
+            "photo_url": None,
+        },
+        {
+            "species": "smallmouth bass",
+            "count": 1,
+            "biggest_size_cm": 25.0,
+            "bait": "worm",
+            "photo_path": None,
+            "photo_url": None,
+        },
     ]
 
     result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
@@ -292,17 +328,25 @@ def test_structured_catch_no_species_photo_only_keeps_count_size_bait(db_conn, t
 
     parsed = {
         "date": "2026-06-01",
-        "stops": [{
-            "location_text": "Bronte Creek",
-            "species_caught": [],
-            "photo_path": str(photo_path),
-            "photo_url": "/photos/shared.jpg",
-        }],
+        "stops": [
+            {
+                "location_text": "Bronte Creek",
+                "species_caught": [],
+                "photo_path": str(photo_path),
+                "photo_url": "/photos/shared.jpg",
+            }
+        ],
     }
-    structured = [{
-        "species": None, "count": 3, "biggest_size_cm": 22.0,
-        "bait": "worm", "photo_path": None, "photo_url": None,
-    }]
+    structured = [
+        {
+            "species": None,
+            "count": 3,
+            "biggest_size_cm": 22.0,
+            "bait": "worm",
+            "photo_path": None,
+            "photo_url": None,
+        }
+    ]
 
     result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
 
@@ -338,10 +382,21 @@ def test_structured_catch_updates_personal_best(db_conn):
     }
 
     # First-ever catch of the species is trivially a new PB (nothing to beat).
-    result1 = log_session(parsed, db_conn, user_id=1, structured_catches=[
-        {"species": "smallmouth bass", "count": 1, "biggest_size_cm": 30.0,
-         "bait": None, "photo_path": None, "photo_url": None},
-    ])
+    result1 = log_session(
+        parsed,
+        db_conn,
+        user_id=1,
+        structured_catches=[
+            {
+                "species": "smallmouth bass",
+                "count": 1,
+                "biggest_size_cm": 30.0,
+                "bait": None,
+                "photo_path": None,
+                "photo_url": None,
+            },
+        ],
+    )
     assert get_personal_best(db_conn, 1, "smallmouth bass") == 30.0
     assert result1["catches"][0]["is_new_pb"] is True
 
@@ -352,10 +407,21 @@ def test_structured_catch_updates_personal_best(db_conn):
         "date": "2026-06-02",
         "stops": [{"location_text": "Bronte Creek", "species_caught": ["smallmouth bass"]}],
     }
-    result2 = log_session(parsed2, db_conn, user_id=1, structured_catches=[
-        {"species": "smallmouth bass", "count": 1, "biggest_size_cm": 22.0,
-         "bait": None, "photo_path": None, "photo_url": None},
-    ])
+    result2 = log_session(
+        parsed2,
+        db_conn,
+        user_id=1,
+        structured_catches=[
+            {
+                "species": "smallmouth bass",
+                "count": 1,
+                "biggest_size_cm": 22.0,
+                "bait": None,
+                "photo_path": None,
+                "photo_url": None,
+            },
+        ],
+    )
     assert get_personal_best(db_conn, 1, "smallmouth bass") == 30.0
     assert result2["catches"][0]["is_new_pb"] is False
 
@@ -364,10 +430,21 @@ def test_structured_catch_updates_personal_best(db_conn):
         "date": "2026-06-03",
         "stops": [{"location_text": "Bronte Creek", "species_caught": ["smallmouth bass"]}],
     }
-    result3 = log_session(parsed3, db_conn, user_id=1, structured_catches=[
-        {"species": "smallmouth bass", "count": 1, "biggest_size_cm": 38.0,
-         "bait": None, "photo_path": None, "photo_url": None},
-    ])
+    result3 = log_session(
+        parsed3,
+        db_conn,
+        user_id=1,
+        structured_catches=[
+            {
+                "species": "smallmouth bass",
+                "count": 1,
+                "biggest_size_cm": 38.0,
+                "bait": None,
+                "photo_path": None,
+                "photo_url": None,
+            },
+        ],
+    )
     assert get_personal_best(db_conn, 1, "smallmouth bass") == 38.0
     assert result3["catches"][0]["is_new_pb"] is True
 
@@ -385,11 +462,24 @@ def test_log_session_catches_summary_includes_confirmed_and_pending_rows(db_conn
         "stops": [{"location_text": "Sixteen Mile Creek", "species_caught": []}],
     }
     structured = [
-        {"species": "smallmouth bass", "count": 1, "biggest_size_cm": 35.0,
-         "bait": "spinnerbait", "photo_path": None, "photo_url": None},
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None,
-         "source": "fast_tally", "caught_at": "2026-07-20T14:00:00"},
+        {
+            "species": "smallmouth bass",
+            "count": 1,
+            "biggest_size_cm": 35.0,
+            "bait": "spinnerbait",
+            "photo_path": None,
+            "photo_url": None,
+        },
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-20T14:00:00",
+        },
     ]
 
     result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
@@ -416,11 +506,18 @@ def test_fast_tally_no_species_no_photo_inserts_unidentified(db_conn):
         "date": "2026-07-19",
         "stops": [{"location_text": "Sixteen Mile Creek", "species_caught": []}],
     }
-    structured = [{
-        "species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-        "photo_path": None, "photo_url": None,
-        "source": "fast_tally", "caught_at": "2026-07-19T14:03:00",
-    }]
+    structured = [
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-19T14:03:00",
+        }
+    ]
 
     result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
 
@@ -444,15 +541,36 @@ def test_multiple_fast_tally_taps_become_separate_rows(db_conn):
         "stops": [{"location_text": "Sixteen Mile Creek", "species_caught": []}],
     }
     structured = [
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None,
-         "source": "fast_tally", "caught_at": "2026-07-19T14:00:00"},
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None,
-         "source": "fast_tally", "caught_at": "2026-07-19T14:05:00"},
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None,
-         "source": "fast_tally", "caught_at": "2026-07-19T16:40:00"},
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-19T14:00:00",
+        },
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-19T14:05:00",
+        },
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-19T16:40:00",
+        },
     ]
 
     result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
@@ -461,7 +579,9 @@ def test_multiple_fast_tally_taps_become_separate_rows(db_conn):
     assert len(catches) == 3
     assert all(c["species"] == "unidentified sp." for c in catches)
     assert sorted(c["caught_at"] for c in catches) == [
-        "2026-07-19T14:00:00", "2026-07-19T14:05:00", "2026-07-19T16:40:00",
+        "2026-07-19T14:00:00",
+        "2026-07-19T14:05:00",
+        "2026-07-19T16:40:00",
     ]
 
 
@@ -480,25 +600,48 @@ def test_fast_tally_does_not_ride_unrelated_stop_photo(db_conn, tmp_path):
 
     parsed = {
         "date": "2026-07-19",
-        "stops": [{
-            "location_text": "Sixteen Mile Creek",
-            "species_caught": [],
-            "photo_path": str(photo_path),
-            "photo_url": "/photos/shared.jpg",
-        }],
+        "stops": [
+            {
+                "location_text": "Sixteen Mile Creek",
+                "species_caught": [],
+                "photo_path": str(photo_path),
+                "photo_url": "/photos/shared.jpg",
+            }
+        ],
     }
     structured = [
         # The detailed "let vision suggest it" card — no species, relies on
         # the stop's shared photo. Must still ride it (unchanged behavior).
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None, "source": "detailed"},
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "detailed",
+        },
         # Two anonymous fast-tally taps in the same session.
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None,
-         "source": "fast_tally", "caught_at": "2026-07-19T14:00:00"},
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None,
-         "source": "fast_tally", "caught_at": "2026-07-19T14:05:00"},
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-19T14:00:00",
+        },
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-19T14:05:00",
+        },
     ]
 
     result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
@@ -507,8 +650,7 @@ def test_fast_tally_does_not_ride_unrelated_stop_photo(db_conn, tmp_path):
     assert len(catches) == 3
 
     tally_rows = [
-        c for c in catches
-        if c["species"] == "unidentified sp." and c["species_confirmed"] == 1
+        c for c in catches if c["species"] == "unidentified sp." and c["species_confirmed"] == 1
     ]
     detailed_rows = [c for c in catches if c["species_confirmed"] == 0]
 
@@ -543,23 +685,55 @@ def test_fast_tally_session_with_no_notes_still_persists(db_conn):
 
     parsed = {"date": None, "date_approx": None, "overall_notes": None, "stops": []}
     structured = [
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None,
-         "source": "fast_tally", "caught_at": "2026-07-20T13:00:00.000Z"},
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None,
-         "source": "fast_tally", "caught_at": "2026-07-20T13:01:00.000Z"},
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None,
-         "source": "fast_tally", "caught_at": "2026-07-20T13:02:00.000Z"},
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None,
-         "source": "fast_tally", "caught_at": "2026-07-20T13:03:00.000Z"},
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-20T13:00:00.000Z",
+        },
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-20T13:01:00.000Z",
+        },
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-20T13:02:00.000Z",
+        },
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-20T13:03:00.000Z",
+        },
     ]
 
     result = log_session(
-        parsed, db_conn, user_id=1, structured_catches=structured,
-        fallback_lat=43.4675, fallback_lng=-79.6877,
+        parsed,
+        db_conn,
+        user_id=1,
+        structured_catches=structured,
+        fallback_lat=43.4675,
+        fallback_lng=-79.6877,
     )
 
     assert result["stops_logged"] == 1
@@ -568,8 +742,10 @@ def test_fast_tally_session_with_no_notes_still_persists(db_conn):
     assert all(c["species"] == "unidentified sp." for c in catches)
     assert all(c["species_confirmed"] == 1 for c in catches)
     assert sorted(c["caught_at"] for c in catches) == [
-        "2026-07-20T13:00:00.000Z", "2026-07-20T13:01:00.000Z",
-        "2026-07-20T13:02:00.000Z", "2026-07-20T13:03:00.000Z",
+        "2026-07-20T13:00:00.000Z",
+        "2026-07-20T13:01:00.000Z",
+        "2026-07-20T13:02:00.000Z",
+        "2026-07-20T13:03:00.000Z",
     ]
 
     stop = next(iter(db_conn["stops"].rows_where("session_id = ?", [result["session_id"]])))
@@ -588,9 +764,16 @@ def test_fast_tally_session_with_no_notes_and_no_gps_still_creates_stop(db_conn)
 
     parsed = {"date": None, "date_approx": None, "overall_notes": None, "stops": []}
     structured = [
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None,
-         "source": "fast_tally", "caught_at": "2026-07-20T13:00:00.000Z"},
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+            "source": "fast_tally",
+            "caught_at": "2026-07-20T13:00:00.000Z",
+        },
     ]
 
     result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)
@@ -630,8 +813,14 @@ def test_non_fast_tally_no_species_no_photo_still_skipped(db_conn):
         "stops": [{"location_text": "Sixteen Mile Creek", "species_caught": []}],
     }
     structured = [
-        {"species": None, "count": 1, "biggest_size_cm": None, "bait": None,
-         "photo_path": None, "photo_url": None},
+        {
+            "species": None,
+            "count": 1,
+            "biggest_size_cm": None,
+            "bait": None,
+            "photo_path": None,
+            "photo_url": None,
+        },
     ]
 
     result = log_session(parsed, db_conn, user_id=1, structured_catches=structured)

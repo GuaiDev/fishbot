@@ -35,7 +35,9 @@ def ingest_bc_hydro_network(
     _fwa = importlib.import_module("src.ingest.jurisdictions.ca_bc.hydro_network")
     db = get_db()
 
-    logger.info("FWA: fetching stream segments — lat=%.4f lon=%.4f radius=%.0fkm", lat, lon, radius_km)
+    logger.info(
+        "FWA: fetching stream segments — lat=%.4f lon=%.4f radius=%.0fkm", lat, lon, radius_km
+    )
     segments = _fwa.fetch_watercourses(lat, lon, radius_km)
     logger.info("FWA: %d segments fetched from WFS", len(segments))
 
@@ -82,7 +84,9 @@ def ingest_fiss_observations(
     _fiss = importlib.import_module("src.ingest.jurisdictions.ca_bc.fish_observations")
     db = get_db()
 
-    logger.info("FISS: fetching fish observations — lat=%.4f lng=%.4f radius=%.0fkm", lat, lng, radius_km)
+    logger.info(
+        "FISS: fetching fish observations — lat=%.4f lng=%.4f radius=%.0fkm", lat, lng, radius_km
+    )
     observations = _fiss.fetch_observations(lat, lng, radius_km)
     logger.info("FISS: %d observations fetched from WFS", len(observations))
     if observations:
@@ -101,7 +105,9 @@ def ingest_bc_water_quality(
     Currently returns 0 — results fetch is not yet implemented; see
     src/ingest/jurisdictions/ca_bc/water_quality.py for the TODO.
     """
-    logger.info("BC EMS: fetching water quality — lat=%.4f lng=%.4f radius=%.0fkm", lat, lng, radius_km)
+    logger.info(
+        "BC EMS: fetching water quality — lat=%.4f lng=%.4f radius=%.0fkm", lat, lng, radius_km
+    )
     _wq = importlib.import_module("src.ingest.jurisdictions.ca_bc.water_quality")
     readings = _wq.fetch_water_quality_readings(lat, lng, radius_km)
     logger.info("BC EMS: %d readings stored", len(readings))

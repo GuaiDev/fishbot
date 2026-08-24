@@ -1,14 +1,12 @@
 """Tests for src/cli/export_map.py."""
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
-from src.cli.export_map import export_map_data, _haversine_km, HOME_LAT, HOME_LNG
-
+from src.cli.export_map import HOME_LAT, HOME_LNG, _haversine_km, export_map_data
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
 

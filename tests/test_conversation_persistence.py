@@ -32,11 +32,16 @@ def test_save_and_load_turns(tmp_path: Path):
     db = _make_db(tmp_path)
     start_session(db, "test-session-2")
     save_turn(db, "test-session-2", "user", "Planning a catfish trip to Dunnville", 0)
-    save_turn(db, "test-session-2", "assistant", "Great choice — the Grand River is excellent for cats", 0)
+    save_turn(
+        db, "test-session-2", "assistant", "Great choice — the Grand River is excellent for cats", 0
+    )
 
-    rows = list(db.execute(
-        "SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY id", ["test-session-2"]
-    ).fetchall())
+    rows = list(
+        db.execute(
+            "SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY id",
+            ["test-session-2"],
+        ).fetchall()
+    )
     assert len(rows) == 2
     assert rows[0][0] == "user"
     assert "Dunnville" in rows[0][1]

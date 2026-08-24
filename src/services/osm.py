@@ -250,8 +250,11 @@ def fetch_and_store(lat: float, lng: float) -> tuple[int, int]:
                 else 0
             )
             _log.info(
-                "OSM: skipping fetch — %d cached features within %.0fkm (last fetched < %d days ago)",
-                cached, _OSM_WATER_RADIUS_KM, _OSM_CACHE_DAYS,
+                "OSM: skipping fetch — %d cached features within %.0fkm "
+                "(last fetched < %d days ago)",
+                cached,
+                _OSM_WATER_RADIUS_KM,
+                _OSM_CACHE_DAYS,
             )
             return water_count, access_count
 

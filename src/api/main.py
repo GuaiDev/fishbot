@@ -9,7 +9,6 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
-from typing import Optional
 
 # Configure stdout logging before any other module runs.
 # basicConfig is a no-op if handlers are already attached (e.g. a parent process
@@ -23,11 +22,24 @@ logging.basicConfig(
 )
 logging.getLogger().setLevel(logging.INFO)
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+# These sit below basicConfig on purpose — see the comment above. Importing
+# FastAPI first lets it attach handlers to the root logger, after which
+# basicConfig becomes a no-op and background-task INFO messages vanish on
+# Railway. Same reason the PHOTOS_DIR import further down already carries one.
+from fastapi import (  # noqa: E402
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    UploadFile,
+)
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
 
 
 def verify_api_key(x_api_key: str = Header(None)) -> None:
@@ -43,6 +55,7 @@ def get_current_user(authorization: str = Header(None)) -> dict:
     """Extract and validate user from Authorization: Bearer <token> header."""
     from src.auth.auth import get_user_from_token
     from src.storage.database import get_db
+
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
     token = authorization.replace("Bearer ", "").strip()
@@ -60,6 +73,7 @@ def get_current_user_or_apikey(
     """Accept either Bearer token (users) or X-Api-Key (admin fallback for log.html)."""
     from src.auth.auth import get_user_from_token
     from src.storage.database import get_db
+
     if authorization and authorization.startswith("Bearer "):
         token = authorization.replace("Bearer ", "").strip()
         db = get_db()
@@ -83,6 +97,7 @@ async def lifespan(app):
     logging.getLogger().setLevel(logging.INFO)
 
     from src.storage.database import ensure_schema, get_db
+
     db = get_db()
     ensure_schema(db)
 
@@ -90,6 +105,7 @@ async def lifespan(app):
     if count == 0:
         try:
             import json
+
             map_file = "data/processed/map_data.json"
             if os.path.exists(map_file):
                 print("[startup] Importing map segments...")
@@ -99,23 +115,26 @@ async def lifespan(app):
                 for feat in data["features"]:
                     coords = feat["geometry"]["coordinates"]
                     p = feat["properties"]
-                    rows.append({
-                        "ogf_id": p["ogf_id"],
-                        "lat": coords[1], "lng": coords[0],
-                        "score_balanced": p.get("untapped_score_balanced"),
-                        "score_easy": p.get("untapped_score_easy"),
-                        "score_adventure": p.get("untapped_score_adventure"),
-                        "habitat_score": p.get("habitat_score"),
-                        "access_score": p.get("access_score"),
-                        "stream_order": p.get("stream_order"),
-                        "watercourse_name": p.get("watercourse_name"),
-                        "nearest_named_stream": p.get("nearest_named_stream"),
-                        "is_confluence": 1 if p.get("is_confluence_segment") else 0,
-                        "connected_to_waterbody": 1 if p.get("connected_to_waterbody") else 0,
-                        "observation_pressure": p.get("observation_pressure"),
-                        "google_maps_url": p.get("google_maps_url"),
-                        "swoop_url": p.get("swoop_url"),
-                    })
+                    rows.append(
+                        {
+                            "ogf_id": p["ogf_id"],
+                            "lat": coords[1],
+                            "lng": coords[0],
+                            "score_balanced": p.get("untapped_score_balanced"),
+                            "score_easy": p.get("untapped_score_easy"),
+                            "score_adventure": p.get("untapped_score_adventure"),
+                            "habitat_score": p.get("habitat_score"),
+                            "access_score": p.get("access_score"),
+                            "stream_order": p.get("stream_order"),
+                            "watercourse_name": p.get("watercourse_name"),
+                            "nearest_named_stream": p.get("nearest_named_stream"),
+                            "is_confluence": 1 if p.get("is_confluence_segment") else 0,
+                            "connected_to_waterbody": 1 if p.get("connected_to_waterbody") else 0,
+                            "observation_pressure": p.get("observation_pressure"),
+                            "google_maps_url": p.get("google_maps_url"),
+                            "swoop_url": p.get("swoop_url"),
+                        }
+                    )
                     if len(rows) >= 1000:
                         db["map_segments"].insert_all(rows, ignore=True)
                         db.conn.commit()
@@ -159,12 +178,18 @@ app.mount("/photos", StaticFiles(directory=str(PHOTOS_DIR)), name="photos")
 
 
 def _hour_to_time_of_day(hour: int) -> str:
-    if hour < 6: return "night"
-    if hour < 9: return "dawn"
-    if hour < 12: return "morning"
-    if hour < 14: return "midday"
-    if hour < 17: return "afternoon"
-    if hour < 20: return "evening"
+    if hour < 6:
+        return "night"
+    if hour < 9:
+        return "dawn"
+    if hour < 12:
+        return "morning"
+    if hour < 14:
+        return "midday"
+    if hour < 17:
+        return "afternoon"
+    if hour < 20:
+        return "evening"
     return "night"
 
 
@@ -178,14 +203,14 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    conversation_history: Optional[list[ChatMessage]] = []
-    user_id: Optional[str] = "default"
+    conversation_history: list[ChatMessage] | None = []
+    user_id: str | None = "default"
 
 
 class ChatResponse(BaseModel):
     reply: str
     conversation_history: list[ChatMessage]
-    tool_calls_made: Optional[list[str]] = []
+    tool_calls_made: list[str] | None = []
 
 
 # --- Endpoints ---
@@ -205,6 +230,7 @@ def signup(body: dict):
     """
     from src.auth.auth import redeem_invite_code
     from src.storage.database import get_db
+
     code = body.get("code", "").strip()
     username = body.get("username", "").strip()
     display_name = body.get("display_name", "").strip()
@@ -234,6 +260,7 @@ def me(user: dict = Depends(get_current_user)):
     """Return current user info."""
     from src.auth.auth import check_rate_limit
     from src.storage.database import get_db
+
     db = get_db()
     usage = check_rate_limit(db, user["id"], user.get("daily_message_limit", 50))
     return {
@@ -333,16 +360,18 @@ def _normalize_structured_catches(
         caught_at = caught_at.strip() if isinstance(caught_at, str) and caught_at.strip() else None
 
         photo = extra_photos[i] if extra_photos and i < len(extra_photos) else None
-        normalized.append({
-            "species": species,
-            "count": count,
-            "biggest_size_cm": biggest_size_cm,
-            "bait": bait,
-            "photo_path": photo["path"] if photo else None,
-            "photo_url": photo["url"] if photo else None,
-            "source": source,
-            "caught_at": caught_at,
-        })
+        normalized.append(
+            {
+                "species": species,
+                "count": count,
+                "biggest_size_cm": biggest_size_cm,
+                "bait": bait,
+                "photo_path": photo["path"] if photo else None,
+                "photo_url": photo["url"] if photo else None,
+                "source": source,
+                "caught_at": caught_at,
+            }
+        )
     return normalized
 
 
@@ -400,6 +429,7 @@ def _log_trip_core(
             first_stop["photo_taken_at"] = photo_taken_at
             try:
                 from datetime import datetime
+
                 dt = datetime.fromisoformat(photo_taken_at.replace("Z", "+00:00"))
                 first_stop["hour_of_day"] = dt.hour
                 first_stop["time_of_day"] = _hour_to_time_of_day(dt.hour)
@@ -420,9 +450,14 @@ def _log_trip_core(
     # stop" block above; that block is a no-op when parsed has no stops yet,
     # which is exactly the case this covers.
     result = log_session(
-        parsed, db, user_id=user["id"], structured_catches=structured_catches,
-        fallback_lat=photo_lat, fallback_lng=photo_lng,
-        fallback_photo_taken_at=photo_taken_at, fallback_photo_url=photo_url,
+        parsed,
+        db,
+        user_id=user["id"],
+        structured_catches=structured_catches,
+        fallback_lat=photo_lat,
+        fallback_lng=photo_lng,
+        fallback_photo_taken_at=photo_taken_at,
+        fallback_photo_url=photo_url,
         fallback_photo_path=photo_path,
     )
 
@@ -432,11 +467,13 @@ def _log_trip_core(
     # client-facing contract. This mirrors the columns GET /sessions already
     # exposes, so the summary card and the sessions list agree on shape.
     conditions_row = next(
-        iter(db.execute(
-            "SELECT air_temp_c, pressure_hpa, anomaly_flag "
-            "FROM session_conditions WHERE session_id = ?",
-            [result["session_id"]],
-        ).fetchall()),
+        iter(
+            db.execute(
+                "SELECT air_temp_c, pressure_hpa, anomaly_flag "
+                "FROM session_conditions WHERE session_id = ?",
+                [result["session_id"]],
+            ).fetchall()
+        ),
         None,
     )
     conditions = None
@@ -451,7 +488,9 @@ def _log_trip_core(
         "status": "logged",
         "session_id": result["session_id"],
         "stops_logged": result["stops_logged"],
-        "location_method": parsed["stops"][0].get("location_method") if parsed.get("stops") else None,
+        "location_method": parsed["stops"][0].get("location_method")
+        if parsed.get("stops")
+        else None,
         "location_name": parsed["stops"][0].get("location_name") if parsed.get("stops") else None,
         "photo_url": photo_url,
         "conditions": conditions,
@@ -563,7 +602,9 @@ def get_sessions(user: dict = Depends(get_current_user)):
 
     db = get_db()
     try:
-        rows = list(db.execute("""
+        rows = list(
+            db.execute(
+                """
             SELECT
                 s.id, s.date, s.date_approx, s.overall_notes,
                 st.location_name, st.location_text,
@@ -577,7 +618,10 @@ def get_sessions(user: dict = Depends(get_current_user)):
             GROUP BY s.id
             ORDER BY s.id DESC
             LIMIT 50
-        """, [user["id"]]).fetchall())
+        """,
+                [user["id"]],
+            ).fetchall()
+        )
 
         session_ids = [r[0] for r in rows]
         catches_by_session = get_catches_for_sessions(db, session_ids)
@@ -585,31 +629,35 @@ def get_sessions(user: dict = Depends(get_current_user)):
         sessions = []
         for r in rows:
             catches = catches_by_session.get(r[0], [])
-            sessions.append({
-                "id": r[0],
-                "date": r[1] or r[2],
-                "notes": r[3],
-                "location": r[4] or r[5] or "Unknown location",
-                "species_caught": [s.strip() for s in (r[6] or "").split(",") if s.strip()],
-                "conditions": {
-                    "air_temp_c": r[7],
-                    "pressure_hpa": r[8],
-                    "anomaly_flag": r[9],
-                } if r[7] else None,
-                # Catches predating this feature have no photo — photo_url is
-                # simply None, callers must handle the no-photo case.
-                "catches": [
-                    {
-                        "species": c["species"],
-                        "count": c["count"],
-                        "biggest_size": c["biggest_size"],
-                        "biggest_size_cm": c["biggest_size_cm"],
-                        "bait": c["bait"],
-                        "photo_url": c["photo_url"],
+            sessions.append(
+                {
+                    "id": r[0],
+                    "date": r[1] or r[2],
+                    "notes": r[3],
+                    "location": r[4] or r[5] or "Unknown location",
+                    "species_caught": [s.strip() for s in (r[6] or "").split(",") if s.strip()],
+                    "conditions": {
+                        "air_temp_c": r[7],
+                        "pressure_hpa": r[8],
+                        "anomaly_flag": r[9],
                     }
-                    for c in catches
-                ],
-            })
+                    if r[7]
+                    else None,
+                    # Catches predating this feature have no photo — photo_url is
+                    # simply None, callers must handle the no-photo case.
+                    "catches": [
+                        {
+                            "species": c["species"],
+                            "count": c["count"],
+                            "biggest_size": c["biggest_size"],
+                            "biggest_size_cm": c["biggest_size_cm"],
+                            "bait": c["bait"],
+                            "photo_url": c["photo_url"],
+                        }
+                        for c in catches
+                    ],
+                }
+            )
         return {"sessions": sessions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -625,8 +673,8 @@ _DEFAULT_REGION = {"lat": 43.5, "lng": -79.8, "name": "Southern Ontario"}
 @app.get("/conditions")
 def get_conditions(
     user: dict = Depends(get_current_user),
-    lat: Optional[float] = None,
-    lng: Optional[float] = None,
+    lat: float | None = None,
+    lng: float | None = None,
 ):
     """Live conditions for the Chat coach's "showing its work" evidence panel.
 
@@ -735,13 +783,15 @@ def get_pending_catches_endpoint(user: dict = Depends(get_current_user)):
     pending = []
     for r in rows:
         suggested = json.loads(r["suggested_species"]) if r.get("suggested_species") else []
-        pending.append({
-            "catch_id": r["id"],
-            "species": r["species"],
-            "suggested_species": suggested,
-            "photo_url": r.get("photo_url"),
-            "created_at": r.get("created_at"),
-        })
+        pending.append(
+            {
+                "catch_id": r["id"],
+                "species": r["species"],
+                "suggested_species": suggested,
+                "photo_url": r.get("photo_url"),
+                "created_at": r.get("created_at"),
+            }
+        )
     return {"pending": pending}
 
 
@@ -820,6 +870,7 @@ def get_admin_token(_: None = Depends(verify_api_key)):
     """Generate a fresh admin token. Protected by API key only."""
     import secrets
     from datetime import datetime, timedelta
+
     from src.storage.database import get_db
 
     db = get_db()
@@ -857,7 +908,16 @@ def get_db_stats(_: None = Depends(verify_api_key)):
         GROUP BY source
         ORDER BY COUNT(*) DESC
     """).fetchall()
-    obs_cols = ["source", "count", "lat_min", "lat_max", "lng_min", "lng_max", "date_min", "date_max"]
+    obs_cols = [
+        "source",
+        "count",
+        "lat_min",
+        "lat_max",
+        "lng_min",
+        "lng_max",
+        "date_min",
+        "date_max",
+    ]
 
     gbif_rows = db.execute("""
         SELECT
@@ -871,7 +931,16 @@ def get_db_stats(_: None = Depends(verify_api_key)):
             MAX(observed_on)    AS date_max
         FROM gbif_observations
     """).fetchall()
-    gbif_cols = ["source", "count", "lat_min", "lat_max", "lng_min", "lng_max", "date_min", "date_max"]
+    gbif_cols = [
+        "source",
+        "count",
+        "lat_min",
+        "lat_max",
+        "lng_min",
+        "lng_max",
+        "date_min",
+        "date_max",
+    ]
 
     return {
         "db_path": str(DB_PATH),
@@ -903,6 +972,7 @@ def create_invite(body: dict, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Admin only")
     from src.auth.auth import generate_invite_code
     from src.storage.database import get_db
+
     db = get_db()
     note = body.get("note", "")
     code = generate_invite_code(db, created_by=user["id"], note=note)
@@ -915,6 +985,7 @@ def list_invites(user: dict = Depends(get_current_user)):
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
     from src.storage.database import get_db
+
     db = get_db()
     codes = list(db["invite_codes"].rows)
     return {"codes": codes}
@@ -926,8 +997,10 @@ def list_users(user: dict = Depends(get_current_user)):
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
     from src.storage.database import get_db
+
     db = get_db()
-    users = list(db.execute("""
+    users = list(
+        db.execute("""
         SELECT u.id, u.username, u.display_name, u.role,
                u.created_at, u.last_seen_at,
                COALESCE(SUM(du.message_count), 0) as total_messages
@@ -935,15 +1008,22 @@ def list_users(user: dict = Depends(get_current_user)):
         LEFT JOIN daily_usage du ON du.user_id = u.id
         GROUP BY u.id
         ORDER BY u.id
-    """).fetchall())
-    return {"users": [
-        {
-            "id": r[0], "username": r[1], "display_name": r[2],
-            "role": r[3], "created_at": r[4], "last_seen_at": r[5],
-            "total_messages": r[6],
-        }
-        for r in users
-    ]}
+    """).fetchall()
+    )
+    return {
+        "users": [
+            {
+                "id": r[0],
+                "username": r[1],
+                "display_name": r[2],
+                "role": r[3],
+                "created_at": r[4],
+                "last_seen_at": r[5],
+                "total_messages": r[6],
+            }
+            for r in users
+        ]
+    }
 
 
 @app.post("/ingest")
@@ -971,12 +1051,16 @@ def ingest(body: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _run_global_ingest(lat: float, lng: float, radius_km: float, label: str, days_back: int | None = 90) -> None:
+def _run_global_ingest(
+    lat: float, lng: float, radius_km: float, label: str, days_back: int | None = 90
+) -> None:
     """Background task: run iNat, GBIF, WSC, OSM, and SDM check for a location."""
     import json as _json
     import os as _os
 
-    _log.info("[%s] Global ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+    _log.info(
+        "[%s] Global ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km
+    )
 
     from src.services.gbif import fetch_and_store as gbif_fetch
     from src.services.observations import fetch_and_store as inat_fetch
@@ -1012,13 +1096,16 @@ def _run_global_ingest(lat: float, lng: float, radius_km: float, label: str, day
     _log.info("[%s] OSM: fetching water features and access points", label)
     try:
         osm_water, osm_access = osm_fetch(lat, lng)
-        _log.info("[%s] OSM: %d water features, %d access points stored", label, osm_water, osm_access)
+        _log.info(
+            "[%s] OSM: %d water features, %d access points stored", label, osm_water, osm_access
+        )
     except Exception:
         _log.exception("[%s] OSM fetch failed", label)
 
     # SDM retrain check — non-fatal if it errors
     try:
         import joblib as _joblib
+
         from src.services.species_mapping import COMMON_TO_SCIENTIFIC as _c2s
 
         model_dir = "data/processed/sdm_models"
@@ -1093,7 +1180,9 @@ def ingest_data(
 
 def _run_bc_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
     """Background task: run FWA, FISS, and BC EMS ingest for a BC location."""
-    _log.info("[%s] BC ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+    _log.info(
+        "[%s] BC ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km
+    )
 
     from src.services.bc_ingest import (
         ingest_bc_hydro_network,
@@ -1170,9 +1259,12 @@ def ingest_data_bc(
 
 def _run_ab_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
     """Background task: run Alberta-specific ingest adapters."""
-    _log.info("[%s] AB ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+    _log.info(
+        "[%s] AB ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km
+    )
     from src.services.ab_ingest import ingest_ab_data
     from src.storage.database import ensure_schema, get_db
+
     db = get_db()
     ensure_schema(db)
     try:
@@ -1201,14 +1293,24 @@ def ingest_data_ab(
     if lat is None or lng is None:
         raise HTTPException(status_code=400, detail="lat and lng are required")
     background_tasks.add_task(_run_ab_ingest, lat, lng, radius_km, label)
-    return JSONResponse(status_code=202, content={"status": "accepted", "label": label, "message": "AB ingest started in background"})
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "accepted",
+            "label": label,
+            "message": "AB ingest started in background",
+        },
+    )
 
 
 def _run_qc_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
     """Background task: run Quebec-specific ingest adapters."""
-    _log.info("[%s] QC ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+    _log.info(
+        "[%s] QC ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km
+    )
     from src.services.qc_ingest import ingest_qc_data
     from src.storage.database import ensure_schema, get_db
+
     db = get_db()
     ensure_schema(db)
     try:
@@ -1237,22 +1339,39 @@ def ingest_data_qc(
     if lat is None or lng is None:
         raise HTTPException(status_code=400, detail="lat and lng are required")
     background_tasks.add_task(_run_qc_ingest, lat, lng, radius_km, label)
-    return JSONResponse(status_code=202, content={"status": "accepted", "label": label, "message": "QC ingest started in background"})
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "accepted",
+            "label": label,
+            "message": "QC ingest started in background",
+        },
+    )
 
 
-def _run_national_ingest(lat: float | None, lng: float | None, radius_km: float, label: str) -> None:
+def _run_national_ingest(
+    lat: float | None, lng: float | None, radius_km: float, label: str
+) -> None:
     """Background task: run national/federal ingest adapters."""
     if lat is not None and lng is not None:
-        _log.info("[%s] National ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+        _log.info(
+            "[%s] National ingest started — lat=%.4f lng=%.4f radius=%.0fkm",
+            label,
+            lat,
+            lng,
+            radius_km,
+        )
     else:
         _log.info("[%s] National ingest started — no location filter (national scope)", label)
     from src.storage.database import ensure_schema, get_db
+
     db = get_db()
     ensure_schema(db)
 
     _log.info("[%s] DFO SAR range: fetching", label)
     try:
         from src.services.national_ingest import ingest_dfo_sar_range
+
         n = ingest_dfo_sar_range()
         _log.info("[%s] DFO SAR range: %d records stored", label, n)
     except Exception:
@@ -1261,6 +1380,7 @@ def _run_national_ingest(lat: float | None, lng: float | None, radius_km: float,
     _log.info("[%s] CABIN (all provinces): fetching", label)
     try:
         from src.services.national_ingest import ingest_cabin_all_provinces
+
         n = ingest_cabin_all_provinces()
         _log.info("[%s] CABIN: %d samples stored", label, n)
     except Exception:
@@ -1270,6 +1390,7 @@ def _run_national_ingest(lat: float | None, lng: float | None, radius_km: float,
         _log.info("[%s] DFO critical habitat: fetching", label)
         try:
             from src.services.national_ingest import ingest_dfo_critical_habitat
+
             n = ingest_dfo_critical_habitat(lat, lng, radius_km)
             _log.info("[%s] DFO critical habitat: %d records stored", label, n)
         except Exception:
@@ -1278,6 +1399,7 @@ def _run_national_ingest(lat: float | None, lng: float | None, radius_km: float,
         _log.info("[%s] DataStream water quality: fetching", label)
         try:
             from src.services.national_ingest import ingest_datastream_water_quality
+
             n = ingest_datastream_water_quality(lat, lng, radius_km)
             _log.info("[%s] DataStream: %d readings stored", label, n)
         except Exception:
@@ -1294,7 +1416,8 @@ def ingest_data_national(
 ):
     """Trigger national/federal data ingest (runs in background).
 
-    Body: {"lat": float (optional), "lng": float (optional), "radius_km": float (optional, default 100), "label": str (optional)}
+    Body: {"lat": float (optional), "lng": float (optional),
+           "radius_km": float (optional, default 100), "label": str (optional)}
     Always runs: DFO SAR range, CABIN (all provinces).
     When lat+lng provided: also runs DFO critical habitat and DataStream water quality.
     Returns 202 immediately. Protected by X-Api-Key.
@@ -1304,17 +1427,28 @@ def ingest_data_national(
     radius_km = body.get("radius_km", 100.0)
     label = body.get("label", f"{lat},{lng}" if lat is not None and lng is not None else "national")
     background_tasks.add_task(_run_national_ingest, lat, lng, radius_km, label)
-    return JSONResponse(status_code=202, content={"status": "accepted", "label": label, "message": "National ingest started in background"})
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "accepted",
+            "label": label,
+            "message": "National ingest started in background",
+        },
+    )
 
 
 def _run_tidal_ingest(lat: float, lng: float, radius_km: float, label: str) -> None:
     """Background task: run CHS tidal predictions ingest."""
-    _log.info("[%s] Tidal ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km)
+    _log.info(
+        "[%s] Tidal ingest started — lat=%.4f lng=%.4f radius=%.0fkm", label, lat, lng, radius_km
+    )
     from src.storage.database import ensure_schema, get_db
+
     db = get_db()
     ensure_schema(db)
     try:
         from src.ingest.jurisdictions.ca_national.tidal import fetch_tidal_readings
+
         rows = fetch_tidal_readings(lat, lng, radius_km)
         if rows:
             db["tidal_readings"].upsert_all(rows, pk="record_id")
@@ -1331,7 +1465,8 @@ def ingest_data_tidal(
 ):
     """Trigger CHS tidal predictions ingest for a coastal location (runs in background).
 
-    Body: {"lat": float, "lng": float, "radius_km": float (optional, default 100), "label": str (optional)}
+    Body: {"lat": float, "lng": float,
+           "radius_km": float (optional, default 100), "label": str (optional)}
     Runs CHS SINE API for nearby tidal stations and their high/low tide predictions.
     Relevant for BC coast, NS, NB, PEI. Returns 202 immediately.
     Protected by X-Api-Key.
@@ -1343,7 +1478,14 @@ def ingest_data_tidal(
     if lat is None or lng is None:
         raise HTTPException(status_code=400, detail="lat and lng are required")
     background_tasks.add_task(_run_tidal_ingest, lat, lng, radius_km, label)
-    return JSONResponse(status_code=202, content={"status": "accepted", "label": label, "message": "Tidal ingest started in background"})
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "accepted",
+            "label": label,
+            "message": "Tidal ingest started in background",
+        },
+    )
 
 
 @app.get("/map/segments")
@@ -1365,7 +1507,9 @@ def get_map_segments(
     }.get(mode, "score_balanced")
 
     db = get_db()
-    rows = list(db.execute(f"""
+    rows = list(
+        db.execute(
+            f"""
         SELECT ogf_id, lat, lng, {score_col} as score,
                watercourse_name, nearest_named_stream,
                stream_order,
@@ -1378,13 +1522,25 @@ def get_map_segments(
           AND {score_col} IS NOT NULL
         ORDER BY {score_col} DESC
         LIMIT ?
-    """, [south, north, west, east, limit]).fetchall())
+    """,
+            [south, north, west, east, limit],
+        ).fetchall()
+    )
 
     cols = [
-        "ogf_id", "lat", "lng", "score", "watercourse_name",
-        "nearest_named_stream", "stream_order",
-        "is_confluence", "connected_to_waterbody",
-        "google_maps_url", "swoop_url", "habitat_score", "access_score",
+        "ogf_id",
+        "lat",
+        "lng",
+        "score",
+        "watercourse_name",
+        "nearest_named_stream",
+        "stream_order",
+        "is_confluence",
+        "connected_to_waterbody",
+        "google_maps_url",
+        "swoop_url",
+        "habitat_score",
+        "access_score",
     ]
     return {
         "segments": [dict(zip(cols, r)) for r in rows],
@@ -1397,11 +1553,14 @@ def get_map_segments(
 @app.get("/map/my-stops")
 def get_my_stops(user: dict = Depends(get_current_user)):
     """Return all of the user's logged stops with coordinates for personal map mode."""
-    from src.storage.database import get_db
     import json
 
+    from src.storage.database import get_db
+
     db = get_db()
-    rows = list(db.execute("""
+    rows = list(
+        db.execute(
+            """
         SELECT st.id, st.lat, st.lng, st.photo_lat, st.photo_lng,
                st.location_name, st.location_text,
                st.species_caught, st.was_productive,
@@ -1414,31 +1573,38 @@ def get_my_stops(user: dict = Depends(get_current_user)):
         WHERE st.user_id = ?
           AND (st.lat IS NOT NULL OR st.photo_lat IS NOT NULL)
         ORDER BY s.id DESC
-    """, [user["id"]]).fetchall())
+    """,
+            [user["id"]],
+        ).fetchall()
+    )
 
     stops = []
     for r in rows:
-        lat = r[3] if r[3] is not None else r[1]   # photo_lat preferred
-        lng = r[4] if r[4] is not None else r[2]   # photo_lng preferred
+        lat = r[3] if r[3] is not None else r[1]  # photo_lat preferred
+        lng = r[4] if r[4] is not None else r[2]  # photo_lng preferred
         if not lat:
             continue
         species = json.loads(r[7] or "[]")
-        stops.append({
-            "stop_id": r[0],
-            "lat": lat,
-            "lng": lng,
-            "location": r[5] or r[6] or "Unknown",
-            "species": species,
-            "productive": bool(r[8]),
-            "technique": r[9],
-            "gear": r[10],
-            "date": r[11] or r[12] or "Unknown",
-            "conditions": {
-                "air_temp_c": r[13],
-                "pressure_hpa": r[14],
-                "anomaly_flag": r[15],
-            } if r[13] else None,
-        })
+        stops.append(
+            {
+                "stop_id": r[0],
+                "lat": lat,
+                "lng": lng,
+                "location": r[5] or r[6] or "Unknown",
+                "species": species,
+                "productive": bool(r[8]),
+                "technique": r[9],
+                "gear": r[10],
+                "date": r[11] or r[12] or "Unknown",
+                "conditions": {
+                    "air_temp_c": r[13],
+                    "pressure_hpa": r[14],
+                    "anomaly_flag": r[15],
+                }
+                if r[13]
+                else None,
+            }
+        )
 
     return {"stops": stops, "count": len(stops)}
 

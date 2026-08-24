@@ -1,16 +1,14 @@
 """Tests for trip log → SDM presence pipeline."""
 
 import json
+
 import pytest
 import sqlite_utils
 
 from src.services.species_mapping import (
-    COMMON_TO_SCIENTIFIC,
-    SCIENTIFIC_TO_COMMON,
     common_to_scientific,
     scientific_to_common,
 )
-
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
 

@@ -14,7 +14,6 @@ from src.services.trip_parser import (
     parse_session_from_text,
     parse_trip_from_text,
     resolve_location,
-    snap_to_segment,
 )
 from src.storage.database import get_db
 
@@ -58,7 +57,15 @@ def _api_payload(**overrides) -> dict:
     return base
 
 
-@patch("src.services.trip_parser.snap_to_segment", return_value={"ogf_id": 12345, "distance_to_segment_m": 45.0, "segment_stream_order": 3, "segment_watercourse_name": "Bronte Creek"})
+@patch(
+    "src.services.trip_parser.snap_to_segment",
+    return_value={
+        "ogf_id": 12345,
+        "distance_to_segment_m": 45.0,
+        "segment_stream_order": 3,
+        "segment_watercourse_name": "Bronte Creek",
+    },
+)
 @patch("src.services.trip_parser.get_model", return_value="claude-sonnet-4-6")
 @patch("src.services.trip_parser.get_client")
 def test_parse_complete_trip(mock_get_client, mock_get_model, mock_snap):
@@ -87,7 +94,13 @@ def test_parse_minimal_trip(mock_get_client, mock_get_model, mock_snap):
             date=None,
             species_caught=["Creek Chub"],
             species_observed=[],
-            conditions={"water_level": None, "water_clarity": None, "water_temp_c": None, "weather": None, "flow_trend": None},
+            conditions={
+                "water_level": None,
+                "water_clarity": None,
+                "water_temp_c": None,
+                "weather": None,
+                "flow_trend": None,
+            },
             habitat_notes=None,
             spot_type=None,
             fish_count=None,
@@ -111,7 +124,13 @@ def test_parse_negative_trip(mock_get_client, mock_get_model, mock_snap):
         _api_payload(
             species_caught=[],
             species_observed=[],
-            conditions={"water_level": "high", "water_clarity": "turbid", "water_temp_c": None, "weather": "rainy", "flow_trend": "rising"},
+            conditions={
+                "water_level": "high",
+                "water_clarity": "turbid",
+                "water_temp_c": None,
+                "weather": "rainy",
+                "flow_trend": "rising",
+            },
             fish_count=0,
             was_productive=False,
             notes="blown out from rain",
@@ -249,7 +268,9 @@ def test_resolve_location_unresolved(mock_geo, db_conn):
 @patch("src.services.trip_parser.resolve_location")
 @patch("src.services.trip_parser.get_model", return_value="claude-sonnet-4-6")
 @patch("src.services.trip_parser.get_client")
-def test_parse_trip_with_fuzzy_location(mock_get_client, mock_get_model, mock_resolve, mock_snap, db_conn):
+def test_parse_trip_with_fuzzy_location(
+    mock_get_client, mock_get_model, mock_resolve, mock_snap, db_conn
+):
     """Location without Claude-inferred coords falls through to resolve_location."""
     mock_get_client.return_value = _mock_client(
         _api_payload(
@@ -258,12 +279,20 @@ def test_parse_trip_with_fuzzy_location(mock_get_client, mock_get_model, mock_re
             location_description="Bronte Creek at the 5 Side Rd bridge",
             waterbody_name="Bronte Creek",
             species_caught=["Rainbow Darter", "Creek Chub"],
-            conditions={"water_level": None, "water_clarity": "clear", "water_temp_c": None, "weather": None, "flow_trend": None},
+            conditions={
+                "water_level": None,
+                "water_clarity": "clear",
+                "water_temp_c": None,
+                "weather": None,
+                "flow_trend": None,
+            },
         )
     )
     mock_resolve.return_value = {
-        "lat": 43.4750, "lng": -79.6700,
-        "method": "name_match", "confidence": 0.85,
+        "lat": 43.4750,
+        "lng": -79.6700,
+        "method": "name_match",
+        "confidence": 0.85,
         "ohn_segment_id": 2001,
         "candidates": [2001],
     }
@@ -293,12 +322,17 @@ def test_parse_trip_unresolved_location_still_returns_result(
 ):
     """Unresolved location returns parsed data with no coordinates — never blocks."""
     mock_get_client.return_value = _mock_client(
-        _api_payload(lat=None, lng=None, location_description="that one random ditch", waterbody_name=None)
+        _api_payload(
+            lat=None, lng=None, location_description="that one random ditch", waterbody_name=None
+        )
     )
     mock_resolve.return_value = {
-        "lat": None, "lng": None,
-        "method": "text_only", "confidence": None,
-        "ohn_segment_id": None, "candidates": [],
+        "lat": None,
+        "lng": None,
+        "method": "text_only",
+        "confidence": None,
+        "ohn_segment_id": None,
+        "candidates": [],
     }
 
     result = parse_trip_from_text("caught something in a ditch", db=db_conn)
@@ -329,10 +363,17 @@ def _session_payload(**stop_overrides) -> dict:
     return {"date": "2026-06-15", "date_approx": None, "overall_notes": None, "stops": [stop]}
 
 
-@patch("src.services.trip_parser.resolve_location", return_value={
-    "lat": None, "lng": None, "method": "text_only", "confidence": None,
-    "ohn_segment_id": None, "candidates": [],
-})
+@patch(
+    "src.services.trip_parser.resolve_location",
+    return_value={
+        "lat": None,
+        "lng": None,
+        "method": "text_only",
+        "confidence": None,
+        "ohn_segment_id": None,
+        "candidates": [],
+    },
+)
 @patch("src.services.trip_parser.get_model", return_value="claude-sonnet-4-6")
 @patch("src.services.trip_parser.get_client")
 def test_user_vs_party_distinction(mock_get_client, mock_get_model, mock_resolve, db_conn):
@@ -354,10 +395,17 @@ def test_user_vs_party_distinction(mock_get_client, mock_get_model, mock_resolve
     assert "freshwater drum" in stop.get("party_species_caught", [])
 
 
-@patch("src.services.trip_parser.resolve_location", return_value={
-    "lat": None, "lng": None, "method": "text_only", "confidence": None,
-    "ohn_segment_id": None, "candidates": [],
-})
+@patch(
+    "src.services.trip_parser.resolve_location",
+    return_value={
+        "lat": None,
+        "lng": None,
+        "method": "text_only",
+        "confidence": None,
+        "ohn_segment_id": None,
+        "candidates": [],
+    },
+)
 @patch("src.services.trip_parser.get_model", return_value="claude-sonnet-4-6")
 @patch("src.services.trip_parser.get_client")
 def test_blank_user_productive_party(mock_get_client, mock_get_model, mock_resolve, db_conn):

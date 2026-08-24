@@ -149,9 +149,17 @@ def _validate_species(
         if not any(w in text_lower for w in words):
             print(f"[VALIDATION REMOVED] '{species}' not found in user text — skipped")
             continue
-        if known_species is not None and clean not in known_species and common_to_scientific(clean) is None:
-            print(f"[VALIDATION UNRESOLVED] '{species}' not a recognized regional species — flagged")
-            validated.append(species if "(unresolved)" in species.lower() else f"{species} (unresolved)")
+        if (
+            known_species is not None
+            and clean not in known_species
+            and common_to_scientific(clean) is None
+        ):
+            print(
+                f"[VALIDATION UNRESOLVED] '{species}' not a recognized regional species — flagged"
+            )
+            validated.append(
+                species if "(unresolved)" in species.lower() else f"{species} (unresolved)"
+            )
             continue
         validated.append(species)
     return validated
@@ -333,14 +341,20 @@ def resolve_location(location_text: str, db: Any) -> dict:
                 if best_names:
                     matched = next(c for c in candidates if c["name"] == best_names[0])
                     return _result(
-                        matched["lat"], matched["lng"], "name_match", 0.75,
+                        matched["lat"],
+                        matched["lng"],
+                        "name_match",
+                        0.75,
                         ohn_segment_id=matched["ogf_id"],
                     )
             avg_lat = sum(c["lat"] for c in candidates) / len(candidates)
             avg_lng = sum(c["lng"] for c in candidates) / len(candidates)
             best = _pick_closest_candidate(candidates, avg_lat, avg_lng)
             return _result(
-                avg_lat, avg_lng, "name_match", 0.75,
+                avg_lat,
+                avg_lng,
+                "name_match",
+                0.75,
                 ohn_segment_id=best["ogf_id"],
                 candidates=[c["ogf_id"] for c in candidates],
             )
@@ -356,7 +370,10 @@ def resolve_location(location_text: str, db: Any) -> dict:
                     method = "landmark" if _has_landmark(location_text) else "name_match"
                     conf = 0.9 if method == "landmark" else 0.75
                     return _result(
-                        best["lat"], best["lng"], method, conf,
+                        best["lat"],
+                        best["lng"],
+                        method,
+                        conf,
                         ohn_segment_id=best["ogf_id"],
                     )
 
@@ -364,7 +381,10 @@ def resolve_location(location_text: str, db: Any) -> dict:
             mf = _most_fished_candidate(candidates, db)
             if mf:
                 return _result(
-                    mf["lat"], mf["lng"], "name_match", 0.4,
+                    mf["lat"],
+                    mf["lng"],
+                    "name_match",
+                    0.4,
                     ohn_segment_id=mf["ogf_id"],
                 )
 

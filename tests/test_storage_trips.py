@@ -132,7 +132,9 @@ def test_insert_and_retrieve_parsed_trip(tmp_path):
 def test_get_parsed_trips_filter_by_species(tmp_path):
     db = get_db(path=tmp_path / "test.db")
     insert_parsed_trip(db, _parsed_trip(species_caught=["Creek Chub"]))
-    insert_parsed_trip(db, _parsed_trip(species_caught=["Rainbow Trout"], waterbody_name="Credit River"))
+    insert_parsed_trip(
+        db, _parsed_trip(species_caught=["Rainbow Trout"], waterbody_name="Credit River")
+    )
     chub_trips = get_parsed_trips(db, species="Creek Chub")
     assert len(chub_trips) == 1
     assert chub_trips[0]["waterbody_name"] == "Bronte Creek"

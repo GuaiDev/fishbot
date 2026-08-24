@@ -9,7 +9,9 @@ from PIL import Image
 
 
 def _upload(data: bytes, content_type: str, filename: str = "catch.jpg") -> UploadFile:
-    return UploadFile(filename=filename, file=io.BytesIO(data), headers={"content-type": content_type})
+    return UploadFile(
+        filename=filename, file=io.BytesIO(data), headers={"content-type": content_type}
+    )
 
 
 def _jpeg_bytes(size=(50, 50), color=(60, 110, 70)) -> bytes:
@@ -21,6 +23,7 @@ def _jpeg_bytes(size=(50, 50), color=(60, 110, 70)) -> bytes:
 @pytest.fixture(autouse=True)
 def _photos_dir(tmp_path, monkeypatch):
     from src.services import photo_storage
+
     monkeypatch.setattr(photo_storage, "PHOTOS_DIR", tmp_path / "photos")
     return tmp_path / "photos"
 
@@ -32,6 +35,7 @@ def test_save_valid_jpeg_writes_file_and_returns_url():
     assert result["url"].startswith("/photos/")
     assert result["url"].endswith(".jpg")
     from pathlib import Path
+
     assert Path(result["path"]).exists()
 
 

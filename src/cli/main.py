@@ -24,9 +24,7 @@ def _cli(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show INFO-level detail from adapters."
     ),
-    quiet: bool = typer.Option(
-        False, "--quiet", "-q", help="Errors only."
-    ),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Errors only."),
 ) -> None:
     """Configure logging before any command runs.
 
@@ -221,7 +219,6 @@ def profile() -> None:
     console.print("[green]Profile saved.[/green]")
 
 
-
 # ── ingest source isolation ───────────────────────────────────────────────────
 
 
@@ -355,90 +352,146 @@ def ingest(
     r = results  # every source below is isolated; one failure does not stop the rest
 
     _run_source(
-        r, "iNaturalist",
+        r,
+        "iNaturalist",
         f"Fetching iNaturalist observations within {radius_km}km of {center_name}, "
         f"last {days_back} days…",
-        inat_fetch_and_store, center_lat, center_lng,
-        radius_km=radius_km, days_back=days_back,
+        inat_fetch_and_store,
+        center_lat,
+        center_lng,
+        radius_km=radius_km,
+        days_back=days_back,
     )
     _run_source(
-        r, "GBIF",
+        r,
+        "GBIF",
         f"Fetching GBIF institutional records within {radius_km}km of {center_name}…",
-        gbif_fetch_and_store, center_lat, center_lng, radius_km=radius_km,
+        gbif_fetch_and_store,
+        center_lat,
+        center_lng,
+        radius_km=radius_km,
     )
     _run_source(
-        r, "WSC gauges",
+        r,
+        "WSC gauges",
         f"Fetching WSC stream gauge readings within {radius_km:.0f}km of {center_name}…",
-        wsc_fetch_and_store, center_lat, center_lng, radius_km=radius_km,
+        wsc_fetch_and_store,
+        center_lat,
+        center_lng,
+        radius_km=radius_km,
     )
     _run_source(
-        r, "OpenStreetMap",
+        r,
+        "OpenStreetMap",
         f"Fetching OSM water features (50km) and access points (25km) near {center_name}…",
-        osm_fetch_and_store, center_lat, center_lng,
+        osm_fetch_and_store,
+        center_lat,
+        center_lng,
     )
     _run_source(
-        r, "MNRF stocking", "Downloading MNRF fish stocking records (30-day cache)…",
+        r,
+        "MNRF stocking",
+        "Downloading MNRF fish stocking records (30-day cache)…",
         ingest_stocking_data,
     )
     _run_source(
-        r, "Species ranges", "Loading Ontario species range database…",
+        r,
+        "Species ranges",
+        "Loading Ontario species range database…",
         species_load_and_store,
     )
     _run_source(
-        r, "Reddit", "Fetching Reddit fishing community posts…",
+        r,
+        "Reddit",
+        "Fetching Reddit fishing community posts…",
         reddit_fetch_and_store,
     )
     _run_source(
-        r, "Ontario Hydro Network",
+        r,
+        "Ontario Hydro Network",
         f"Fetching OHN stream segments and barriers ({radius_km:.0f}km bbox)…",
-        ingest_hydro_network, center_lat, center_lng, radius_km,
+        ingest_hydro_network,
+        center_lat,
+        center_lng,
+        radius_km,
     )
     _run_source(
-        r, "Regulations",
+        r,
+        "Regulations",
         "Downloading and parsing the MNRF Fishing Regulations Summary…",
         ingest_regulations,
     )
     _run_source(
-        r, "FMZ boundaries", "Downloading Ontario FMZ boundary polygons…",
+        r,
+        "FMZ boundaries",
+        "Downloading Ontario FMZ boundary polygons…",
         ingest_fmz_boundaries,
     )
     _run_source(
-        r, "PWQMN water quality",
+        r,
+        "PWQMN water quality",
         "Downloading PWQMN water quality field data (2021–present)…",
         ingest_water_quality_data,
     )
     _run_source(
-        r, "CABIN benthic", "Downloading CABIN benthic macroinvertebrate data…",
+        r,
+        "CABIN benthic",
+        "Downloading CABIN benthic macroinvertebrate data…",
         ingest_benthic_data,
     )
     _run_source(
-        r, "Geology",
+        r,
+        "Geology",
         f"Fetching Ontario surficial geology within {radius_km:.0f}km of {center_name}…",
-        ingest_geology_data, center_lat, center_lng, radius_km,
+        ingest_geology_data,
+        center_lat,
+        center_lng,
+        radius_km,
     )
     _run_source(
-        r, "eBird",
+        r,
+        "eBird",
         f"Fetching eBird piscivore observations within {radius_km:.0f}km of {center_name}…",
-        ebird_fetch_and_store, center_lat, center_lng, radius_km,
+        ebird_fetch_and_store,
+        center_lat,
+        center_lng,
+        radius_km,
     )
     _run_source(
-        r, "Dispersal insights", "Seeding waterfowl dispersal behavioral insights…",
+        r,
+        "Dispersal insights",
+        "Seeding waterfowl dispersal behavioral insights…",
         seed_dispersal_insights,
     )
     _run_source(
-        r, "Provincial parks",
+        r,
+        "Provincial parks",
         f"Fetching Ontario Provincial Parks within 200km of {center_name}…",
-        _parks.fetch_and_store, get_db(), center_lat, center_lng, radius_km=200.0,
+        _parks.fetch_and_store,
+        get_db(),
+        center_lat,
+        center_lng,
+        radius_km=200.0,
     )
     _run_source(
-        r, "CA boundaries",
+        r,
+        "CA boundaries",
         f"Fetching Conservation Authority boundaries within 200km of {center_name}…",
-        _cas.fetch_and_store, get_db(), center_lat, center_lng, radius_km=200.0,
+        _cas.fetch_and_store,
+        get_db(),
+        center_lat,
+        center_lng,
+        radius_km=200.0,
     )
     _run_source(
-        r, "Crown land",
+        r,
+        "Crown land",
         f"Fetching Ontario Crown Land boundaries within 100km of {center_name}…",
-        _crown.fetch_and_store, get_db(), center_lat, center_lng, radius_km=100.0,
+        _crown.fetch_and_store,
+        get_db(),
+        center_lat,
+        center_lng,
+        radius_km=100.0,
     )
 
     if not _temp_loaded(get_db()):
@@ -672,9 +725,7 @@ def ingest_fmz() -> None:
     if n:
         console.print(f"[green]FMZ boundaries stored: {n} zones[/green]")
     else:
-        console.print(
-            "[red]No FMZ boundaries fetched — zone resolution stays closed.[/red]"
-        )
+        console.print("[red]No FMZ boundaries fetched — zone resolution stays closed.[/red]")
 
 
 _REGISTRY_DIR = "data/registry"
@@ -719,9 +770,7 @@ def verify_species_status(
     if not path.exists():
         console.print(f"[red]No such file: {path}[/red]")
         if file == _DEFAULT_REGISTRY:
-            console.print(
-                f"[dim]Put a registry export in {_REGISTRY_DIR}/, or pass --file.[/dim]"
-            )
+            console.print(f"[dim]Put a registry export in {_REGISTRY_DIR}/, or pass --file.[/dim]")
         raise typer.Exit(1)
 
     db = get_db()
@@ -749,18 +798,13 @@ def verify_species_status(
     console.print(f"[dim]Registry entries read:  {summary['registry_entries']:,}[/dim]")
     console.print(f"[green]Verified:               {summary['verified']:,}[/green]")
     console.print(f"[yellow]Left unverified:        {summary['left_unverified']:,}[/yellow]")
-    console.print(
-        f"[dim]Not in registry:        {summary['skipped_not_in_registry']:,}[/dim]"
-    )
-    console.print(
-        f"[dim]Matched, no status:     {summary['matched_no_usable_status']:,}[/dim]"
-    )
+    console.print(f"[dim]Not in registry:        {summary['skipped_not_in_registry']:,}[/dim]")
+    console.print(f"[dim]Matched, no status:     {summary['matched_no_usable_status']:,}[/dim]")
 
     unmatched = summary["unmatched_registry_entries"]
     if unmatched:
         console.print(
-            f"[yellow]Registry entries that matched no species "
-            f"({len(unmatched)}):[/yellow]"
+            f"[yellow]Registry entries that matched no species ({len(unmatched)}):[/yellow]"
         )
         for name in unmatched[:15]:
             console.print(f"   {name}")
@@ -870,7 +914,9 @@ def context(clear: bool = typer.Option(False, "--clear", help="Clear the angler 
 
     ctx = load_context(db)
     if not ctx:
-        console.print("[dim]No angler context yet. Start chatting and it will build up automatically.[/dim]")
+        console.print(
+            "[dim]No angler context yet. Start chatting and it will build up automatically.[/dim]"
+        )
         return
 
     console.print("\n=== FishBot knows this about you ===\n")
@@ -880,16 +926,23 @@ def context(clear: bool = typer.Option(False, "--clear", help="Clear the angler 
 
 
 @app.command()
-def history(sessions: int = typer.Option(5, "--sessions", "-n", help="Number of sessions to show")) -> None:
+def history(
+    sessions: int = typer.Option(5, "--sessions", "-n", help="Number of sessions to show"),
+) -> None:
     """Show recent chat sessions."""
     db = get_db()
-    rows = list(db.execute("""
+    rows = list(
+        db.execute(
+            """
         SELECT session_id, started_at, turn_count, summary
         FROM chat_sessions
         WHERE turn_count > 1
         ORDER BY started_at DESC
         LIMIT ?
-    """, [sessions]).fetchall())
+    """,
+            [sessions],
+        ).fetchall()
+    )
 
     if not rows:
         console.print("[dim]No chat sessions yet.[/dim]")
@@ -908,7 +961,8 @@ def history(sessions: int = typer.Option(5, "--sessions", "-n", help="Number of 
 def usage(days: int = typer.Option(7, "--days", "-d", help="Number of days to show")) -> None:
     """Show API usage summary for the last N days."""
     db = get_db()
-    rows = list(db.execute(f"""
+    rows = list(
+        db.execute(f"""
         SELECT
             DATE(timestamp) as day,
             SUM(input_tokens) as input_tokens,
@@ -921,14 +975,18 @@ def usage(days: int = typer.Option(7, "--days", "-d", help="Number of days to sh
         WHERE timestamp >= DATE('now', '-{days} days')
         GROUP BY DATE(timestamp)
         ORDER BY day DESC
-    """).fetchall())
+    """).fetchall()
+    )
 
     if not rows:
         console.print("No usage data yet.")
         return
 
     console.print(f"\nAPI Usage — last {days} days\n")
-    console.print(f"{'Day':<12} {'Input':>8} {'Output':>8} {'Total':>8} {'Calls':>6} {'Tools':>6} {'Avg Tools':>10}")
+    console.print(
+        f"{'Day':<12} {'Input':>8} {'Output':>8} {'Total':>8} "
+        f"{'Calls':>6} {'Tools':>6} {'Avg Tools':>10}"
+    )
     console.print("-" * 65)
     for r in rows:
         console.print(f"{r[0]:<12} {r[1]:>8,} {r[2]:>8,} {r[3]:>8,} {r[4]:>6} {r[5]:>6} {r[6]:>10}")
@@ -944,7 +1002,9 @@ def usage(days: int = typer.Option(7, "--days", "-d", help="Number of days to sh
     # $3 per 1M input tokens, $15 per 1M output tokens (Claude Sonnet pricing)
     est_cost = (totals[0] / 1_000_000 * 3) + (totals[1] / 1_000_000 * 15)
     console.print(f"\nEstimated cost: ${est_cost:.4f} USD")
-    console.print("(Based on Claude Sonnet pricing — verify current rates at console.anthropic.com)")
+    console.print(
+        "(Based on Claude Sonnet pricing — verify current rates at console.anthropic.com)"
+    )
 
 
 @app.command(name="cache-status")
@@ -952,12 +1012,14 @@ def cache_status() -> None:
     """Show synthesis cache contents and hit rates."""
     db = get_db()
     try:
-        rows = list(db.execute("""
+        rows = list(
+            db.execute("""
             SELECT location_name, cache_key, hit_count, computed_at,
                    LENGTH(synthesis) as synthesis_chars
             FROM segment_synthesis
             ORDER BY hit_count DESC, computed_at DESC
-        """).fetchall())
+        """).fetchall()
+        )
     except Exception:
         console.print("No synthesis cache entries yet.")
         return
@@ -1004,7 +1066,8 @@ def cache_clear() -> None:
 def tool_stats(days: int = typer.Option(7, "--days", "-d", help="Number of days to show")) -> None:
     """Show which tools are being called most over the last N days."""
     db = get_db()
-    rows = list(db.execute(f"""
+    rows = list(
+        db.execute(f"""
         SELECT tool_name,
                COUNT(*) as calls,
                COUNT(DISTINCT session_id) as sessions
@@ -1012,7 +1075,8 @@ def tool_stats(days: int = typer.Option(7, "--days", "-d", help="Number of days 
         WHERE timestamp >= datetime('now', '-{days} days')
         GROUP BY tool_name
         ORDER BY calls DESC
-    """).fetchall())
+    """).fetchall()
+    )
 
     if not rows:
         console.print(f"No tool usage data in the last {days} days.")
@@ -1052,7 +1116,8 @@ def users() -> None:
 
     db = get_db()
     try:
-        rows = list(db.execute("""
+        rows = list(
+            db.execute("""
             SELECT u.id, u.username, u.display_name, u.role,
                    u.created_at,
                    COALESCE(SUM(du.message_count), 0) as total_messages
@@ -1060,7 +1125,8 @@ def users() -> None:
             LEFT JOIN daily_usage du ON du.user_id = u.id
             GROUP BY u.id
             ORDER BY u.id
-        """).fetchall())
+        """).fetchall()
+        )
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         return
@@ -1091,7 +1157,8 @@ def token() -> None:
     from datetime import datetime, timedelta
 
     sys.path.insert(0, "src")
-    from src.storage.database import ensure_schema, get_db as _get_db
+    from src.storage.database import ensure_schema
+    from src.storage.database import get_db as _get_db
 
     db = _get_db()
     ensure_schema(db)
@@ -1104,20 +1171,22 @@ def token() -> None:
 
         new_token = secrets.token_urlsafe(32)
         expires = (datetime.now() + timedelta(days=90)).isoformat()
-        db["user_sessions"].insert({
-            "user_id": 1,
-            "token": new_token,
-            "expires_at": expires,
-            "last_used_at": datetime.now().isoformat(),
-        })
+        db["user_sessions"].insert(
+            {
+                "user_id": 1,
+                "token": new_token,
+                "expires_at": expires,
+                "last_used_at": datetime.now().isoformat(),
+            }
+        )
         db.conn.commit()
 
         console.print("\n[green]Admin token (valid 90 days):[/green]")
         console.print(f"Bearer {new_token}")
         console.print("\n[dim]Save this. Use it to generate invite codes:[/dim]")
-        console.print(f'curl -X POST https://web-production-e2094.up.railway.app/admin/invite \\')
+        console.print("curl -X POST https://web-production-e2094.up.railway.app/admin/invite \\")
         console.print(f'  -H "Authorization: Bearer {new_token}" \\')
-        console.print(f"  -d '{{\"note\": \"friendsname\"}}'")
+        console.print('  -d \'{"note": "friendsname"}\'')
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
 
@@ -1143,9 +1212,11 @@ def _check_sdm_retrain_needed(db) -> None:
 
         # Count trip log catches per species (productive stops only)
         trip_counts: dict[str, int] = {}
-        stops = list(db.execute("""
+        stops = list(
+            db.execute("""
             SELECT species_caught FROM stops WHERE was_productive = 1
-        """).fetchall())
+        """).fetchall()
+        )
 
         for (sc_json,) in stops:
             species_list = json.loads(sc_json or "[]")
@@ -1184,7 +1255,9 @@ def _check_sdm_retrain_needed(db) -> None:
                 )
             console.print("[yellow][SDM] Run 'uv run fishbot train-sdm' to retrain.[/yellow]")
         else:
-            console.print("[dim][SDM] No retraining needed — trip log growth below threshold.[/dim]")
+            console.print(
+                "[dim][SDM] No retraining needed — trip log growth below threshold.[/dim]"
+            )
 
     except Exception as e:
         console.print(f"[dim][SDM] Retrain check failed: {e}[/dim]")

@@ -26,10 +26,7 @@ _MAX_CANDIDATES = 3
 def get_region_candidate_species(db: Database, jurisdiction: str = "CA-ON") -> list[str]:
     """Real, deduped common names for the region — the only species the
     vision model is allowed to suggest."""
-    return [
-        sr.species
-        for sr in query_deduped_species_ranges_for_jurisdiction(db, jurisdiction)
-    ]
+    return [sr.species for sr in query_deduped_species_ranges_for_jurisdiction(db, jurisdiction)]
 
 
 def suggest_species_from_photo(
@@ -49,7 +46,12 @@ def suggest_species_from_photo(
       }
     """
     if not candidate_species:
-        return {"screened": False, "candidates": [], "unresolved": True, "note": "no candidate species available"}
+        return {
+            "screened": False,
+            "candidates": [],
+            "unresolved": True,
+            "note": "no candidate species available",
+        }
 
     client = get_client()
     model = get_model()
@@ -85,7 +87,11 @@ to any candidate with at least low confidence, return "candidates": [] and "unre
                     "content": [
                         {
                             "type": "image",
-                            "source": {"type": "base64", "media_type": media_type, "data": image_data},
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": image_data,
+                            },
                         },
                         {"type": "text", "text": prompt},
                     ],
@@ -146,7 +152,8 @@ def annotate_conservation(db: Database, suggestion: dict | None) -> dict | None:
             ctx = describe_species(db, candidate["species"])
         except Exception:  # noqa: BLE001 - a lookup failure must not lose the ID
             logger.warning(
-                "Conservation lookup failed for %s", candidate.get("species"),
+                "Conservation lookup failed for %s",
+                candidate.get("species"),
                 exc_info=True,
             )
             continue

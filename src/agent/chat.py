@@ -61,7 +61,10 @@ def _summarize_history(messages: list[dict], client) -> list[dict]:
 
     return [
         {"role": "user", "content": summary_text},
-        {"role": "assistant", "content": "Understood, I have the context from our earlier conversation."},
+        {
+            "role": "assistant",
+            "content": "Understood, I have the context from our earlier conversation.",
+        },
     ] + to_keep
 
 
@@ -84,7 +87,9 @@ def _run_full_pipeline(
     if angler_context:
         system_prompt = system_prompt + "\n\n" + format_context_for_prompt(angler_context)
     if user_id != 1:
-        system_prompt += f"\n\nCurrent user: {user_id} (filter all personal data queries by this user_id)"
+        system_prompt += (
+            f"\n\nCurrent user: {user_id} (filter all personal data queries by this user_id)"
+        )
     model = get_model()
     tools = _tools(profile)
     tool_calls_made: list[str] = []
@@ -101,15 +106,17 @@ def _run_full_pipeline(
         )
 
         usage = resp.usage
-        db["api_usage"].insert({
-            "session_id": session_id,
-            "model": resp.model,
-            "input_tokens": usage.input_tokens,
-            "output_tokens": usage.output_tokens,
-            "total_tokens": usage.input_tokens + usage.output_tokens,
-            "tool_calls_made": len([b for b in resp.content if b.type == "tool_use"]),
-            "endpoint": "chat",
-        })
+        db["api_usage"].insert(
+            {
+                "session_id": session_id,
+                "model": resp.model,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "total_tokens": usage.input_tokens + usage.output_tokens,
+                "tool_calls_made": len([b for b in resp.content if b.type == "tool_use"]),
+                "endpoint": "chat",
+            }
+        )
 
         content_blocks = resp.content
         tool_use_blocks = [b for b in content_blocks if b.type == "tool_use"]
@@ -119,7 +126,9 @@ def _run_full_pipeline(
             messages.append({"role": "assistant", "content": reply})
 
             # Save the last user + assistant turn
-            user_msgs = [m for m in messages if m["role"] == "user" and isinstance(m.get("content"), str)]
+            user_msgs = [
+                m for m in messages if m["role"] == "user" and isinstance(m.get("content"), str)
+            ]
             if user_msgs:
                 save_turn(db, session_id, "user", user_msgs[-1]["content"], len(user_msgs) - 1)
             save_turn(db, session_id, "assistant", reply, len(user_msgs))
@@ -139,17 +148,18 @@ def _run_full_pipeline(
         for block in tool_use_blocks:
             tool_calls_made.append(block.name)
             result = _execute_tool(block.name, block.input, user_id=user_id)
-            tool_results.append(
-                {"type": "tool_result", "tool_use_id": block.id, "content": result}
-            )
+            tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
             try:
                 import json as _json
-                db["tool_usage"].insert({
-                    "session_id": session_id,
-                    "tool_name": block.name,
-                    "input_summary": str(_json.dumps(block.input))[:200],
-                    "success": 1,
-                })
+
+                db["tool_usage"].insert(
+                    {
+                        "session_id": session_id,
+                        "tool_name": block.name,
+                        "input_summary": str(_json.dumps(block.input))[:200],
+                        "success": 1,
+                    }
+                )
             except Exception:
                 pass
         messages.append({"role": "user", "content": tool_results})
@@ -180,8 +190,7 @@ def run_chat_api(
     from src.agent.router import classify_message, handle_reflex
 
     recent = " ".join(
-        m["content"][:200] for m in messages[-4:]
-        if isinstance(m.get("content"), str)
+        m["content"][:200] for m in messages[-4:] if isinstance(m.get("content"), str)
     )
 
     classification = classify_message(latest_user, recent)
@@ -197,9 +206,7 @@ def run_chat_api(
     if mode == "reflex":
         named_place = _reflex_names_a_place(latest_user, user_id)
         if named_place:
-            logger.info(
-                "Reflex overridden to synthesis: message names %r", named_place
-            )
+            logger.info("Reflex overridden to synthesis: message names %r", named_place)
             mode = "synthesis"
             classification["mode"] = mode
             classification["reflex_override"] = named_place
@@ -236,17 +243,27 @@ def run_chat_api(
         # Live-conditions and time-forward questions must never be served from cache.
         _cache_bypass_patterns = (
             # Future windows
-            "tomorrow", "this weekend", "saturday", "sunday",
-            "in 3 days", "next week", "forecast", "this friday",
+            "tomorrow",
+            "this weekend",
+            "saturday",
+            "sunday",
+            "in 3 days",
+            "next week",
+            "forecast",
+            "this friday",
             # Present-tense conditions (also require a live fetch, not cached synthesis)
-            "right now", "today", "currently", "at the moment",
-            "conditions", "conditions like", "weather",
+            "right now",
+            "today",
+            "currently",
+            "at the moment",
+            "conditions",
+            "conditions like",
+            "weather",
         )
         _is_time_forward = any(p in latest_user.lower() for p in _cache_bypass_patterns)
 
         if not _is_time_forward and (lat is not None or location_name is not None):
-            cached = get_cached_synthesis(db, lat=lat, lng=lng,
-                                          location_name=location_name)
+            cached = get_cached_synthesis(db, lat=lat, lng=lng, location_name=location_name)
             if cached:
                 cache_prompt = (
                     f"The user asked: {latest_user}\n\n"
@@ -264,13 +281,14 @@ def run_chat_api(
                     max_tokens=600,
                     messages=[{"role": "user", "content": cache_prompt}],
                 )
-                reply = "".join(
-                    b.text for b in resp.content if b.type == "text"
-                ).strip()
+                reply = "".join(b.text for b in resp.content if b.type == "text").strip()
                 reply += "\n\n*(Answer from synthesis cache)*"
                 messages.append({"role": "assistant", "content": reply})
-                _log_routing(session_id, "synthesis_cache_hit",
-                             resp.usage.input_tokens + resp.usage.output_tokens)
+                _log_routing(
+                    session_id,
+                    "synthesis_cache_hit",
+                    resp.usage.input_tokens + resp.usage.output_tokens,
+                )
                 return {
                     "reply": reply,
                     "tool_calls": [],
@@ -305,15 +323,17 @@ def run_chat_api(
 def _log_routing(session_id: str, mode: str, tokens: int) -> None:
     try:
         db = get_db()
-        db["api_usage"].insert({
-            "session_id": session_id,
-            "model": HAIKU,
-            "input_tokens": tokens,
-            "output_tokens": 0,
-            "total_tokens": tokens,
-            "tool_calls_made": 0,
-            "endpoint": f"router:{mode}",
-        })
+        db["api_usage"].insert(
+            {
+                "session_id": session_id,
+                "model": HAIKU,
+                "input_tokens": tokens,
+                "output_tokens": 0,
+                "total_tokens": tokens,
+                "tool_calls_made": 0,
+                "endpoint": f"router:{mode}",
+            }
+        )
     except Exception:
         pass
 
@@ -321,15 +341,17 @@ def _log_routing(session_id: str, mode: str, tokens: int) -> None:
 def _log_mode_usage(session_id: str, mode: str, tokens: int) -> None:
     try:
         db = get_db()
-        db["api_usage"].insert({
-            "session_id": session_id,
-            "model": HAIKU,
-            "input_tokens": 0,
-            "output_tokens": tokens,
-            "total_tokens": tokens,
-            "tool_calls_made": 0,
-            "endpoint": f"mode:{mode}",
-        })
+        db["api_usage"].insert(
+            {
+                "session_id": session_id,
+                "model": HAIKU,
+                "input_tokens": 0,
+                "output_tokens": tokens,
+                "total_tokens": tokens,
+                "tool_calls_made": 0,
+                "endpoint": f"mode:{mode}",
+            }
+        )
     except Exception:
         pass
 
@@ -386,8 +408,7 @@ def run_chat() -> None:
         from src.agent.router import classify_message, handle_reflex
 
         recent = " ".join(
-            m["content"][:200] for m in messages[-4:]
-            if isinstance(m.get("content"), str)
+            m["content"][:200] for m in messages[-4:] if isinstance(m.get("content"), str)
         )
         classification = classify_message(user_input, recent)
         mode = classification["mode"]
@@ -422,8 +443,7 @@ def run_chat() -> None:
             c_name = cache_loc.get("location_name")
 
             if c_lat is not None or c_name is not None:
-                cached = get_cached_synthesis(db, lat=c_lat, lng=c_lng,
-                                              location_name=c_name)
+                cached = get_cached_synthesis(db, lat=c_lat, lng=c_lng, location_name=c_name)
                 if cached:
                     cache_prompt = (
                         f"The user asked: {user_input}\n\n"
@@ -440,22 +460,25 @@ def run_chat() -> None:
                         max_tokens=600,
                         messages=[{"role": "user", "content": cache_prompt}],
                     )
-                    reply = "".join(
-                        b.text for b in resp.content if b.type == "text"
-                    ).strip()
+                    reply = "".join(b.text for b in resp.content if b.type == "text").strip()
                     reply += "\n\n*(Answer from synthesis cache)*"
                     console.print(reply, markup=False, highlight=False, soft_wrap=True)
                     console.print()
                     console.print()
                     messages.append({"role": "assistant", "content": reply})
                     save_turn(db, session_id, "assistant", reply, turn_index)
-                    _log_routing(session_id, "synthesis_cache_hit",
-                                 resp.usage.input_tokens + resp.usage.output_tokens)
+                    _log_routing(
+                        session_id,
+                        "synthesis_cache_hit",
+                        resp.usage.input_tokens + resp.usage.output_tokens,
+                    )
                     turn_index += 1
                     continue
 
         try:
-            _agentic_loop(client, model, system_prompt, messages, tools, console, session_id=session_id)
+            _agentic_loop(
+                client, model, system_prompt, messages, tools, console, session_id=session_id
+            )
         except APIError as e:
             console.print(f"[red]API error: {e}[/red]")
             messages.pop()
@@ -478,8 +501,10 @@ def run_chat() -> None:
                 if c_lat is not None or c_name is not None:
                     try:
                         from src.services.synthesis_cache import store_synthesis
-                        store_synthesis(db, synthesis=reply, lat=c_lat, lng=c_lng,
-                                        location_name=c_name)
+
+                        store_synthesis(
+                            db, synthesis=reply, lat=c_lat, lng=c_lng, location_name=c_name
+                        )
                     except Exception:
                         pass  # Non-fatal
 
@@ -517,15 +542,17 @@ def _agentic_loop(
             content_blocks = final_msg.content
 
         usage = final_msg.usage
-        db["api_usage"].insert({
-            "session_id": session_id,
-            "model": final_msg.model,
-            "input_tokens": usage.input_tokens,
-            "output_tokens": usage.output_tokens,
-            "total_tokens": usage.input_tokens + usage.output_tokens,
-            "tool_calls_made": len([b for b in content_blocks if b.type == "tool_use"]),
-            "endpoint": "chat",
-        })
+        db["api_usage"].insert(
+            {
+                "session_id": session_id,
+                "model": final_msg.model,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "total_tokens": usage.input_tokens + usage.output_tokens,
+                "tool_calls_made": len([b for b in content_blocks if b.type == "tool_use"]),
+                "endpoint": "chat",
+            }
+        )
 
         tool_use_blocks = [b for b in content_blocks if b.type == "tool_use"]
 
@@ -553,12 +580,15 @@ def _agentic_loop(
             )
             try:
                 import json as _json
-                db["tool_usage"].insert({
-                    "session_id": session_id,
-                    "tool_name": block.name,
-                    "input_summary": str(_json.dumps(block.input))[:200],
-                    "success": 1,
-                })
+
+                db["tool_usage"].insert(
+                    {
+                        "session_id": session_id,
+                        "tool_name": block.name,
+                        "input_summary": str(_json.dumps(block.input))[:200],
+                        "success": 1,
+                    }
+                )
             except Exception:
                 pass
 
