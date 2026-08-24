@@ -553,23 +553,11 @@ def ensure_schema(db: Database) -> None:
             pk="crown_id",
         )
 
-    if "sdm_predictions" not in db.table_names():
-        db["sdm_predictions"].create(
-            {
-                "ogf_id": int,
-                "species": str,
-                "presence_probability": float,
-                "model_version": str,
-                "predicted_at": str,
-                "centroid_lat": float,
-                "centroid_lng": float,
-            },
-            pk=["ogf_id", "species"],
-        )
-        db["sdm_predictions"].create_index(
-            ["species", "centroid_lat", "centroid_lng"],
-            if_not_exists=True,
-        )
+    # No sdm_predictions table. Nothing writes it since train-sdm stopped
+    # persisting predictions, and nothing has read it since the exploration
+    # path that rendered model output as "Recorded nearby" was deleted.
+    # Creating it on every fresh clone would advertise a store that does not
+    # exist. Existing databases keep their empty copy; it is inert.
 
     if "dismissed_segments" not in db.table_names():
         db["dismissed_segments"].create(

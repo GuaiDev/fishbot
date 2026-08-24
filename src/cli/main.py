@@ -483,14 +483,23 @@ def build_features() -> None:
 
 @app.command(name="train-sdm")
 def train_sdm() -> None:
-    """Train Random Forest SDMs for 9 species and store predictions in the database.
+    """Train Random Forest SDMs for 9 species. Research tool, off the request path.
 
     Loads the feature matrix from data/processed/sdm_feature_matrix.parquet,
-    trains one calibrated RF model per species, stores predictions in the DB,
-    and saves model joblibs to data/processed/sdm_models/.
+    trains one calibrated RF model per species, reports spatial-CV AUC, and
+    saves model joblibs to data/processed/sdm_models/.
 
-    Expected runtime: 5–15 minutes. Do NOT re-run train-sdm if predictions
-    are already current — it overwrites the sdm_predictions table.
+    It no longer writes predictions to the database. The sdm_predictions table
+    had exactly one reader — an exploration path that rendered its output as
+    "Recorded nearby", which is a prediction wearing an observation's clothes —
+    and that path is gone. What was left was a table accumulating rows nobody
+    read, which is a trap: the next person to find it populated would
+    reasonably assume it meant something.
+
+    Reinstating a consumer is a deliberate decision to make then, with the
+    AUC in front of you. It is one call to upsert_predictions when it happens.
+
+    Expected runtime: 5–15 minutes.
     """
     import time
     from pathlib import Path as _Path
@@ -499,13 +508,10 @@ def train_sdm() -> None:
     from rich.table import Table
 
     from src.services.sdm_training import (
-        MODEL_VERSION,
         SPECIES_TO_TRAIN,
-        predict_all_segments,
         save_model,
         train_species_model,
     )
-    from src.storage.sdm_predictions import upsert_predictions
 
     parquet = _Path("data/processed/sdm_feature_matrix.parquet")
     if not parquet.exists():
@@ -534,9 +540,6 @@ def train_sdm() -> None:
         try:
             result = train_species_model(species, db, feature_matrix)
             save_model(result)
-
-            predictions = predict_all_segments(result, feature_matrix)
-            upsert_predictions(db, species, predictions, model_version=MODEL_VERSION)
 
             elapsed = time.time() - t0
             auc_str = f"{result['spatial_cv_auc']:.3f}"

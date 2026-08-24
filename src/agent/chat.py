@@ -1,5 +1,6 @@
 """Interactive chat loop using the Anthropic SDK + rich for terminal I/O."""
 
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -21,6 +22,8 @@ EXIT_COMMANDS = {"/exit", "/quit", "exit", "quit"}
 MAX_TURNS_BEFORE_SUMMARY = 10
 
 HAIKU = "claude-haiku-4-5-20251001"
+
+logger = logging.getLogger(__name__)
 
 
 def _summarize_history(messages: list[dict], client) -> list[dict]:
@@ -183,6 +186,23 @@ def run_chat_api(
 
     classification = classify_message(latest_user, recent)
     mode = classification["mode"]
+
+    # The reflex path answers from general knowledge with no retrieval and no
+    # tools. That is right for "how do I tie a palomar knot" and catastrophic
+    # for "does Bronte Creek hold brook trout" — the second gets invented.
+    # Until now the only thing standing between those two was a sentence in
+    # the classifier's system prompt asking it to notice place names, which is
+    # a prose guardrail on the highest-stakes property the product has.
+    # Deciding it in Python is the same move as putting escalation there.
+    if mode == "reflex":
+        named_place = _reflex_names_a_place(latest_user, user_id)
+        if named_place:
+            logger.info(
+                "Reflex overridden to synthesis: message names %r", named_place
+            )
+            mode = "synthesis"
+            classification["mode"] = mode
+            classification["reflex_override"] = named_place
 
     _log_routing(session_id, mode, classification.get("router_tokens", 0))
 
@@ -560,3 +580,18 @@ def _execute_tool(name: str, inputs: dict, user_id: int = 1) -> str:
 
 def _tools(profile: Any) -> list[dict]:
     return tool_schemas(profile)
+
+
+def _reflex_names_a_place(message: str, user_id: int) -> str | None:
+    """Whether a reflex-classified message is actually about specific water.
+
+    Never raises: a failure here must fall back to the classifier's decision,
+    which is today's behaviour, rather than breaking the turn.
+    """
+    try:
+        from src.services.context.place import mentions_a_place
+
+        return mentions_a_place(get_db(), message, user_id=user_id)
+    except Exception:  # noqa: BLE001
+        logger.warning("place check failed; keeping the classifier's mode", exc_info=True)
+        return None

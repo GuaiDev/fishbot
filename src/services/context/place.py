@@ -11,6 +11,8 @@ returns an honest failure rather than a confident guess at the wrong river.
 """
 
 import logging
+import re
+from functools import lru_cache
 
 from sqlite_utils import Database
 
@@ -51,6 +53,79 @@ def resolve(
         return _from_name(db, query, radius_km, user_id)
 
     return None
+
+
+_COORD_RE = re.compile(
+    r"(-?\d{1,3}\.\d{3,})\s*[,/ ]\s*(-?\d{1,3}\.\d{3,})"
+)
+
+
+@lru_cache(maxsize=4)
+def _known_place_names(db_path: str) -> frozenset[str]:
+    """Every water name we could resolve, lowercased. Cached per database.
+
+    Small enough to hold: a few hundred distinct names across OHN and OSM for
+    the ingested footprint. Keyed on the database path rather than the handle
+    so tests with their own temp databases do not share a cache.
+    """
+    from sqlite_utils import Database
+
+    names: set[str] = set()
+    db = Database(db_path)
+    for table in ("stream_segments", "water_features"):
+        if table not in db.table_names():
+            continue
+        for (name,) in db.execute(
+            f"SELECT DISTINCT name FROM {table} WHERE name IS NOT NULL AND name != ''"
+        ).fetchall():
+            cleaned = str(name).split("(")[0].strip().lower()
+            if len(cleaned) > 3:
+                names.add(cleaned)
+    return frozenset(names)
+
+
+def mentions_a_place(db: Database, text: str, user_id: int = 1) -> str | None:
+    """The name of a specific stretch of water this text refers to, if any.
+
+    Exists so the router can decide in Python whether a question is about
+    particular water, instead of trusting a classifier prompt to notice. The
+    reflex path answers from general knowledge with no retrieval at all, so a
+    misclassified "does Bronte Creek hold brook trout?" is answered by
+    invention — the single highest-stakes failure this product has, guarded
+    until now by one sentence of prose inside a classifier system prompt.
+
+    Deliberately conservative: it only reports a place it could actually
+    resolve, so a false positive costs one unnecessary retrieval pass and a
+    false negative is no worse than today's behaviour.
+    """
+    if not text:
+        return None
+    if _COORD_RE.search(text):
+        return _COORD_RE.search(text).group(0)
+
+    lowered = text.lower()
+    try:
+        known = set(_known_place_names(str(db.conn.execute("PRAGMA database_list").fetchone()[2])))
+    except Exception:  # noqa: BLE001 - an unreadable name list is not a router failure
+        logger.debug("place-name list unavailable", exc_info=True)
+        known = set()
+
+    # The user's own spot names matter most: "the dam" is a place to them even
+    # though it is in no gazetteer.
+    if "stops" in db.table_names():
+        for (name,) in db.execute(
+            "SELECT DISTINCT COALESCE(location_name, location_text) FROM stops "
+            "WHERE user_id = ? AND COALESCE(location_name, location_text) IS NOT NULL",
+            [user_id],
+        ).fetchall():
+            cleaned = str(name).strip().lower()
+            if len(cleaned) > 3:
+                known.add(cleaned)
+
+    # Longest match wins, so "East Sixteen Mile Creek" is not reported as
+    # "Sixteen Mile Creek".
+    hits = [n for n in known if n in lowered]
+    return max(hits, key=len) if hits else None
 
 
 def _from_latlng(
