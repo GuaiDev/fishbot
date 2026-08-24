@@ -672,17 +672,3 @@ def test_waterbody_proximity(tmp_path):
     assert dists[1] is not None
     assert dists[1] <= 200.0
     assert dists[2] is None  # outside 500m window
-
-
-def test_structural_note_confluence():
-    """Confluence segments get the high-congregation note."""
-    from src.services.untapped_potential import _structural_note
-
-    note = _structural_note(
-        is_confluence=True,
-        connected_to_waterbody=False,
-        nearest_waterbody_m=None,
-        distance_to_nearest_confluence_km=0.0,
-    )
-    assert "Confluence" in note or "confluence" in note
-    assert "congregation" in note.lower() or "streams meet" in note.lower()

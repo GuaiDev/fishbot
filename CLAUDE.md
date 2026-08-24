@@ -84,7 +84,7 @@ Non-salmonid species (Creek Chub, Yellow Perch, Rainbow Darter, etc.) are never 
 
 Access scores (`src/services/accessibility.py`) are only meaningful within the OSM ingestion radius (~55km of home). The OHN stream network covers all of Ontario (309k segments), but access point data (roads, parking, buildings) is fetched for 25km around home. Segments outside this radius receive a neutral baseline score (~0.27 after normalization) and are not meaningfully differentiated by access.
 
-`find_untapped_water` results are most reliable when filtered to the home-area radius. For exploration targets beyond 55km, the untapped score is dominated by habitat quality × observation pressure — access score adds no signal.
+`explore()` results are most reliable within the home-area radius. Beyond 55km the score is dominated by observation pressure, structure and remoteness — access adds no signal there and says so.
 
 **This is now a data field, not just a caveat.** `compute_access_scores` records `access_is_measured` per segment (derived from the road modifier, which already knew — it gives out-of-footprint segments a neutral value for exactly this reason and used to throw the distinction away). `ExploreResult.access_is_measured` and `ExploreResponse.results_on_placeholder_access` carry it to the surface, and the renderer prints "access not measured here" instead of a number. Nothing is filtered: pressure, structure and remoteness are real outside the footprint, so the results stand — only the access term does not.
 
@@ -109,7 +109,9 @@ The rule when touching any of these: a count that separates "worked" from "silen
 
 ## Data quality principle: culverted urban streams
 
-Small order-1 and order-2 streams in high-density urban areas are frequently culverted in southern Ontario. OHN maps these hydrologically but they may not be fishable on the ground. Default `min_stream_order=3` in `find_untapped_water` excludes most culverted reaches. The culverted heuristic filter (`exclude_likely_culverted=True`) additionally removes order-1/2 segments where `observation_density_25km > 100` — the combination of small stream + very dense urban reporting is a strong signal for piped infrastructure.
+Small order-1 and order-2 streams in high-density urban areas are frequently culverted in southern Ontario. OHN maps these hydrologically but they may not be fishable on the ground. Default `min_stream_order=3` in `explore()` excludes most culverted reaches.
+
+The `exclude_likely_culverted` heuristic (order-1/2 segments with `observation_density_25km > 100`) went with `find_untapped_water_for_agent` and has no replacement. It was a reasonable guess, not a measurement, and nothing in `explore()` applies it today — so the stream-order default is the only culvert defence currently in place.
 
 TRCA-managed streams with SAR habitat designations are exceptions — they may be legitimate targets even if hard to find on consumer maps. Eckardt Creek (Rouge tributary, Markham) is a documented example: actively managed for Redside Dace, partially channelized but fishable via the Rouge River trail system.
 

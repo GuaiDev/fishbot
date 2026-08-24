@@ -1,6 +1,5 @@
 """Tests for untapped potential scoring. All use synthetic data — no live calls."""
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -8,13 +7,10 @@ import pandas as pd
 import pytest
 
 from src.services.untapped_potential import (
-    _build_connectivity_note,
     _compute_mode_score,
     _compute_pressure,
     _structural_bonus,
     compute_untapped_potential,
-    find_exploration_targets,
-    find_untapped_water_for_agent,
     gate_exclusion_reason,
     plausibility_gate,
 )
@@ -259,88 +255,6 @@ def test_untapped_ignores_sdm_predictions_entirely(tmp_path: Path, monkeypatch):
     )
 
 
-# ── agent wrapper tests ───────────────────────────────────────────────────────
-
-
-def test_find_untapped_water_no_cache(tmp_path: Path, monkeypatch):
-    import src.services.untapped_potential as up_mod
-
-    monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "missing.parquet")
-
-    db = get_db(tmp_path / "test.db")
-    result = json.loads(find_untapped_water_for_agent(db, 43.65, -79.38))
-    assert "error" in result
-
-
-def test_find_untapped_water_spatial_filter(tmp_path: Path, monkeypatch):
-    import src.services.accessibility as acc_mod
-    import src.services.untapped_potential as up_mod
-
-    monkeypatch.setattr(acc_mod, "_PARQUET_PATH", tmp_path / "a.parquet")
-    monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "u.parquet")
-    monkeypatch.setattr(up_mod, "_FEATURE_MATRIX_PATH", tmp_path / "fm.parquet")
-
-    db = get_db(tmp_path / "test.db")
-    fm = _make_feature_matrix(10)
-    fm["observation_density_25km"] = 0.0
-    _insert_predictions(db, "Sp", {i: 0.7 for i in range(1, 11)})
-    _insert_access_scores(tmp_path, {i: 0.8 for i in range(1, 11)})
-
-    compute_untapped_potential(db, fm)
-
-    # Query near the first segment (43.5, -80.0) with tiny radius
-    result = json.loads(find_untapped_water_for_agent(db, 43.5, -80.0, radius_km=5, limit=10))
-    # Segments far from 43.5/-80.0 should be excluded
-    if "segments" in result:
-        for seg in result["segments"]:
-            assert abs(seg["centroid_lat"] - 43.5) <= 0.1
-            assert abs(seg["centroid_lng"] - -80.0) <= 0.1
-
-
-def test_find_untapped_water_stream_order_filter(tmp_path: Path, monkeypatch):
-    import src.services.accessibility as acc_mod
-    import src.services.untapped_potential as up_mod
-
-    monkeypatch.setattr(acc_mod, "_PARQUET_PATH", tmp_path / "a.parquet")
-    monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "u.parquet")
-    monkeypatch.setattr(up_mod, "_FEATURE_MATRIX_PATH", tmp_path / "fm.parquet")
-
-    db = get_db(tmp_path / "test.db")
-    fm = _make_feature_matrix(5)
-    fm["observation_density_25km"] = 0.0
-    fm["stream_order"] = [1, 1, 3, 3, 3]
-    _insert_predictions(db, "Sp", {i: 0.6 for i in range(1, 6)})
-    _insert_access_scores(tmp_path, {i: 0.7 for i in range(1, 6)})
-
-    compute_untapped_potential(db, fm)
-
-    result = json.loads(
-        find_untapped_water_for_agent(db, 43.75, -79.75, radius_km=100, min_stream_order=2)
-    )
-    if "segments" in result:
-        for seg in result["segments"]:
-            assert seg["stream_order"] >= 2
-
-
-def test_find_untapped_water_model_note_present(tmp_path: Path, monkeypatch):
-    import src.services.accessibility as acc_mod
-    import src.services.untapped_potential as up_mod
-
-    monkeypatch.setattr(acc_mod, "_PARQUET_PATH", tmp_path / "a.parquet")
-    monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "u.parquet")
-    monkeypatch.setattr(up_mod, "_FEATURE_MATRIX_PATH", tmp_path / "fm.parquet")
-
-    db = get_db(tmp_path / "test.db")
-    fm = _make_feature_matrix(5)
-    fm["observation_density_25km"] = 0.0
-    _insert_predictions(db, "Sp", {i: 0.6 for i in range(1, 6)})
-    _insert_access_scores(tmp_path, {i: 0.7 for i in range(1, 6)})
-    compute_untapped_potential(db, fm)
-
-    result = json.loads(find_untapped_water_for_agent(db, 43.75, -79.75, radius_km=200))
-    assert "model_note" in result
-
-
 # ── Phase 2e: find_exploration_targets ───────────────────────────────────────
 
 
@@ -377,74 +291,6 @@ def test_adventure_mode_rewards_low_access():
     scores = _compute_mode_score(df, "adventure")
     # seg2 (low access) should score higher in adventure mode
     assert float(scores.iloc[1]) > float(scores.iloc[0])
-
-
-def test_connectivity_note_generated_when_stream_and_species_present():
-    """_build_connectivity_note returns a note when stream within 3km and species confirmed."""
-    note = _build_connectivity_note(
-        seg_name=None,
-        named_stream_3km="Humber River (1.2km)",
-        nearby_species=["Creek Chub", "Pumpkinseed"],
-    )
-    assert note is not None
-    assert "Humber River" in note
-    assert "Creek Chub" in note
-    assert "dispersal" in note
-
-
-def test_connectivity_note_none_without_named_stream():
-    """No connectivity note when there is no named stream within 3km."""
-    assert _build_connectivity_note(None, None, ["Creek Chub"]) is None
-
-
-def test_connectivity_note_none_without_nearby_species():
-    """No connectivity note when no confirmed species were found nearby."""
-    assert _build_connectivity_note(None, "Humber River (1.2km)", []) is None
-
-
-def test_find_exploration_targets_no_cache(tmp_path: Path, monkeypatch):
-    """Returns error JSON when untapped parquet not yet computed."""
-    import src.services.untapped_potential as up_mod
-
-    monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "missing.parquet")
-
-    db = get_db(tmp_path / "test.db")
-    result = json.loads(find_exploration_targets(db, 43.65, -79.38, enable_vision=False))
-    assert "error" in result
-
-
-def test_find_exploration_targets_balanced_mode(tmp_path: Path, monkeypatch):
-    """find_exploration_targets returns segments with enrichment fields in balanced mode."""
-    import src.services.accessibility as acc_mod
-    import src.services.untapped_potential as up_mod
-
-    monkeypatch.setattr(acc_mod, "_PARQUET_PATH", tmp_path / "a.parquet")
-    monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "u.parquet")
-    monkeypatch.setattr(up_mod, "_FEATURE_MATRIX_PATH", tmp_path / "fm.parquet")
-
-    db = get_db(tmp_path / "test.db")
-    fm = _make_feature_matrix(5)
-    fm["observation_density_25km"] = 0.0
-    fm["stream_order"] = [2, 2, 3, 3, 4]
-    _insert_predictions(db, "Sp", {i: 0.6 for i in range(1, 6)})
-    _insert_access_scores(tmp_path, {i: 0.7 for i in range(1, 6)})
-    compute_untapped_potential(db, fm)
-
-    result = json.loads(
-        find_exploration_targets(
-            db, 43.75, -79.75, radius_km=200, mode="balanced", enable_vision=False
-        )
-    )
-
-    assert "segments" in result
-    assert result.get("mode") == "balanced"
-    if result["segments"]:
-        seg = result["segments"][0]
-        assert "nearby_confirmed_species" in seg
-        assert "connectivity_note" in seg
-        assert "habitat_summary" in seg
-        assert "regulation_zone" in seg
-        assert "maps_urls" in seg
 
 
 # ── Phase 3a: structural scoring tests ────────────────────────────────────────
@@ -499,54 +345,6 @@ def test_structural_bonus_graceful_missing_columns():
     assert (bonus == 1.0).all()
 
 
-# ── seen-before penalty ───────────────────────────────────────────────────────
-
-
-def test_seen_before_penalty_pushes_segment_down(tmp_path: Path, monkeypatch):
-    """Previously shown ogf_id scores 0.3× so it ranks below equal-quality unseen segments."""
-    import src.services.accessibility as acc_mod
-    import src.services.untapped_potential as up_mod
-
-    monkeypatch.setattr(acc_mod, "_PARQUET_PATH", tmp_path / "a.parquet")
-    monkeypatch.setattr(up_mod, "_PARQUET_PATH", tmp_path / "u.parquet")
-    monkeypatch.setattr(up_mod, "_FEATURE_MATRIX_PATH", tmp_path / "fm.parquet")
-
-    db = get_db(tmp_path / "test.db")
-    fm = _make_feature_matrix(4)
-    fm["observation_density_25km"] = 0.0
-    fm["stream_order"] = [3, 3, 3, 3]
-    _insert_predictions(db, "Sp", {i: 0.6 for i in range(1, 5)})
-    _insert_access_scores(tmp_path, {i: 0.7 for i in range(1, 5)})
-    compute_untapped_potential(db, fm)
-
-    # Without penalty: all scores equal, first segment wins ties
-    result_no_penalty = json.loads(
-        find_exploration_targets(
-            db, 43.75, -79.75, radius_km=200, mode="balanced",
-            limit=4, enable_vision=False,
-        )
-    )
-    first_ids_no_penalty = [s["ogf_id"] for s in result_no_penalty.get("segments", [])]
-
-    # With penalty on first segment: it should rank last
-    if not first_ids_no_penalty:
-        pytest.skip("No segments returned without penalty")
-
-    penalised_id = first_ids_no_penalty[0]
-    result_with_penalty = json.loads(
-        find_exploration_targets(
-            db, 43.75, -79.75, radius_km=200, mode="balanced",
-            limit=4, enable_vision=False,
-            previously_shown_ogf_ids=[penalised_id],
-        )
-    )
-    ids_with_penalty = [s["ogf_id"] for s in result_with_penalty.get("segments", [])]
-
-    # Penalised segment should no longer be first
-    if ids_with_penalty:
-        assert ids_with_penalty[0] != penalised_id
-
-
 # ── dismiss + trip log feedback loop ─────────────────────────────────────────
 
 
@@ -586,66 +384,6 @@ def _setup_full_env(tmp_path, monkeypatch):
 
     compute_untapped_potential(db, fm)
     return db, fm
-
-
-def test_dismissed_segments_penalized(tmp_path, monkeypatch):
-    """Segment in dismissed_segments scores 0.3× and ranks below equal-quality segments."""
-    db, _ = _setup_full_env(tmp_path, monkeypatch)
-
-    # Dismiss ogf_id=1
-    from datetime import datetime
-    db["dismissed_segments"].insert(
-        {"ogf_id": 1, "dismissed_at": datetime.now().isoformat(), "reason": "private"}
-    )
-
-    result = json.loads(
-        find_exploration_targets(
-            db, 43.75, -79.5, radius_km=200, mode="balanced",
-            limit=4, enable_vision=False,
-        )
-    )
-    ids = [s["ogf_id"] for s in result.get("segments", [])]
-    # ogf_id 1 should not be first — penalised to 0.3× score
-    if len(ids) >= 2:
-        assert ids[0] != 1
-
-
-def test_trip_log_segments_penalized(tmp_path, monkeypatch):
-    """Trip with lat/lng near ogf_id=2 causes that segment to be penalised."""
-    db, fm = _setup_full_env(tmp_path, monkeypatch)
-
-    # ogf_id=2 centroid is at (43.51, -79.5) — insert a trip 200m away
-    from datetime import datetime
-    db["trips"].insert(
-        {
-            "id": 1,
-            "status": "completed",
-            "date": "2026-05-01",
-            "planned_for": None,
-            "jurisdiction": "CA-ON",
-            "location_name": "Test Creek",
-            "lat": 43.510,   # very close to ogf_id=2 centroid at 43.51
-            "lng": -79.500,
-            "species_caught": None,
-            "conditions": None,
-            "gear_used": None,
-            "notes": None,
-            "what_worked": None,
-            "what_didnt": None,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-        }
-    )
-
-    result = json.loads(
-        find_exploration_targets(
-            db, 43.75, -79.5, radius_km=200, mode="balanced",
-            limit=4, enable_vision=False,
-        )
-    )
-    ids = [s["ogf_id"] for s in result.get("segments", [])]
-    if len(ids) >= 2:
-        assert ids[0] != 2
 
 
 def test_dismiss_tool_inserts_record(tmp_path, monkeypatch):
