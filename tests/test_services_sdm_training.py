@@ -382,8 +382,7 @@ def test_calibration_improves_the_brier_score(tmp_path: Path):
     calibrated = result["model"].predict_proba(X_all)[:, 1]
 
     assert brier_score_loss(y_all, calibrated) <= brier_score_loss(y_all, raw), (
-        "Calibration made the probabilities worse, which is the only thing "
-        "it must not do"
+        "Calibration made the probabilities worse, which is the only thing it must not do"
     )
 
 
