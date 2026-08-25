@@ -99,6 +99,44 @@ SPECIES_TO_TRAIN = [
 # ── public API ────────────────────────────────────────────────────────────────
 
 
+def trip_log_presence_stops(species_name: str, db) -> list[tuple[int, float, float]]:
+    """Trip-log stops that confirm a catch of this species.
+
+    Returns (stop_id, lat, lng) for every matching `species_caught` entry, so a
+    stop appears once per entry that matches its common name — callers counting
+    stops rather than catch records de-duplicate on the id.
+
+    This predicate is the single definition of a trip-log presence: a stop
+    marked productive, carrying coordinates, whose logged common name maps to
+    `species_name`. `prepare_species_data` and `_count_trip_log_records` both
+    read it from here so the presence rows and the count of them cannot drift,
+    and the tests exercise this function rather than a copy of the SQL.
+    """
+    from src.services.species_mapping import COMMON_TO_SCIENTIFIC
+
+    names = list(_BASS_POOL) if species_name in _BASS_POOL else [species_name]
+    stops: list[tuple[int, float, float]] = []
+    for name in names:
+        matching_common = [
+            cn for cn, sci in COMMON_TO_SCIENTIFIC.items() if sci.lower() == name.lower()
+        ]
+        for common_name in matching_common:
+            stops.extend(
+                db.execute(
+                    """
+                    SELECT st.id, st.lat, st.lng
+                    FROM stops st, json_each(st.species_caught) je
+                    WHERE LOWER(je.value) LIKE ?
+                      AND st.lat IS NOT NULL
+                      AND st.lng IS NOT NULL
+                      AND st.was_productive = 1
+                    """,
+                    [f"%{common_name.lower()}%"],
+                ).fetchall()
+            )
+    return stops
+
+
 def prepare_species_data(
     species_name: str,
     db,
@@ -137,24 +175,8 @@ def prepare_species_data(
     # Trip log presences — user-confirmed catches, especially valuable in
     # undersampled areas. Non-fatal: falls through to iNat/GBIF only on error.
     try:
-        from src.services.species_mapping import COMMON_TO_SCIENTIFIC
-
-        for name in query_names:
-            matching_common = [
-                cn for cn, sci in COMMON_TO_SCIENTIFIC.items()
-                if sci.lower() == name.lower()
-            ]
-            for common_name in matching_common:
-                rows = db.execute("""
-                    SELECT st.lat, st.lng
-                    FROM stops st, json_each(st.species_caught) je
-                    WHERE LOWER(je.value) LIKE ?
-                      AND st.lat IS NOT NULL
-                      AND st.lng IS NOT NULL
-                      AND st.was_productive = 1
-                """, [f"%{common_name.lower()}%"]).fetchall()
-                for row in rows:
-                    coords.append((float(row[0]), float(row[1])))
+        for _stop_id, lat, lng in trip_log_presence_stops(species_name, db):
+            coords.append((float(lat), float(lng)))
     except Exception as exc:
         logger.warning("Trip log extraction failed for %s: %s", species_name, exc)
 
@@ -487,29 +509,9 @@ def _count_records(species_name: str, db) -> tuple[int, int]:
 
 
 def _count_trip_log_records(species_name: str, db) -> int:
-    """Count confirmed trip-log catches for this species (using common name mapping)."""
+    """Count trip-log stops with a confirmed catch of this species."""
     try:
-        from src.services.species_mapping import COMMON_TO_SCIENTIFIC
-
-        names = list(_BASS_POOL) if species_name in _BASS_POOL else [species_name]
-        total = 0
-        for name in names:
-            matching_common = [
-                cn for cn, sci in COMMON_TO_SCIENTIFIC.items()
-                if sci.lower() == name.lower()
-            ]
-            for common_name in matching_common:
-                row = db.execute("""
-                    SELECT COUNT(*) FROM (
-                        SELECT DISTINCT st.id
-                        FROM stops st, json_each(st.species_caught) je
-                        WHERE LOWER(je.value) LIKE ?
-                          AND st.lat IS NOT NULL
-                          AND st.lng IS NOT NULL
-                          AND st.was_productive = 1
-                    )
-                """, [f"%{common_name.lower()}%"]).fetchone()
-                total += row[0] if row else 0
-        return total
+        stops = trip_log_presence_stops(species_name, db)
+        return len({stop_id for stop_id, _lat, _lng in stops})
     except Exception:
         return 0

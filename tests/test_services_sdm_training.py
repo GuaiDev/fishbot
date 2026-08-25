@@ -4,6 +4,7 @@ All tests use synthetic data — no live DB required.
 No model accuracy assertions — outputs are data-dependent.
 """
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -121,6 +122,30 @@ def _add_gbif(db, species: str, coords: list[tuple[float, float]]) -> None:
         )
 
 
+def _add_trip_log_stop(
+    db,
+    common_names: list[str],
+    lat: float | None,
+    lng: float | None,
+    was_productive: int = 1,
+) -> None:
+    """Log one stop the way the trip log does — a session row and a stop on it."""
+    if not db["sessions"].exists() or not db["sessions"].count:
+        db["sessions"].insert({"id": 1, "date": "2026-05-01"}, replace=True)
+    db["stops"].insert(
+        {
+            "session_id": 1,
+            "location_text": "test water",
+            "location_name": "Test Water",
+            "lat": lat,
+            "lng": lng,
+            "species_caught": json.dumps(common_names),
+            "party_species_caught": json.dumps([]),
+            "was_productive": was_productive,
+        }
+    )
+
+
 def _coords_at(df: pd.DataFrame, indices: list[int]) -> list[tuple[float, float]]:
     return [(df.iloc[i]["centroid_lat"], df.iloc[i]["centroid_lng"]) for i in indices]
 
@@ -151,6 +176,43 @@ def test_prepare_species_data_combines_inat_and_gbif(tmp_path: Path):
 
     # Up to 10 unique segments (some might snap to same segment)
     assert len(X) >= 5
+
+
+def test_prepare_species_data_includes_trip_log_only_species(tmp_path: Path):
+    """Trip-log catches alone produce presence rows — the query's output survives.
+
+    tests/test_trip_log_sdm.py proves the trip-log query selects the right
+    stops; this proves those stops reach X. With no iNat or GBIF record for
+    the species, a trip-log stop is the only thing that can put a row in the
+    result, so an empty X means the handoff is broken rather than the query.
+    """
+    df = _make_features()
+    db = get_db(tmp_path / "test.db")
+
+    caught_at = [30, 31, 32]
+    for lat, lng in _coords_at(df, caught_at):
+        _add_trip_log_stop(db, ["creek chub"], lat, lng)
+    # An unproductive stop elsewhere: the filtering has to survive the handoff
+    # too, not just the presences.
+    unproductive_lat, unproductive_lng = _coords_at(df, [50])[0]
+    _add_trip_log_stop(db, ["creek chub"], unproductive_lat, unproductive_lng, was_productive=0)
+
+    # Nothing in the occurrence tables — trip log is the only possible source.
+    for table in ("observations", "gbif_observations"):
+        n = db.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE LOWER(species) = ?",
+            ["semotilus atromaculatus"],
+        ).fetchone()[0]
+        assert n == 0
+
+    X, y = prepare_species_data("Semotilus atromaculatus", db, df)
+
+    assert set(X.index) == set(df.iloc[caught_at]["ogf_id"])
+    assert df.iloc[50]["ogf_id"] not in set(X.index)
+    assert len(y) == len(X)
+    assert (y == 1.0).all()
+    assert set(X.columns) == set(_ALL_FEATURES)
+    assert X.index.name == "ogf_id"
 
 
 def test_prepare_species_data_stocking_exclusion(tmp_path: Path):
