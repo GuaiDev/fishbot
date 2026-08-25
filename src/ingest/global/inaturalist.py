@@ -63,7 +63,9 @@ def fetch_observations(
             # fetched records because page N+1 was refused helps nobody.
             _log.warning(
                 "iNat: page %d refused (%s) — keeping the %d records fetched so far",
-                page, exc.response.status_code, len(all_results),
+                page,
+                exc.response.status_code,
+                len(all_results),
             )
             break
         results = raw.get("results", [])
@@ -85,10 +87,40 @@ def fetch_observations(
         _log.warning(
             "iNat: fetched %d of %d total — API pagination cap reached, %d records "
             "unreachable. Narrow --radius or --days to reach the remainder.",
-            len(all_results), total, total - len(all_results),
+            len(all_results),
+            total,
+            total - len(all_results),
         )
 
-    return [_parse_observation(r) for r in all_results if _has_location(r)]
+    parsed: list[Observation] = []
+    n_no_location = n_no_date = 0
+    for r in all_results:
+        if not _has_location(r):
+            n_no_location += 1
+            continue
+        if _observed_date(r) is None:
+            n_no_date += 1
+            continue
+        parsed.append(_parse_observation(r))
+
+    dropped = n_no_location + n_no_date
+    if dropped:
+        share = dropped / len(all_results)
+        # Material share goes to WARNING; a stray record or two is INFO. Either
+        # way the count is emitted — a drop nobody counts is indistinguishable
+        # from water nobody surveyed.
+        emit = _log.warning if share >= 0.01 else _log.info
+        emit(
+            "iNat: dropped %d of %d records (%.1f%%) — %d without coordinates, "
+            "%d without a parseable observed_on date",
+            dropped,
+            len(all_results),
+            share * 100,
+            n_no_location,
+            n_no_date,
+        )
+
+    return parsed
 
 
 def _cached_get(params: dict) -> dict:
@@ -110,6 +142,26 @@ def _cached_get(params: dict) -> dict:
 
 def _has_location(result: dict) -> bool:
     return bool(result.get("location"))
+
+
+def _observed_date(result: dict) -> date | None:
+    """The record's observation date, or None if it hasn't got a usable one.
+
+    iNaturalist leaves `observed_on` null on undated records and sometimes
+    carries only a partial date (year, or year-month) in `observed_on_details`.
+    Neither parses as an ISO date. Returning None lets the caller drop the one
+    record and count it, which is the whole point: this used to be a bare
+    `date.fromisoformat(result["observed_on"])` inside a list comprehension, so
+    a single undated observation raised TypeError and discarded every other
+    record fetched for that location — up to 10,000 of them.
+    """
+    raw = result.get("observed_on")
+    if not isinstance(raw, str):
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
 
 
 def _parse_observation(result: dict) -> Observation:
@@ -134,7 +186,7 @@ def _parse_observation(result: dict) -> Observation:
         taxon_id=taxon.get("id"),
         lat=lat,
         lng=lng,
-        observed_on=date.fromisoformat(result["observed_on"]),
+        observed_on=_observed_date(result),
         quality_grade=result.get("quality_grade", ""),
         photo_url=photo_url,
         observer=user.get("login"),

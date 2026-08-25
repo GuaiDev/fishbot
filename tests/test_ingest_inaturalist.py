@@ -2,6 +2,7 @@
 
 import importlib
 import json
+import logging
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -210,3 +211,72 @@ def test_absent_licence_stays_none_and_is_not_defaulted():
     obs = _parse_observation(_raw_observation(license_code=None, photos=[]))
     assert obs.license_code is None
     assert obs.photo_license_code is None
+
+
+# ── undated records must not sink the whole fetch ─────────────────────────────
+
+_observed_date = _inat._observed_date
+
+
+def test_undated_record_yields_none_not_typeerror():
+    """iNaturalist leaves observed_on null on undated records."""
+    assert _observed_date(_raw_observation(observed_on=None)) is None
+
+
+def test_partial_date_yields_none_not_valueerror():
+    """Some records carry only a year, or a year-month, which is not ISO."""
+    assert _observed_date(_raw_observation(observed_on="2022")) is None
+    assert _observed_date(_raw_observation(observed_on="2022-05")) is None
+
+
+def test_one_undated_record_does_not_discard_the_others(monkeypatch):
+    """The regression this guards.
+
+    A bare date.fromisoformat() inside the parse comprehension raised
+    TypeError on the first undated record, discarding every other record
+    fetched for that location. Five of sixteen sites in a western ingest
+    returned nothing at all because of one dateless observation each.
+    """
+    page = {
+        "total_results": 3,
+        "results": [
+            _raw_observation(id=1),
+            _raw_observation(id=2, observed_on=None),  # the poison pill
+            _raw_observation(id=3),
+        ],
+    }
+    monkeypatch.setattr(_inat, "_cached_get", lambda params: page)
+
+    observations = _inat.fetch_observations(43.5, -80.1, radius_km=10, days_back=None)
+
+    assert [o.observation_id for o in observations] == [1, 3]
+
+
+def test_record_without_coordinates_is_dropped_not_parsed(monkeypatch):
+    page = {
+        "total_results": 2,
+        "results": [
+            _raw_observation(id=1),
+            _raw_observation(id=2, location=None),
+        ],
+    }
+    monkeypatch.setattr(_inat, "_cached_get", lambda params: page)
+
+    observations = _inat.fetch_observations(43.5, -80.1, radius_km=10, days_back=None)
+
+    assert [o.observation_id for o in observations] == [1]
+
+
+def test_drops_are_counted_in_the_log_not_swallowed(monkeypatch, caplog):
+    """A drop nobody counts reads exactly like water nobody surveyed."""
+    page = {
+        "total_results": 2,
+        "results": [_raw_observation(id=1), _raw_observation(id=2, observed_on=None)],
+    }
+    monkeypatch.setattr(_inat, "_cached_get", lambda params: page)
+
+    with caplog.at_level(logging.WARNING):
+        _inat.fetch_observations(43.5, -80.1, radius_km=10, days_back=None)
+
+    assert "dropped 1 of 2" in caplog.text
+    assert "observed_on" in caplog.text
